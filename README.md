@@ -12,7 +12,7 @@ When someone goes on leave they usually tell only their manager and reports. Col
 - **Finds the affected meetings** from the calendar and recommends one action for each: go on without the person, name a proxy, reschedule, cancel, or "I'll attend" (for the person on leave).
 - **Explains every recommendation** with a reason, a confidence level and the sources used. A person always decides; the AI proposes.
 - **Reads meeting summaries only through each person's own access.** Nothing from a summary reaches someone who couldn't open it, and a missing summary never blocks anything.
-- **Handles routine meetings and general events automatically** when it is highly confident, and still lets people review and change them.
+- **Handles team check-ins and org-wide events automatically** when it is highly confident (unless the person who is out organizes or hosts the event), and still lets people review and change them.
 - **Runs the proxy flow:** the proxy can be anyone in the company directory, on the invite or not, with no organizer approval needed; someone not yet invited is added to the meeting and sent the invite. Covering is always the proxy's choice: they accept or decline, silent proxies get reminders, a declined proxy sends the owner and the organizer back to choose again.
 - **Reschedules safely:** same time of day, a day when every required person is free and none is on leave.
 - **Both sides can act:** the person who is out and the organizer. Urgency is highlighted for everyone: amber within 3 days, red within 24 hours.

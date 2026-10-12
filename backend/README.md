@@ -30,6 +30,7 @@ Copy-Item .env.example .env                                     # once
 | `app/store.py` | Storage interface. In-memory now; Firestore can be added behind it |
 | `app/notify.py` | Email outbox (stand-in for real email) |
 | `agents/` | Orchestrator, recommender, proxy ranker, note drafter. Rule-based stand-ins for now, to be replaced by ADK + Gemini agents with the same function signatures |
+| `config/settings.toml` | Tunable values: reminder milestones, urgency lines, reschedule window, ranking weights, word lists. Edit, restart, done. Read through `app/settings.py` |
 | `seed/seed.json` | The demo company: 9 people, events with meeting notes, 2 absences |
 
 ## Demo scenarios in the seed data

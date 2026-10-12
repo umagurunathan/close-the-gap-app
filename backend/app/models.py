@@ -34,9 +34,9 @@ class Confidence(str, Enum):
 
 
 class ItemKind(str, Enum):
-    normal = "normal"
-    routine = "routine"
-    general_event = "general_event"
+    key_meeting = "key_meeting"      # a small group where the absence may change the outcome; a person decides
+    team_checkin = "team_checkin"    # stand-ups and status syncs: go on without the person
+    org_event = "org_event"          # town halls, talks, site or company-wide events sent to a large list
 
 
 class ItemStatus(str, Enum):
@@ -240,8 +240,8 @@ class LeaveSystemRequest(BaseModel):
 
 
 class NoActionGroups(BaseModel):
-    routine: list[MeetingItem] = Field(default_factory=list)
-    general: list[MeetingItem] = Field(default_factory=list)
+    teamCheckins: list[MeetingItem] = Field(default_factory=list)
+    orgEvents: list[MeetingItem] = Field(default_factory=list)
 
 
 class AttendeeItems(BaseModel):

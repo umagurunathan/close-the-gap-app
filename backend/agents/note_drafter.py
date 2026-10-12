@@ -11,8 +11,9 @@ from __future__ import annotations
 import re
 
 from app.models import CalEvent, Note, Person
+from app.settings import settings as S
 
-KEY_WORDS = ("decid", "decision", "approve", "owns", "owner", "action item", "to confirm", "sign off", "sign-off", "to prepare")
+KEY_WORDS = tuple(S.drafter.key_words)   # tunable in config/settings.toml
 
 
 def draft_note(event: CalEvent, absent: Person, notes: list[Note]) -> str:
@@ -24,8 +25,8 @@ def draft_note(event: CalEvent, absent: Person, notes: list[Note]) -> str:
             if s and (first.lower() in low or any(k in low for k in KEY_WORDS)) and s not in sentences:
                 sentences.append(s)
     if not sentences and notes:
-        sentences = re.split(r"(?<=[.!?])\s+", notes[0].text.strip())[:2]
-    bullets = "\n".join(f"- {s}" for s in sentences[:5])
+        sentences = re.split(r"(?<=[.!?])\s+", notes[0].text.strip())[:S.drafter.fallback_sentences]
+    bullets = "\n".join(f"- {s}" for s in sentences[:S.drafter.max_bullets])
     return (
         f"Hi, thanks for covering '{event.title}' for {first}.\n"
         f"From the previous summaries:\n{bullets}\n"

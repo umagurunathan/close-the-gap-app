@@ -12,7 +12,7 @@ export default function App() {
   const [personId, setPersonId] = useState(localStorage.getItem("personId") || DEFAULT_PERSON);
   const [me, setMe] = useState(null);
   const [absences, setAbsences] = useState([]);
-  const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { routine: [], general: [] } });
+  const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { teamCheckins: [], orgEvents: [] } });
   const [organizer, setOrganizer] = useState([]);
   const [proxyReqs, setProxyReqs] = useState([]);
   const [pastItems, setPastItems] = useState([]);
@@ -75,7 +75,7 @@ export default function App() {
   // Activity log lines per meeting, shown inside the cards in Past
   const activityFor = (itemId) => history.filter((h) => h.itemId === itemId).sort((a, b) => a.at.localeCompare(b.at));
   const noAction = attendee.noActionNeeded;
-  const noActionCount = noAction.routine.length + noAction.general.length;
+  const noActionCount = noAction.teamCheckins.length + noAction.orgEvents.length;
   const upcomingAbsence = absences[0];
 
   return (
@@ -143,12 +143,12 @@ export default function App() {
             {noActionCount > 0 && (
               <details className="no-action">
                 <summary>No action needed ({noActionCount})</summary>
-                {noAction.routine.length > 0 && <h4>Routine meetings</h4>}
-                {noAction.routine.map((i) => (
+                {noAction.teamCheckins.length > 0 && <h4>Team check-ins</h4>}
+                {noAction.teamCheckins.map((i) => (
                   <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} quiet />
                 ))}
-                {noAction.general.length > 0 && <h4>General events</h4>}
-                {noAction.general.map((i) => (
+                {noAction.orgEvents.length > 0 && <h4>Org-wide events</h4>}
+                {noAction.orgEvents.map((i) => (
                   <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} quiet />
                 ))}
               </details>

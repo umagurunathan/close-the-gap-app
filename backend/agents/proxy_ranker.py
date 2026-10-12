@@ -11,6 +11,7 @@ Rules it follows:
 from __future__ import annotations
 
 from app.models import CalEvent, Note, Person
+from app.settings import settings as S
 
 
 def _first_name(p: Person) -> str:
@@ -35,16 +36,16 @@ def rank_proxies(
         score, reasons = 0, []
         mentions = text.count(_first_name(p)) if text else 0
         if mentions:
-            score += 10 + mentions
+            score += S.proxy_ranking.named_in_summaries_base + mentions
             reasons.append(f"named {mentions}x in previous summaries")
         if absent.managerId == pid:
-            score += 3
+            score += S.proxy_ranking.absent_persons_manager
             reasons.append("the absent person's manager")
         elif p.managerId and p.managerId == absent.managerId:
-            score += 2
+            score += S.proxy_ranking.peer_same_manager
             reasons.append("a peer (same manager)")
         elif p.managerId == absent.id:
-            score += 2
+            score += S.proxy_ranking.direct_report
             reasons.append("a direct report")
         scored.append((score, pid, "; ".join(reasons) or "invitee, no supporting evidence"))
     scored.sort(key=lambda t: (-t[0], t[1]))

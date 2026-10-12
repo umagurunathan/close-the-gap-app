@@ -15,9 +15,11 @@ from typing import Optional
 
 from .calendar import SimCalendar
 from .models import Absence, CalEvent, ProposedTime
+from .settings import settings as S
 
-STEP_MINUTES = 30
-MAX_WORKING_DAYS = 7
+# Tunable in config/settings.toml
+STEP_MINUTES = S.reschedule.step_minutes
+MAX_WORKING_DAYS = S.reschedule.max_working_days
 
 
 def key_people(event: CalEvent) -> list[str]:
@@ -44,13 +46,14 @@ def find_slot(
     people = key_people(event)
     original_tod = event.start.timetz()
 
-    for window_hours in (1, 2):
+    preferred = S.reschedule.preferred_window_hours
+    for window_hours in (preferred, S.reschedule.wider_window_hours):
         offsets = _offsets_by_closeness(window_hours)
         day = event.start.date()
         checked = 0
         while checked < max_working_days:
             day += timedelta(days=1)
-            if day.weekday() >= 5:  # skip Sat/Sun
+            if S.reschedule.skip_weekends and day.weekday() >= 5:  # skip Sat/Sun
                 continue
             checked += 1
             center = datetime.combine(day, time(original_tod.hour, original_tod.minute), tzinfo=event.start.tzinfo)
@@ -65,7 +68,7 @@ def find_slot(
                     return ProposedTime(
                         proposedStart=start,
                         windowUsed=f"±{window_hours}h",
-                        flagged=window_hours > 1,
+                        flagged=window_hours > preferred,
                     )
     return ProposedTime(none=True)
 

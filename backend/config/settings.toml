@@ -1,0 +1,109 @@
+# Close the Gap: tunable settings.
+#
+# Change a number or a word list here, restart the backend, and the app follows. No code change needed.
+# To try a different file: set the environment variable SETTINGS_PATH to its location.
+#
+# Each section says whether it is "wired" (the app already reads it) or "reserved" (agreed in the design and kept
+# here so it can be tuned later; the feature that reads it is not built yet).
+#
+# Deliberately NOT here, because they are product rules and not tuning knobs: the privacy filter (a person's AI only
+# reads summaries that person can open), "the AI proposes and a person decides", only the organizer can reschedule or
+# cancel, one occurrence at a time, optional attendees never trigger anything, who counts as a key person
+# (the organizer plus required attendees), and the five actions.
+
+
+# ---------------------------------------------------------------- Reminders
+[reminders]
+# RESERVED (the digest job is the next build; Decision 50).
+# Hours before a meeting starts at which a still-unresolved meeting is reminded about. A meeting created later than a
+# milestone never gets that milestone (no backfill).
+milestones_hours_before_meeting = [168, 72, 24, 4, 2]   # 7 days, 3 days, 24 hours, 4 hours, 2 hours
+# Who receives each digest. "leaver" = the person who is out; "organizer" = the meeting organizer.
+recipients = ["leaver", "organizer"]
+# One email per person per milestone listing everything still unresolved (true), or one email per meeting (false).
+send_as_digest = true
+# How often the scheduler runs the reminder job. Cloud Scheduler is set to this; the job is safe to run more often.
+job_interval_minutes = 15
+
+# WIRED today:
+# How many times a silent proxy is reminded before the organizer simply decides.
+proxy_max_reminders = 3
+# The current organizer alert: a meeting starting within this many hours that still needs action. The 24-hour digest
+# milestone will replace this when the digest job is built.
+organizer_alert_hours = 24
+
+
+# ---------------------------------------------------------------- Urgency chips (WIRED)
+[urgency]
+soon_hours = 72      # amber chip: the meeting starts within this many hours and still needs action
+urgent_hours = 24    # red "act now" chip
+
+
+# ---------------------------------------------------------------- Absences (WIRED)
+[absence]
+# An absence reported with less notice than this is "sudden" (the organizer is emailed at once). Otherwise "planned".
+sudden_notice_hours = 24
+
+
+# ---------------------------------------------------------------- What stays visible (WIRED)
+[visibility]
+past_days = 30       # a finished meeting stays in the Past tab this long
+history_days = 30    # activity log entries shown to a person
+
+
+# ---------------------------------------------------------------- Reschedule search (WIRED; plain code, no AI)
+[reschedule]
+preferred_window_hours = 1   # first try the same time of day, within +/- this many hours
+wider_window_hours = 2       # then widen to +/- this many hours (flagged as "a little off the original time")
+step_minutes = 30            # candidate times are this far apart
+max_working_days = 7         # how many working days ahead to look
+skip_weekends = true
+
+
+# ---------------------------------------------------------------- Directory search for proxies (WIRED)
+[directory]
+max_results = 20
+
+
+# ---------------------------------------------------------------- "Minutes saved" metric (WIRED)
+# Modeled, illustrative assumptions per attendee. Replace with the team's real numbers when confirmed.
+[metrics]
+minutes_lost_in_failed_meeting = 6
+minutes_lost_in_follow_up = 30
+
+
+# ---------------------------------------------------------------- Recommender word lists (WIRED; stand-in rules, the
+# AI reads the meeting itself once it replaces them, but the words stay useful as hints and as the fallback)
+[recommendation]
+team_checkin_title_words = ["stand-up", "standup", "stand up", "dsu", "daily status", "status check", "check-in", "sync"]
+decision_words = ["decid", "decision", "approve", "owns", "owner", "action item", "to confirm", "sign off", "sign-off"]
+# Words that, next to the absent person's name, mean they run an org-wide event (Decision 48)
+hosting_words = ["host", "emcee", "speaker", "presenter", "moderator", "organis", "organiz", "committee", "co-ordinat", "coordinat"]
+# A proxy suggestion needs at least this score to be called "high confidence" (see proxy_ranking below)
+min_proxy_score_for_high_confidence = 10
+
+
+# ---------------------------------------------------------------- Proxy ranking weights (WIRED; stand-in rules)
+[proxy_ranking]
+named_in_summaries_base = 10   # plus one point per mention
+absent_persons_manager = 3
+peer_same_manager = 2
+direct_report = 2
+
+
+# ---------------------------------------------------------------- Handover note drafter (WIRED; stand-in rules)
+[drafter]
+key_words = ["decid", "decision", "approve", "owns", "owner", "action item", "to confirm", "sign off", "sign-off", "to prepare"]
+max_bullets = 5
+fallback_sentences = 2
+
+
+# ---------------------------------------------------------------- AI (RESERVED until the Gemini blocks are built)
+[ai]
+# Left empty on purpose: the current model name is checked against Google's "latest stable models" page at build time.
+model = ""
+timeout_seconds = 20
+# If Gemini fails or is too slow, use the rule-based version so the card still appears (the "C" safety layer).
+fall_back_to_rules = true
+# Below this confidence the AI may not mark a meeting a team check-in or an org-wide event; it becomes a key meeting.
+auto_handle_requires = "high"

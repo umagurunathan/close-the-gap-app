@@ -17,6 +17,7 @@ from .models import (
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
 from .scheduling import find_slot, key_people
+from .settings import settings as S
 from .store import Store
 
 TERMINAL = {ItemStatus.rescheduled, ItemStatus.cancelled}
@@ -24,16 +25,17 @@ RESOLVED = {
     ItemStatus.auto_handled, ItemStatus.attending, ItemStatus.proceeding_without,
     ItemStatus.proxy_accepted, ItemStatus.rescheduled, ItemStatus.cancelled,
 }
-MAX_PROXY_REMINDERS = 3
+MAX_PROXY_REMINDERS = S.reminders.proxy_max_reminders
 # Cards that still need someone to act. Everything else is settled.
 ATTENTION = {
     ItemStatus.pending_decision, ItemStatus.proxy_requested, ItemStatus.awaiting_organizer,
     ItemStatus.proxy_declined, ItemStatus.no_slot_found,
 }
-PAST_DAYS = 30      # how long a finished meeting stays visible in Past
-URGENT_HOURS = 24   # red: same line as the organizer alert
-SOON_HOURS = 72     # amber: same line as "reminders become daily"
-SUDDEN_NOTICE_HOURS = 24  # an absence reported with less notice than this is "sudden"
+# The numbers below are tunable in config/settings.toml
+PAST_DAYS = S.visibility.past_days            # how long a finished meeting stays visible in Past
+URGENT_HOURS = S.urgency.urgent_hours          # red chip
+SOON_HOURS = S.urgency.soon_hours              # amber chip
+SUDDEN_NOTICE_HOURS = S.absence.sudden_notice_hours  # less notice than this = a "sudden" absence
 
 
 class Service:
@@ -108,14 +110,14 @@ class Service:
             id=self.store.next_id("i"), absenceId=absence.id, absentPersonId=absent.id, ownerRole=owner_role,
             event=EventRef(calendarEventId=e.id, instanceStart=e.start, title=e.title, start=e.start, end=e.end,
                            organizerId=e.organizerId, attendees=e.attendees),
-            kind=ItemKind.normal, ai=AiResult(),
+            kind=ItemKind.key_meeting, ai=AiResult(),
             status=ItemStatus.pending_decision, createdAt=now, updatedAt=now)
         # The shared state (is it routine / a general event?) is judged from the ABSENT person's view of the
         # summaries, so nothing is concluded from documents they cannot open. Each viewer's own recommendation
         # is built when the item is listed (see _view).
         kind, ai = self._analyze(item, absent.id)
         item.kind, item.ai = kind, ai
-        if kind != ItemKind.normal:
+        if kind != ItemKind.key_meeting:
             item.status = ItemStatus.auto_handled
             item.chosenAction = Action.proceed_without
         self.store.add_item(item)
@@ -163,7 +165,7 @@ class Service:
                 item = self._create_item(absence, self.person(pid), e, now)
                 if item:
                     created.append(item)
-        needs = [i for i in created if i.kind == ItemKind.normal]
+        needs = [i for i in created if i.kind == ItemKind.key_meeting]
         if needs:
             names = [self.person(i.absentPersonId).name for i in needs]
             who = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
@@ -232,10 +234,10 @@ class Service:
                        if i.absentPersonId == me and not self._is_past(i)], key=lambda i: i.event.start)
         out = AttendeeItems()
         for i in mine:
-            if i.kind == ItemKind.routine:
-                out.noActionNeeded.routine.append(i)
-            elif i.kind == ItemKind.general_event:
-                out.noActionNeeded.general.append(i)
+            if i.kind == ItemKind.team_checkin:
+                out.noActionNeeded.teamCheckins.append(i)
+            elif i.kind == ItemKind.org_event:
+                out.noActionNeeded.orgEvents.append(i)
             else:
                 out.needsAction.append(i)
         return out
@@ -244,7 +246,7 @@ class Service:
         """Meetings I organize where someone else is absent (planned or sudden), so organizers can look ahead."""
         out = []
         for i in self.store.items():
-            if i.absentPersonId == me or i.kind != ItemKind.normal or self._is_past(i):
+            if i.absentPersonId == me or i.kind != ItemKind.key_meeting or self._is_past(i):
                 continue
             if i.event.organizerId == me or (i.ownerRole == "organizer" and self.organizer_decider(i) == me):
                 out.append(self._view(i, me))
@@ -255,7 +257,7 @@ class Service:
         read-only in the web app. Meetings I covered as a proxy come from proxy_requests_for(me, past=True)."""
         out = []
         for i in self.store.items():
-            if i.kind != ItemKind.normal or not self._recent_past(i):
+            if i.kind != ItemKind.key_meeting or not self._recent_past(i):
                 continue
             if i.absentPersonId == me or me in self._organizer_side(i):
                 out.append(self._view(i, me))
@@ -457,7 +459,7 @@ class Service:
                 i.event.attendees = list(e.attendees)
                 self.store.save_item(i)
 
-    def directory(self, query: str = "", day: Optional[date] = None, limit: int = 20) -> list[DirectoryEntry]:
+    def directory(self, query: str = "", day: Optional[date] = None, limit: int = S.directory.max_results) -> list[DirectoryEntry]:
         """The company directory (simulated from the seed file; a real directory can be added behind this method).
         Individuals only, matched on email, name, title or department. `out` is set for people on leave that day."""
         q = query.strip().lower()
@@ -539,12 +541,12 @@ class Service:
         # (not handled, proxy unanswered, waiting on the organizer, proxy declined, no slot found), the organizer is
         # emailed once. This is the only email organizers get for planned leave besides asks.
         for i in self.store.items():
-            if i.kind != ItemKind.normal or i.organizerAlerted or i.status not in ATTENTION:
+            if i.kind != ItemKind.key_meeting or i.organizerAlerted or i.status not in ATTENTION:
                 continue
             until = i.event.start - now
-            if timedelta(0) < until <= timedelta(hours=24):
+            if timedelta(0) < until <= timedelta(hours=S.reminders.organizer_alert_hours):
                 notify.send_email(self.person(self.organizer_decider(i)).email,
-                                  f"Unresolved: '{i.event.title}' starts within 24 hours and {self.person(i.absentPersonId).name} is out",
+                                  f"Unresolved: '{i.event.title}' starts within {S.reminders.organizer_alert_hours} hours and {self.person(i.absentPersonId).name} is out",
                                   "Open Organizer Mode to decide.", now)
                 i.organizerAlerted = True
                 self.store.save_item(i)
@@ -554,7 +556,7 @@ class Service:
 
     # ---------- history and metrics ----------
     def history_for(self, me: str) -> list[HistoryEvent]:
-        cutoff = self.now() - timedelta(days=30)
+        cutoff = self.now() - timedelta(days=S.visibility.history_days)
         mine_items = {i.id for i in self.store.items() if me in (i.absentPersonId, i.event.organizerId)}
         return sorted([h for h in self.store.history() if h.at >= cutoff and (h.actorId == me or h.itemId in mine_items)],
                       key=lambda h: h.at, reverse=True)
@@ -566,7 +568,7 @@ class Service:
         for i in resolved:
             if i.status in (ItemStatus.proxy_accepted, ItemStatus.rescheduled, ItemStatus.cancelled):
                 n = len(i.event.attendees)
-                saved += n * (config.MINUTES_LOST_IN_FAILED_MEETING + config.MINUTES_LOST_IN_FOLLOW_UP)
+                saved += n * (S.metrics.minutes_lost_in_failed_meeting + S.metrics.minutes_lost_in_follow_up)
         return Metrics(meetingsResolved=len(resolved),
                        avgLeadTimeDays=round(sum(leads) / len(leads), 1) if leads else 0.0,
                        attendeeMinutesSaved=saved)

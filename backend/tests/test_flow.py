@@ -30,9 +30,9 @@ def test_priya_items_are_grouped_and_sorted(client):
     titles_needs = [i["event"]["title"] for i in data["needsAction"]]
     assert titles_needs[0] == "Sprint Planning"           # earliest first
     assert "Q4 Budget Review" in titles_needs
-    assert len(data["noActionNeeded"]["routine"]) == 3     # three stand-ups, auto-handled
-    assert len(data["noActionNeeded"]["general"]) == 1     # the tech talk
-    assert all(i["status"] == "auto_handled" for i in data["noActionNeeded"]["routine"])
+    assert len(data["noActionNeeded"]["teamCheckins"]) == 3     # three stand-ups, auto-handled
+    assert len(data["noActionNeeded"]["orgEvents"]) == 1     # the tech talk
+    assert all(i["status"] == "auto_handled" for i in data["noActionNeeded"]["teamCheckins"])
 
 
 def test_proxy_suggested_from_summaries_and_notes_respect_sharing(svc):
@@ -415,3 +415,44 @@ def test_proxy_who_is_out_that_day_is_refused(client, svc):
     assert r.status_code == 400 and "out of office" in r.json()["detail"]
     flagged = client.get("/directory", params={"q": "rohan", "day": "2026-10-21"}, headers=H("p_priya")).json()
     assert flagged[0]["out"] is True
+
+
+def _org_event(**kw):
+    from datetime import datetime, timezone
+    from app.models import CalEvent, EventAttendee
+    return CalEvent(id="evt_x", title="Site Town Hall", description=kw.get("description", ""),
+                    start=datetime(2026, 10, 21, 15, tzinfo=timezone.utc), end=datetime(2026, 10, 21, 16, tzinfo=timezone.utc),
+                    organizerId=kw.get("organizer", "p_events"), attendees=[EventAttendee(personId="p_events")],
+                    inviteGroup="site-all")
+
+
+def test_org_event_is_automatic_unless_the_absent_person_runs_it(svc):
+    from agents.recommender import recommend
+    from app.models import ItemKind
+    people = svc.people_map()
+    priya = people["p_priya"]
+    assert recommend(_org_event(), priya, people, [])[0] == ItemKind.org_event
+    # the organizer is out: they may need to hand it over
+    kind, ai = recommend(_org_event(organizer="p_priya"), priya, people, [])
+    assert kind == ItemKind.key_meeting and ai.confidence.value == "medium"
+    # named as a host in the invite text
+    kind, _ = recommend(_org_event(description="Priya will host the Q&A at the end."), priya, people, [])
+    assert kind == ItemKind.key_meeting
+    # named, but not in a hosting role
+    kind, _ = recommend(_org_event(description="Priya from Finance may attend."), priya, people, [])
+    assert kind == ItemKind.org_event
+
+
+def test_settings_file_loads_and_drives_the_app(tmp_path):
+    from app import settings as cfg
+    s = cfg.settings
+    assert s.reminders.milestones_hours_before_meeting == [168, 72, 24, 4, 2]
+    assert s.reminders.recipients == ["leaver", "organizer"] and s.reminders.send_as_digest is True
+    assert s.urgency.urgent_hours == 24 and s.urgency.soon_hours == 72
+    # another file can be loaded (SETTINGS_PATH does the same at startup); a missing setting fails loudly
+    f = tmp_path / "s.toml"
+    f.write_text("[urgency]\nsoon_hours = 48\n", encoding="utf-8")
+    other = cfg.load(f)
+    assert other.urgency.soon_hours == 48
+    with pytest.raises(AttributeError):
+        other.urgency.urgent_hours

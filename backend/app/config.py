@@ -27,6 +27,4 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# Modeled assumptions for the "minutes saved" metric. Illustrative, not measured.
-MINUTES_LOST_IN_FAILED_MEETING = 6   # per attendee, meeting that can't proceed
-MINUTES_LOST_IN_FOLLOW_UP = 30       # per attendee, the follow-up meeting that was also unproductive
+# Tunable numbers (reminders, urgency, reschedule search, metrics assumptions, word lists) live in config/settings.toml.
