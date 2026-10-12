@@ -1,0 +1,9 @@
+# Allow-list: only deliverables are committed. Everything at the project root is ignored unless listed below,
+# so internal working files can never be pushed by accident. Add a line here (with a "!") to publish a new file.
+/*
+!/.gitignore
+!/README.md
+!/backend/
+!/web/
+
+# Inside backend/ and web/, their own .gitignore files keep out .venv, node_modules, dist, .env, caches.
