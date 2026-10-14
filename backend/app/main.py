@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import config, notify
 from .models import (
     Absence, AbsenceCreate, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DirectoryEntry, EventCreate, HistoryEvent,
+    MeetingActionRequest, OrganizerMeeting,
     LeaveSystemRequest, ScheduleResult,
     MeetingItem, MeResponse, Metrics, NoteDraft, NoteDraftAvailable, ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestView, RespondRequest,
@@ -87,6 +88,16 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         if mode == "attendee":
             return svc.attendee_items(who)
         return svc.organizer_items(who) if mode == "organizer" else svc.past_items(who)
+
+    @app.get("/organizer/meetings", response_model=list[OrganizerMeeting])
+    def get_organizer_meetings(who: str = Depends(me)):
+        """Organizer Mode: one card per meeting, naming everyone who is out (Decision 55)."""
+        return svc.organizer_meetings(who)
+
+    @app.post("/meetings/{event_id}/action", response_model=Optional[OrganizerMeeting])
+    def post_meeting_action(event_id: str, body: MeetingActionRequest, who: str = Depends(me)):
+        """The organizer decides for the whole meeting: reschedule, cancel or proceed_without."""
+        return guard(lambda: svc.apply_meeting_action(event_id, who, body.action))
 
     @app.post("/items/{item_id}/action", response_model=MeetingItem)
     def post_action(item_id: str, body: ActionRequest, who: str = Depends(me)):

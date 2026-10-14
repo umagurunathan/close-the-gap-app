@@ -138,6 +138,10 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .no-action summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 8px 0; }
 .no-action h4 { margin: 14px 0 6px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; }
 .no-action .card { opacity: 0.92; }
+.card.settled { padding: 12px 18px; }
+.card.settled .note { margin: 6px 0 0; }
+.card.settled s { color: var(--muted); }
+.card.settled .moved { color: var(--text, inherit); font-weight: 600; }
 
 .empty { text-align: center; color: var(--muted); padding: 40px 0; background: var(--card); border: 1px dashed var(--line); border-radius: 16px; }
 .group-title { margin: 18px 0 8px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -162,3 +166,10 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
   .impact { grid-template-columns: 1fr; }
   .drawer { width: calc(100% - 32px); }
 }
+
+/* Organizer card: one line per person who is out */
+.absentees { display: grid; gap: 8px; margin: 10px 0 4px; }
+.absentee { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: #fbfbfe; }
+.absentee-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.absentee-row button { padding: 5px 12px; font-size: 13.5px; }
+.absentee-note { color: var(--muted); font-size: 12.5px; margin-top: 4px; }

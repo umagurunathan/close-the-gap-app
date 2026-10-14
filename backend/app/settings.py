@@ -20,7 +20,13 @@ def _namespace(d: dict) -> SimpleNamespace:
 def load(path: str | os.PathLike | None = None) -> SimpleNamespace:
     p = Path(path or os.getenv("SETTINGS_PATH") or DEFAULT_PATH)
     # utf-8-sig: some Windows editors add an invisible byte-order mark at the start of the file; accept it
-    return _namespace(tomllib.loads(p.read_text(encoding="utf-8-sig")))
+    s = _namespace(tomllib.loads(p.read_text(encoding="utf-8-sig")))
+    # One switch can come from the environment, so the cloud can turn the AI on without a different file:
+    # AI_ENABLED=true on Cloud Run; the file's value (false) keeps tests and local runs offline by default.
+    flag = os.getenv("AI_ENABLED")
+    if flag is not None and hasattr(s, "ai"):
+        s.ai.enabled = flag.strip().lower() in ("1", "true", "yes", "on")
+    return s
 
 
 settings = load()

@@ -13,6 +13,7 @@ Copy-Item .env.example .env                                     # once
 - Live API docs (every endpoint and its shapes; you can try them in the browser): http://localhost:8000/docs
 - Simulated sign-in: send the header `X-Person-Id: p_priya` (the people are in `seed/seed.json`).
 - Emails are not sent yet; the ones the app "sends" are listed at `GET /dev/outbox`.
+- **Gemini** is off by default (`[ai] enabled = false` in `config/settings.toml`), so the app and the tests run without a cloud account. To switch it on: set `GOOGLE_CLOUD_PROJECT` in `.env`, run `gcloud auth application-default login` once, and start with `$env:AI_ENABLED="true"`. There is no API key; Vertex AI uses your Google sign-in (on Cloud Run, the service account).
 
 ## Test it
 ```powershell
@@ -26,12 +27,17 @@ Copy-Item .env.example .env                                     # once
 | `app/service.py` | The logic: scan an absence, check a new meeting, actions, proxy flow, reminders, metrics |
 | `app/models.py` | The data shapes |
 | `app/scheduling.py` | Reschedule search: plain code, same time of day ±1h then ±2h |
+| `app/roles.py` | Who is a key person: required invitees, large events (a list, or more than 15 required people), hosting roles, optional invitees |
+| `app/settings.py` | Reads `config/settings.toml`; `AI_ENABLED` in the environment overrides `[ai] enabled` |
 | `app/calendar.py` | Simulated calendar. A real calendar can be added behind the same methods |
 | `app/store.py` | Storage interface. In-memory now; Firestore can be added behind it |
 | `app/notify.py` | Email outbox (stand-in for real email) |
-| `agents/` | Orchestrator, recommender, proxy ranker, note drafter. Rule-based stand-ins for now, to be replaced by ADK + Gemini agents with the same function signatures |
-| `config/settings.toml` | Tunable values: reminder milestones, urgency lines, reschedule window, ranking weights, word lists. Edit, restart, done. Read through `app/settings.py` |
-| `seed/seed.json` | The demo company: 9 people, events with meeting notes, 2 absences |
+| `agents/orchestrator.py` | Decides how each card is analysed: rules when the AI is off or for a large event, otherwise Gemini with retries, then the checks; falls back to the rules on any error |
+| `agents/recommender_ai.py` | The Gemini recommender: builds the prompt (only summaries the viewer can open, candidates who are not out that day), asks for a structured answer |
+| `agents/guard.py` | Plain-code checks on every AI answer (proxy must be a valid candidate, confidence caps, auto-handling only at high confidence) |
+| `agents/recommender.py`, `proxy_ranker.py`, `note_drafter.py` | The rule-based recommender (also the fallback), proxy ranking, and the proxy note draft |
+| `config/settings.toml` | Tunable values: reminder milestones, urgency lines, reschedule window, ranking weights, word lists, AI model and timeouts. Edit, restart, done. Read through `app/settings.py` |
+| `seed/seed.json` | The demo company: 18 people (some only in the directory, for outside proxies), events with meeting notes, 2 absences |
 
 ## Demo scenarios in the seed data
 - **Priya** (`p_priya`) is out Oct 20–22, planned: the stand-ups are handled automatically, the Budget Review gets a proxy suggestion from shared summaries, the Vendor Decision falls back to the reporting line, the Design Review's notes are not shared with her, and the Tech Talk is a general event.
@@ -40,4 +46,4 @@ Copy-Item .env.example .env                                     # once
 - "Now" is fixed at 2026-10-11 in `.env.example`, so the demo is stable.
 
 ## Cloud Run
-`docker build` uses the `Dockerfile`; Cloud Run sets `PORT`. Set `STORE`, `CORS_ORIGINS` and any keys as environment variables or Secret Manager entries.
+`gcloud run deploy close-the-gap-api --source .` builds the `Dockerfile` in the cloud (`.gcloudignore` keeps `.venv`, `.env`, tests and local scripts out); Cloud Run sets `PORT`. Set `GOOGLE_CLOUD_PROJECT`, `AI_ENABLED`, `NOW` and `CORS_ORIGINS` as environment variables, keep one instance (`--min-instances 1 --max-instances 1`) while data is in memory, and give the service account the Vertex AI User role (`roles/aiplatform.user`).

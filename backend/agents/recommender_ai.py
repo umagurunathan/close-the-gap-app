@@ -13,7 +13,8 @@ How it is built (and why):
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from datetime import date
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -67,16 +68,31 @@ def relation(absent: Person, other: Person) -> str:
     return "different team" if other.department != absent.department else "same department"
 
 
-def candidates_for(event: CalEvent, absent: Person, people: dict[str, Person]) -> list[Person]:
-    """Individual invitees and the organizer; never the absent person or a group list."""
+def candidates_for(event: CalEvent, absent: Person, people: dict[str, Person], notes: Optional[list[Note]] = None,
+                   limit: Optional[int] = None, is_out: Optional[Callable[[str, date], bool]] = None) -> list[Person]:
+    """Individual invitees and the organizer; never the absent person, a group list, or (with `is_out`) anyone else who
+    is out that day. With `limit`, only the most likely ones: people named in the summaries first, then the reporting
+    line, then the organizer, then the rest."""
     ids = [a.personId for a in event.attendees] + [event.organizerId]
-    return [people[i] for i in dict.fromkeys(ids) if i != absent.id and i in people and not people[i].isGroup]
+    day = event.start.date()
+    cands = [people[i] for i in dict.fromkeys(ids) if i != absent.id and i in people and not people[i].isGroup
+             and not (is_out and is_out(i, day))]
+    if limit is None or len(cands) <= limit:
+        return cands
+    text = " ".join(n.text.lower() for n in (notes or []))
+    line = ("the absent person's manager", "a peer (same manager)", "a direct report")
+    rank = lambda p: (p.name.split()[0].lower() not in text, relation(absent, p) not in line,   # noqa: E731
+                      p.id != event.organizerId, p.name)
+    return sorted(cands, key=rank)[:limit]
 
 
-def build_prompt(event: CalEvent, absent: Person, people: dict[str, Person], notes: list[Note]) -> str:
-    """Everything Gemini is shown. `notes` must already be filtered to what the viewer may open."""
+def build_prompt(event: CalEvent, absent: Person, people: dict[str, Person], notes: list[Note],
+                 is_out: Optional[Callable[[str, date], bool]] = None) -> str:
+    """Everything Gemini is shown. `notes` must already be filtered to what the viewer may open. People who are out
+    that day are never offered as candidates (`is_out`)."""
     who = lambda p: f"{p.name} ({p.title})"
-    cands = candidates_for(event, absent, people)
+    total = len(candidates_for(event, absent, people, is_out=is_out))
+    cands = candidates_for(event, absent, people, notes, limit=S.ai.max_candidates, is_out=is_out)   # never the whole list
     return (
         f"Person on leave: {who(absent)}\n"
         f"Meeting: {event.title}\n"
@@ -84,7 +100,8 @@ def build_prompt(event: CalEvent, absent: Person, people: dict[str, Person], not
         f"Organizer: {who(people[event.organizerId])}\n"
         f"Sent to a group list: {bool(event.inviteGroup)}\n"
         f"Previous summaries this person may read: " + (" | ".join(n.text for n in notes) if notes else "(none available)") + "\n"
-        f"Candidate proxies (id | name | title | relation to the person on leave):\n"
+        f"Invitees besides the person on leave: {total}" + (f" (showing the {len(cands)} most likely)" if total > len(cands) else "") + "\n"
+        f"Candidate proxies, all available that day (id | name | title | relation to the person on leave):\n"
         + ("\n".join(f"  {c.id} | {c.name} | {c.title} | {relation(absent, c)}" for c in cands) or "  (none)")
     )
 
@@ -148,7 +165,8 @@ def recommend_ai(
     people: dict[str, Person],
     notes: list[Note],
     client: Any = None,
+    is_out: Optional[Callable[[str, date], bool]] = None,
 ) -> tuple[ItemKind, AiResult]:
     """`client` is only for tests (a fake that returns a ready answer without calling Google)."""
-    rec = ask_gemini(build_prompt(event, absent, people, notes), client)
+    rec = ask_gemini(build_prompt(event, absent, people, notes, is_out), client)
     return to_ai_result(rec, notes)

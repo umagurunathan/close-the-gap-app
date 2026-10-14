@@ -81,6 +81,24 @@ class DirectoryEntry(Person):
     out: bool = False  # on leave on the meeting day, so they cannot be named as a proxy
 
 
+class OrganizerMeeting(BaseModel):
+    """Organizer Mode card: ONE per meeting, naming everyone who is out (Decision 55). The absent people still each
+    have their own card in Attendee Mode; this brings them together for the one person who decides for the meeting."""
+    calendarEventId: str
+    event: "EventRef"
+    absentees: list["MeetingItem"] = Field(default_factory=list)   # one per absent key person, as this organizer sees it
+    ai: "AiResult"                                                  # one recommendation for the whole meeting
+    needsAttention: bool = False
+    urgency: Optional[str] = None
+    hoursToStart: Optional[float] = None
+    done: bool = False   # rescheduled or cancelled for everyone: listed under "Done", not counted in the tab
+
+
+class MeetingActionRequest(BaseModel):
+    """An organizer's decision for the whole meeting: reschedule, cancel or proceed_without (go on without them)."""
+    action: "Action"
+
+
 class Absence(BaseModel):
     id: str
     personId: str
@@ -137,6 +155,7 @@ class MeetingItem(BaseModel):
     chosenAction: Optional[Action] = None
     chosenProxyId: Optional[str] = None
     rescheduledTo: Optional[datetime] = None
+    originalStart: Optional[datetime] = None   # the time before the first reschedule, shown struck through
     # Computed when listing (not stored); the same for every viewer:
     needsAttention: bool = False          # still needs someone to act (not settled)
     urgency: Optional[str] = None         # "soon" (<= 3 days) | "urgent" (<= 24 hours), only while needsAttention
@@ -249,6 +268,7 @@ class LeaveSystemRequest(BaseModel):
 class NoActionGroups(BaseModel):
     teamCheckins: list[MeetingItem] = Field(default_factory=list)
     orgEvents: list[MeetingItem] = Field(default_factory=list)
+    rescheduledOrCancelled: list[MeetingItem] = Field(default_factory=list)   # the gap is closed: nothing left to do
 
 
 class AttendeeItems(BaseModel):
@@ -295,3 +315,7 @@ class Metrics(BaseModel):
     meetingsResolved: int
     avgLeadTimeDays: float
     attendeeMinutesSaved: int
+
+
+OrganizerMeeting.model_rebuild()
+MeetingActionRequest.model_rebuild()

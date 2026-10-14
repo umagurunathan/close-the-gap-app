@@ -8,6 +8,8 @@ Built for the Google Cloud AI Builder Cup 2026, theme *Future of Work & Enterpri
 
 When someone goes on leave they usually tell only their manager and reports. Collaborators on other teams find out at the last minute: meetings are cancelled after people have joined, or run without a decision and are followed by a second meeting. Close the Gap acts before that happens, in either order: when a person's absence is reported, and when someone schedules a meeting on a day a key person is already out.
 
+**Live demo:** https://close-the-gap-2026.web.app — no sign-in needed; pick a person in the "Signed in as" menu. Direct links: [Priya, who is going on leave](https://close-the-gap-2026.web.app/?as=p_priya) · [Sam, an organizer](https://close-the-gap-2026.web.app/?as=p_sam&tab=organizer). The demo data resets when the service restarts.
+
 ## What it does
 - **Finds the affected meetings** from the calendar and recommends one action for each: go on without the person, name a proxy, reschedule, cancel, or "I'll attend" (for the person on leave).
 - **Explains every recommendation** with a reason, a confidence level and the sources used. A person always decides; the AI proposes.
@@ -16,6 +18,14 @@ When someone goes on leave they usually tell only their manager and reports. Col
 - **Runs the proxy flow:** the proxy can be anyone in the company directory, on the invite or not, with no organizer approval needed; someone not yet invited is added to the meeting and sent the invite. Covering is always the proxy's choice: they accept or decline, silent proxies get reminders, a declined proxy sends the owner and the organizer back to choose again.
 - **Reschedules safely:** same time of day, a day when every required person is free and none is on leave.
 - **Both sides can act:** the person who is out and the organizer. Urgency is highlighted for everyone: amber within 3 days, red within 24 hours.
+- **One card per meeting for the organizer,** naming everyone who is out, with one recommendation and one-click actions for the whole meeting. Large events (sent to a list, or more than 15 required people) only involve the organizer and the hosts.
+- **Settled meetings get out of the way:** once a meeting is rescheduled or cancelled it moves to "No action needed" (or "Done" for the organizer), showing the old time struck through and the new one.
+
+## How the AI works
+- **Gemini on Vertex AI** reads the meeting (title, description, invitees and the summaries the viewer can open) and returns a structured answer: the action, a one-line reason, a confidence level and, when useful, a suggested proxy.
+- **Plain-code checks run on every answer** before anyone sees it: a suggested proxy must be a real candidate and not out that day, a proxy chosen without summaries is never high confidence, and only high-confidence answers are handled automatically. If a check changes the answer, the card says so.
+- **The app never waits on the AI to work:** on a timeout or error it retries, then falls back to the rule-based recommendation and labels the card accordingly. Answers are cached until the meeting or the summaries change.
+- Each card shows where its recommendation came from: the Gemini model, "Adjusted by rules", or "Rule-based".
 
 ## Run it locally (two terminals)
 
@@ -27,6 +37,7 @@ py -3.13 -m venv .venv                                          # once
 Copy-Item .env.example .env                                     # once
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
+The AI is off by default, so the app runs with the rule-based recommendations and no cloud account. To use Gemini, set `GOOGLE_CLOUD_PROJECT` in `.env` to a project with the Vertex AI API enabled, sign in once with `gcloud auth application-default login`, and start the backend with `$env:AI_ENABLED="true"`.
 
 **2. Web app** (React + Vite) — http://localhost:5173
 ```powershell
@@ -35,7 +46,11 @@ npm install      # once
 npm run dev
 ```
 
-Use the "Signed in as" dropdown to switch person: Priya (planned leave), Kiran (sudden absence), Sam (organizer), Meena (proxy), Neha (unrelated). The "Schedule a meeting" and "Report an absence" buttons let you try both directions.
+Use the "Signed in as" dropdown to switch person: Priya (planned leave), Kiran (sudden absence), Sam (organizer), Meena (proxy), Neha (unrelated). The "Schedule a meeting" and "Report an absence" buttons let you try both directions. A link can open the app as someone, on a tab: `?as=p_sam&tab=organizer`.
+
+## Deploy
+- **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance, because the prototype keeps its data in memory. The service account needs the Vertex AI User role to call Gemini.
+- **Web app → Firebase Hosting** (from `web/`): put the backend URL in `.env.production`, then `npm run build` and `firebase deploy --only hosting`.
 
 ## Tests
 ```powershell
@@ -51,6 +66,8 @@ web/       React app: Attendee Mode, Organizer Mode, Proxy Requests, Past
 
 ## Built with
 This list shows what is built today and is updated as the project ships.
+- **AI:** Gemini 2.5 Flash on Vertex AI, through the Google Gen AI SDK (`google-genai`) with structured output
+- **Google Cloud:** Cloud Run (backend), Cloud Build and Artifact Registry (container builds), Firebase Hosting (web app), Cloud Logging
 - **Backend:** Python 3.13, FastAPI, pydantic, pytest
 - **Web app:** React 19, Vite
 - **Development tools:** Google Antigravity, Claude Code (AI coding assistants), Visual Studio Code, Git

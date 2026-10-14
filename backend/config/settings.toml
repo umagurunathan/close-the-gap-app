@@ -77,8 +77,11 @@ minutes_lost_in_follow_up = 30
 [recommendation]
 team_checkin_title_words = ["stand-up", "standup", "stand up", "dsu", "daily status", "status check", "check-in", "sync"]
 decision_words = ["decid", "decision", "approve", "owns", "owner", "action item", "to confirm", "sign off", "sign-off"]
-# Words that, next to the absent person's name, mean they run an org-wide event (Decision 48)
-hosting_words = ["host", "emcee", "speaker", "presenter", "moderator", "organis", "organiz", "committee", "co-ordinat", "coordinat"]
+# Words that, next to the absent person's name, mean they run an org-wide event (Decisions 48 and 55)
+hosting_words = ["host", "emcee", "speaker", "presenter", "moderator", "organis", "organiz", "committee", "co-ordinat", "coordinat", "keynote", "guest", "panel"]
+# A meeting with more required invitees than this is a large event: ordinary attendees are not key people, only the
+# organizer and people in a hosting role (Decision 55). Invites to a distribution list are always large events.
+large_meeting_required_threshold = 15
 # A proxy suggestion needs at least this score to be called "high confidence" (see proxy_ranking below)
 min_proxy_score_for_high_confidence = 10
 
@@ -128,3 +131,6 @@ auto_handle_requires = "high"
 # WIRED (the checking layer, agents/guard.py): a proxy suggested with no summaries to support it can be at most this confident.
 # A conclusion drawn from the title or agenda alone (for example "Testing session with Priya") is NOT capped.
 max_confidence_for_proxy_without_summaries = "low"
+# The AI never sees the whole invitee list (Decision 55): only the count, plus at most this many likely candidates
+# (people named in the summaries first, then the reporting line, then the organizer, then others).
+max_candidates = 20

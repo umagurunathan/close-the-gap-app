@@ -1,0 +1,11 @@
+# What `gcloud run deploy --source .` must NOT upload to Google Cloud.
+# The local virtual environment (large, Windows-only), local secrets and settings, caches, tests and learning scripts.
+.gcloudignore
+.git
+.gitignore
+.venv/
+.env
+__pycache__/
+.pytest_cache/
+tests/
+scripts/

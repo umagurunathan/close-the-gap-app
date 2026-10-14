@@ -7,17 +7,17 @@ What it does:
 - Reads only what the viewer may see (summaries shared with them), never more.
 - Marks a meeting a "team_checkin" or an "org_event" ONLY when highly confident:
     team_checkin = title says stand-up/status/sync AND visible summaries show status updates only
-    org_event    = invite goes to a group / list (town hall, tech talk, social event), AND the absent person
-                   is neither its organizer nor named as a host, speaker or committee member
-  Recurrence and attendee count are deliberately NOT used.
+    org_event    = a large event (sent to a list, or more required invitees than the threshold in settings),
+                   AND the absent person is neither its organizer nor in a hosting role (host, committee, speaker,
+                   keynote or key guest). Decisions 48 and 55.
+  Recurrence is deliberately NOT used. Attendee count is used only to recognise a large event (Decision 55).
 - Everything else is a "key_meeting": a person decides.
 - Otherwise it recommends proxy / reschedule, with an honest confidence and the sources it used.
 """
 from __future__ import annotations
 
-import re
-
 from app.models import AiResult, Action, CalEvent, Confidence, ItemKind, Note, Person
+from app.roles import has_hosting_role, is_large_meeting
 from app.settings import settings as S
 from .proxy_ranker import rank_proxies
 
@@ -29,13 +29,7 @@ MIN_PROXY_SCORE = S.recommendation.min_proxy_score_for_high_confidence
 
 
 def _has_hosting_role(event: CalEvent, absent: Person, notes: list[Note]) -> bool:
-    """The organizer, or named next to a hosting word in the invite or the summaries the viewer may read."""
-    if event.organizerId == absent.id:
-        return True
-    first = absent.name.split()[0].lower()
-    text = f"{event.title}. {event.description}. " + ". ".join(n.text for n in notes)
-    return any(first in s.lower() and any(w in s.lower() for w in HOSTING_WORDS)
-               for s in re.split(r"(?<=[.!?])\s+", text))
+    return has_hosting_role(event, absent, notes)   # the shared rule lives in app/roles.py
 
 
 def recommend(
@@ -53,9 +47,10 @@ def recommend(
     else:
         sources.append("no summaries available to you")
 
-    # 1) Org-wide events: invite sent to a group/list. Unless the absent person runs it: the organizer, or named as a
-    #    host, speaker or committee member. Then they may need to hand it over, so a person must look at it.
-    if event.inviteGroup and _has_hosting_role(event, absent, notes):
+    # 1) Org-wide or large events. Unless the absent person runs it (organizer, host, committee, speaker, keynote or
+    #    key guest): then they may need to hand it over, so a person must look at it.
+    large = is_large_meeting(event)
+    if large and _has_hosting_role(event, absent, notes):
         ranked = rank_proxies(event, absent, people, notes)
         top = ranked[0] if ranked else None
         return ItemKind.key_meeting, AiResult(
@@ -64,7 +59,7 @@ def recommend(
             confidence=Confidence.medium, sources=["invite organizer", "invite description"] + (["previous summaries"] if notes else []),
             summariesAvailable=bool(notes), suggestedProxyId=top["personId"] if top else None,
             needsHumanChoice=top is None, fingerprint=fingerprint)
-    if event.inviteGroup:
+    if large:
         return ItemKind.org_event, AiResult(
             recommendation=Action.proceed_without,
             reason="Org-wide event; one person's absence doesn't affect it. Join if you want the learning.",

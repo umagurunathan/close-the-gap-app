@@ -16,6 +16,7 @@ from typing import Callable, Optional
 
 from app.calendar import SimCalendar
 from app.models import AiResult, CalEvent, ItemKind, Person
+from app.roles import has_hosting_role, is_large_meeting
 from app.settings import settings as S
 from .recommender import recommend
 
@@ -62,10 +63,17 @@ def analyze(
     if not (S.ai.enabled and use_ai):
         return rule_based()
 
+    # A large event where this person has no hosting role needs no AI review (Decision 55): plain rules, no cost.
+    if is_large_meeting(event) and not has_hosting_role(event, absent, notes):
+        kind, ai = rule_based()
+        ai.engine = "rules_policy"
+        ai.checks = ["large event and no hosting role: handled by our rules, no AI review needed"]
+        return kind, ai
+
     from . import guard
     from .recommender_ai import recommend_ai   # imported here so the app runs without the Google library when AI is off
     try:
-        kind, ai = _with_retries(lambda: recommend_ai(event, absent, people, notes))
+        kind, ai = _with_retries(lambda: recommend_ai(event, absent, people, notes, is_out=is_out))
     except Exception as err:   # noqa: BLE001
         log.warning("AI unavailable for '%s' (%s): using the rule-based answer", event.title, err)
         if not S.ai.fall_back_to_rules:

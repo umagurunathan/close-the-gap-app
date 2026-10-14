@@ -2,17 +2,22 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { fmtDay, fmtWhen, needAction, plural } from "./format.js";
 import MeetingCard from "./components/MeetingCard.jsx";
+import OrganizerCard from "./components/OrganizerCard.jsx";
 import ProxyCard from "./components/ProxyCard.jsx";
 import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
+import SettledCard from "./components/SettledCard.jsx";
 
 const DEFAULT_PERSON = "p_priya";
+// A link can open the app as someone, on a tab: ?as=p_sam&tab=organizer (handy for demos and the judges' guide).
+const PARAMS = new URLSearchParams(window.location.search);
+const TABS = ["attendee", "organizer", "proxy", "past"];
 
 export default function App() {
   const [people, setPeople] = useState({});
-  const [personId, setPersonId] = useState(localStorage.getItem("personId") || DEFAULT_PERSON);
+  const [personId, setPersonId] = useState(PARAMS.get("as") || localStorage.getItem("personId") || DEFAULT_PERSON);
   const [me, setMe] = useState(null);
   const [absences, setAbsences] = useState([]);
-  const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { teamCheckins: [], orgEvents: [] } });
+  const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { teamCheckins: [], orgEvents: [], rescheduledOrCancelled: [] } });
   const [organizer, setOrganizer] = useState([]);
   const [proxyReqs, setProxyReqs] = useState([]);
   const [pastItems, setPastItems] = useState([]);
@@ -20,7 +25,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [outbox, setOutbox] = useState([]);
-  const [tab, setTab] = useState("attendee");
+  const [tab, setTab] = useState(TABS.includes(PARAMS.get("tab")) ? PARAMS.get("tab") : "attendee");
   const [showEmails, setShowEmails] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -40,7 +45,7 @@ export default function App() {
         api("/me", { person: personId }),
         api("/absences", { person: personId }),
         api("/items?mode=attendee", { person: personId }),
-        api("/items?mode=organizer", { person: personId }),
+        api("/organizer/meetings", { person: personId }),   // one card per meeting
         api("/proxy-requests", { person: personId }),
         api("/items?mode=past", { person: personId }),
         api("/proxy-requests?past=true", { person: personId }),
@@ -75,7 +80,11 @@ export default function App() {
   // Activity log lines per meeting, shown inside the cards in Past
   const activityFor = (itemId) => history.filter((h) => h.itemId === itemId).sort((a, b) => a.at.localeCompare(b.at));
   const noAction = attendee.noActionNeeded;
-  const noActionCount = noAction.teamCheckins.length + noAction.orgEvents.length;
+  const settled = noAction.rescheduledOrCancelled || [];   // rescheduled or cancelled: the gap is closed
+  const noActionCount = noAction.teamCheckins.length + noAction.orgEvents.length + settled.length;
+  const affectedCount = attendee.needsAction.length + noAction.teamCheckins.length + noAction.orgEvents.length;
+  const activeMeetings = organizer.filter((m) => !m.done);
+  const doneMeetings = organizer.filter((m) => m.done);
   const upcomingAbsence = absences[0];
 
   return (
@@ -106,7 +115,7 @@ export default function App() {
       {upcomingAbsence && (
         <div className="banner">
           You're out <b>{fmtDay(upcomingAbsence.start)} – {fmtDay(upcomingAbsence.end)}</b>.{" "}
-          {plural(attendee.needsAction.length + noActionCount, "meeting is", "meetings are")} affected; {needAction(counts.attendeeOpen)}.
+          {plural(affectedCount, "meeting is", "meetings are")} affected; {needAction(counts.attendeeOpen)}.
         </div>
       )}
 
@@ -141,7 +150,8 @@ export default function App() {
               <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} />
             ))}
             {noActionCount > 0 && (
-              <details className="no-action">
+              // open by itself when it is all there is, so the page is never just a closed line
+              <details className="no-action" open={attendee.needsAction.length === 0}>
                 <summary>No action needed ({noActionCount})</summary>
                 {noAction.teamCheckins.length > 0 && <h4>Team check-ins</h4>}
                 {noAction.teamCheckins.map((i) => (
@@ -151,6 +161,11 @@ export default function App() {
                 {noAction.orgEvents.map((i) => (
                   <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} quiet />
                 ))}
+                {settled.length > 0 && <h4>Rescheduled or cancelled</h4>}
+                {settled.map((i) => (
+                  <SettledCard key={i.id} title={i.event.title} start={i.event.start} originalStart={i.originalStart}
+                    status={i.status} decidedBy={i.decidedBy} people={people} />
+                ))}
               </details>
             )}
           </>
@@ -158,10 +173,20 @@ export default function App() {
 
         {tab === "organizer" && (
           <>
-            {organizer.length === 0 && <div className="empty">No gaps in meetings you organize.</div>}
-            {organizer.map((i) => (
-              <MeetingCard key={i.id} item={i} people={people} me={personId} role="organizer" refresh={refresh} />
+            {activeMeetings.length === 0 && <div className="empty">No gaps in meetings you organize.</div>}
+            {activeMeetings.map((m) => (
+              <OrganizerCard key={m.calendarEventId} meeting={m} people={people} me={personId} refresh={refresh} />
             ))}
+            {doneMeetings.length > 0 && (
+              <details className="no-action" open={activeMeetings.length === 0}>
+                <summary>Done ({doneMeetings.length})</summary>
+                {doneMeetings.map((m) => (
+                  <SettledCard key={m.calendarEventId} title={m.event.title} start={m.event.start}
+                    originalStart={m.absentees[0]?.originalStart} status={m.absentees[0]?.status}
+                    decidedBy={m.absentees[0]?.decidedBy} people={people} />
+                ))}
+              </details>
+            )}
           </>
         )}
 

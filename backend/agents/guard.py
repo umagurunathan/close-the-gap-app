@@ -22,7 +22,7 @@ from typing import Callable
 
 from app.models import Action, AiResult, CalEvent, Confidence, ItemKind, Note, Person
 from app.settings import settings as S
-from .recommender import _has_hosting_role
+from app.roles import has_hosting_role as _has_hosting_role
 from .recommender_ai import candidates_for
 
 _RANK = {Confidence.low: 0, Confidence.medium: 1, Confidence.high: 2}
@@ -58,9 +58,12 @@ def check(
         if ai.suggestedProxyId not in candidate_ids:
             fixes.append(f"dropped suggested proxy '{ai.suggestedProxyId}': not one of the candidates")
             ai.suggestedProxyId = None
+            ai.reason += " (The suggested person is not invited to this meeting, so please choose a proxy.)"
         elif is_out(ai.suggestedProxyId, event.start.date()):
-            fixes.append(f"dropped suggested proxy {people[ai.suggestedProxyId].name}: out of office that day")
+            dropped = people[ai.suggestedProxyId].name
+            fixes.append(f"dropped suggested proxy {dropped}: out of office that day")
             ai.suggestedProxyId = None
+            ai.reason += f" (But {dropped} is also out that day, so please choose a proxy.)"
 
     # 2. a proxy recommendation must name someone, or ask a person to choose
     if ai.recommendation == Action.proxy and not ai.suggestedProxyId and not ai.needsHumanChoice:
