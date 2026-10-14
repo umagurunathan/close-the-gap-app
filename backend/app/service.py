@@ -47,13 +47,25 @@ class Service:
         # one result, and a changed or newly shared summary triggers a fresh analysis.
         self._analysis_cache: dict[tuple, tuple[ItemKind, AiResult]] = {}
 
-    def _analyze(self, item: MeetingItem, viewer: str) -> tuple[ItemKind, AiResult]:
+    def _analyze(self, item: MeetingItem, viewer: str, allow_ai: bool = True) -> tuple[ItemKind, AiResult]:
         e = self.calendar.get(item.event.calendarEventId)
         visible = self.calendar.visible_notes(e, viewer)
-        key = (item.id, tuple((n.docId, n.modifiedAt.isoformat()) for n in visible))
-        if key not in self._analysis_cache:
-            self._analysis_cache[key] = analyze(e, self.person(item.absentPersonId), viewer, self.people_map(), self.calendar)
-        return self._analysis_cache[key]
+        # Same meeting + same summaries this viewer can read + same AI setup = same answer, so it is reused and the AI
+        # is not asked again. Any change to the meeting or its summaries makes a new key, so the AI looks again.
+        key = (item.id,
+               (e.title, e.description, e.start.isoformat(), e.organizerId,
+                tuple((a.personId, a.optional) for a in e.attendees)),
+               tuple((n.docId, n.modifiedAt.isoformat()) for n in visible),
+               (S.ai.enabled, S.ai.model))
+        if key in self._analysis_cache:
+            return self._analysis_cache[key]
+        result = analyze(e, self.person(item.absentPersonId), viewer, self.people_map(), self.calendar, self._is_out,
+                         use_ai=allow_ai)
+        # Keep only a "final" answer: Gemini's when the AI is on, the rules' when it is off. A fallback answer, or a
+        # rule-based placeholder made while creating the card, is not kept, so the AI is asked when the card is viewed.
+        if result[1].engine == ("gemini" if S.ai.enabled else "rules"):
+            self._analysis_cache[key] = result
+        return result
 
     # ---------- helpers ----------
     def now(self) -> datetime:
@@ -115,7 +127,9 @@ class Service:
         # The shared state (is it routine / a general event?) is judged from the ABSENT person's view of the
         # summaries, so nothing is concluded from documents they cannot open. Each viewer's own recommendation
         # is built when the item is listed (see _view).
-        kind, ai = self._analyze(item, absent.id)
+        # With [ai] analyse_on_creation = false, the card starts with the rule-based answer so creating an absence (or
+        # starting the server) never waits for the AI; Gemini is asked when the card is first viewed.
+        kind, ai = self._analyze(item, absent.id, allow_ai=S.ai.analyse_on_creation)
         item.kind, item.ai = kind, ai
         if kind != ItemKind.key_meeting:
             item.status = ItemStatus.auto_handled

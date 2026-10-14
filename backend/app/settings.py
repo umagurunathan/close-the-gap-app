@@ -19,8 +19,8 @@ def _namespace(d: dict) -> SimpleNamespace:
 
 def load(path: str | os.PathLike | None = None) -> SimpleNamespace:
     p = Path(path or os.getenv("SETTINGS_PATH") or DEFAULT_PATH)
-    with open(p, "rb") as f:
-        return _namespace(tomllib.load(f))
+    # utf-8-sig: some Windows editors add an invisible byte-order mark at the start of the file; accept it
+    return _namespace(tomllib.loads(p.read_text(encoding="utf-8-sig")))
 
 
 settings = load()

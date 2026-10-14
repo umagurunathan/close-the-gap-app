@@ -98,12 +98,33 @@ max_bullets = 5
 fallback_sentences = 2
 
 
-# ---------------------------------------------------------------- AI (RESERVED until the Gemini blocks are built)
+# ---------------------------------------------------------------- AI (WIRED; Gemini through Vertex AI)
 [ai]
-# Left empty on purpose: the current model name is checked against Google's "latest stable models" page at build time.
-model = ""
+# WIRED: false = the rule-based stand-ins decide (no network, used by the tests); true = Gemini decides.
+enabled = false
+# PROVISIONAL (decision A8): pick after comparing quality, speed and cost on our task. Run scripts/hello_gemini.py --list
+# to see what the project can use.
+model = "gemini-2.5-flash"
+# Where Vertex AI serves the model from. "global" is the safest for the newest models; a region such as
+# "asia-south1" can be tried for lower latency.
+location = "global"
 timeout_seconds = 20
-# If Gemini fails or is too slow, use the rule-based version so the card still appears (the "C" safety layer).
+# "Thinking" makes the model reason before answering: better for hard problems, slower. 0 = off (our task is a short
+# classification). Raise it if answers look shallow. Measure before changing (A8).
+thinking_budget = 0
+# false = cards are created with the rule-based answer and Gemini is asked the first time a card is viewed (then cached),
+# so startup and creating an absence never wait for the AI. First step of B22; the background queue comes next.
+analyse_on_creation = false
+# WIRED (Block 4; Uma 2026-10-13, to revisit with the team): try a few times on temporary errors (too many requests,
+# Google-side errors, timeouts), waiting between tries; then show the rule-based answer labelled "AI unavailable".
+attempts = 3
+retry_wait_seconds = [1, 3]
+# RESERVED (B22, background analysis): how long a card may say "AI analysing…" before it shows
+# "AI unavailable · rule-based suggestion" instead (the analysis keeps running and the card updates later). Uma 2026-10-13.
+analysing_label_max_seconds = 20
 fall_back_to_rules = true
 # Below this confidence the AI may not mark a meeting a team check-in or an org-wide event; it becomes a key meeting.
 auto_handle_requires = "high"
+# WIRED (the checking layer, agents/guard.py): a proxy suggested with no summaries to support it can be at most this confident.
+# A conclusion drawn from the title or agenda alone (for example "Testing session with Priya") is NOT capped.
+max_confidence_for_proxy_without_summaries = "low"

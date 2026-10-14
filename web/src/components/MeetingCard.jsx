@@ -3,6 +3,35 @@ import { api } from "../api.js";
 import { actionLabel, statusLabel, urgencyLabel, fmtWhen } from "../format.js";
 import Invitees from "./Invitees.jsx";
 
+// "high" -> "High"; also used for sources and rule notes, which the backend sends in lower case.
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+// "gemini-2.5-flash" -> "Gemini 2.5 Flash"
+const prettyModel = (m) => (m || "Gemini").split("-").map(cap).join(" ");
+
+// Where the recommendation came from, so nobody mistakes a rule-based answer for an AI one.
+// Green = written by Gemini; amber = Gemini's answer that our rules adjusted; grey = written by our rules.
+function AiSource({ ai }) {
+  const changes = ai.checks?.length ? ai.checks.map(cap).join("\n") : "";
+  if (ai.engine === "gemini" && !changes) {
+    return <span className="pill src-ai" title="Written by Gemini and checked by our rules; no changes were needed.">✓ {prettyModel(ai.model)}</span>;
+  }
+  if (ai.engine === "gemini") {
+    return (
+      <>
+        <span className="pill src-ai" title="Written by Gemini.">{prettyModel(ai.model)}</span>
+        <span className="pill src-adjusted" title={changes}>Adjusted by rules</span>
+      </>
+    );
+  }
+  if (ai.engine === "rules_fallback") {
+    return <span className="pill src-rules" title="The AI did not answer in time, so our rules suggested this. The AI will be asked again.">Rule-based · AI unavailable</span>;
+  }
+  if (ai.engine === "rules_override") {
+    return <span className="pill src-rules" title={changes}>Rule-based · AI answer not allowed</span>;
+  }
+  return <span className="pill src-rules" title="The AI is switched off; this suggestion comes from our rules.">Rule-based</span>;
+}
+
 // One card per meeting. Same layout in every tab.
 export default function MeetingCard({ item, people, me, role, refresh, quiet = false, readOnly = false, activity = [] }) {
   const [mode, setMode] = useState("idle"); // idle | proxy | confirm
@@ -121,8 +150,46 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
     }
   }
 
+  // Who wrote the recommendation, in plain words, for the details panel.
+  const writtenBy = {
+    gemini: `Gemini (${prettyModel(ai.model)}), checked by our rules`,
+    rules_fallback: "Our rules (the AI did not answer in time; it will be asked again)",
+    rules_override: "Our rules (the AI's answer was not allowed)",
+  }[ai.engine] ?? "Our rules (the AI is switched off)";
+
+  // The recommended action comes first and stands out; the others follow in the usual order.
+  const firstName = (id) => name(id).split(" ")[0];
+  const buttons = [
+    mine && item.ownerRole === "leaver" && { action: "attend", text: label("attend"), onClick: () => act("attend") },
+    { action: "proceed_without", text: label("proceed_without"), onClick: () => act("proceed_without") },
+    {
+      action: "proxy",
+      text: ai.recommendation === "proxy" && ai.suggestedProxyId ? `Ask ${firstName(ai.suggestedProxyId)} to cover` : "Choose a proxy",
+      onClick: openProxy,
+    },
+    { action: "reschedule", text: iAmOrganizer ? "Reschedule" : "Ask organizer to reschedule", onClick: onReschedule },
+    { action: "cancel", text: iAmOrganizer ? "Cancel this meeting" : "Ask organizer to cancel", onClick: () => act("cancel"), danger: true },
+  ].filter(Boolean);
+  // Only point at the recommendation while a decision is still needed (not after someone already acted on it).
+  const deciding = ["pending_decision", "proxy_declined", "no_slot_found"].includes(item.status);
+  const highlight = deciding ? ai.recommendation : null;
+  // Once someone has acted, that action comes first in green with a tick and says what happened; the rest stay
+  // available after "or change to:", because people may change their mind.
+  const taken = !deciding && item.chosenAction ? item.chosenAction : null;
+  const proxyFirst = item.chosenProxyId ? firstName(item.chosenProxyId) : "";
+  const takenText = {
+    proxy: item.status === "proxy_accepted" ? `✓ ${proxyFirst} will cover` : `✓ ${proxyFirst} asked to cover`,
+    proceed_without: mine ? "✓ Going on without you" : `✓ Going on without ${who}`,
+    attend: "✓ You'll attend",
+    reschedule: "✓ Organizer asked to reschedule",
+    cancel: "✓ Organizer asked to cancel",
+  };
+  const first = taken ?? highlight;
+  const ordered = [...buttons.filter((b) => b.action === first), ...buttons.filter((b) => b.action !== first)];
+  const attention = item.urgency || (item.needsAttention ? "open" : "settled");
+
   return (
-    <article className={`card kind-${item.kind}`}>
+    <article className={`card kind-${item.kind} attn-${attention}`}>
       <header className="card-head">
         <div>
           <h3>{ev.title}</h3>
@@ -139,29 +206,48 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
 
       <section className="ai">
         <div className="ai-row">
-          <span className="ai-label">Recommended</span>
-          <strong>{ai.recommendation ? label(ai.recommendation) : "Needs a human choice"}</strong>
-          <span className={`pill conf-${ai.confidence}`}>{ai.confidence} confidence</span>
+          <span className="ai-label">Recommendation</span>
+          <strong>{ai.recommendation ? label(ai.recommendation) : "Your choice is needed"}</strong>
+          <span className={`pill conf-${ai.confidence}`}>{cap(ai.confidence)} confidence</span>
+          <AiSource ai={ai} />
         </div>
         <p className="reason">{ai.reason}</p>
-        <div className="meta">
-          <span>Sources: {ai.sources.join(", ")}</span>
-          {ai.suggestedProxyId ? (
-            <span>Suggested proxy: <b>{name(ai.suggestedProxyId)}</b></span>
-          ) : ai.needsHumanChoice ? (
-            <span>No clear proxy: please choose</span>
-          ) : null}
-        </div>
+        {ai.suggestedProxyId ? (
+          <div className="meta"><span>Suggested proxy: <b>{name(ai.suggestedProxyId)}</b></span></div>
+        ) : ai.recommendation === "proxy" && ai.needsHumanChoice ? (
+          <div className="meta"><span>No clear proxy. Please choose one.</span></div>
+        ) : null}
+        <details className="rec-details">
+          <summary>Recommendation details</summary>
+          <dl>
+            <dt>Recommended by</dt>
+            <dd>{writtenBy}</dd>
+            <dt>Based on</dt>
+            <dd>{ai.sources.map(cap).join(" · ")}</dd>
+            <dt>Meeting summaries</dt>
+            <dd>{ai.summariesAvailable ? "Available to you and used" : "None available to you"}</dd>
+            <dt>Adjustments by our rules</dt>
+            <dd>
+              {ai.checks?.length ? (
+                <ul>{ai.checks.map((c, n) => <li key={n}>{cap(c)}</li>)}</ul>
+              ) : (
+                "None needed"
+              )}
+            </dd>
+          </dl>
+        </details>
       </section>
 
-      {item.chosenProxyId && <div className="note">Proxy: {name(item.chosenProxyId)}</div>}
+      {(item.chosenProxyId || item.decidedBy) && (
+        <div className="note">
+          {[item.chosenProxyId && `Proxy: ${name(item.chosenProxyId)}`, item.decidedBy && `Decided by ${name(item.decidedBy)}`]
+            .filter(Boolean).join(" · ")}
+        </div>
+      )}
       {item.rescheduledTo && <div className="note">Moved to {fmtWhen(item.rescheduledTo)}</div>}
       {item.status === "no_slot_found" && <div className="note warn">No time works for everyone in the next working days. Please pick a time in your calendar.</div>}
       {item.status === "awaiting_organizer" && <div className="note">The organizer has been asked to {item.chosenAction}.</div>}
 
-      {item.decidedBy && (
-        <div className="note">Decided by {name(item.decidedBy)}.</div>
-      )}
       {!readOnly && !terminal && otherSideNote && <div className="note muted">{otherSideNote}</div>}
 
       {!readOnly && !terminal && iDecide && !showActions && (
@@ -170,17 +256,24 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
 
       {!readOnly && !terminal && iDecide && showActions && mode === "idle" && (
         <div className="actions">
-          {mine && item.ownerRole === "leaver" && (
-            <button disabled={busy} onClick={() => act("attend")}>{label("attend")}</button>
-          )}
-          <button disabled={busy} onClick={() => act("proceed_without")}>{label("proceed_without")}</button>
-          <button disabled={busy} onClick={openProxy}>{label("proxy")}</button>
-          <button disabled={busy} onClick={onReschedule}>
-            {label("reschedule")}{!iAmOrganizer ? " (asks organizer)" : ""}
-          </button>
-          <button disabled={busy} className="danger" onClick={() => act("cancel")}>
-            {label("cancel")}{!iAmOrganizer ? " (asks organizer)" : ""}
-          </button>
+          {ordered.map((b, n) => {
+            const recommended = b.action === highlight;
+            const isTaken = b.action === taken;
+            const button = (
+              <button
+                key={b.action}
+                // the taken action can't be repeated, except a proxy: clicking it lets you choose someone else
+                disabled={busy || (isTaken && b.action !== "proxy")}
+                className={[recommended ? "primary" : "", isTaken ? "taken" : "", b.danger && !isTaken ? "danger" : ""].join(" ").trim()}
+                title={isTaken ? (b.action === "proxy" ? "Done. Click to choose someone else." : "Done") : recommended ? "Recommended" : undefined}
+                aria-label={isTaken ? `${takenText[b.action]} (done)` : recommended ? `Recommended: ${b.text}` : b.text}
+                onClick={b.onClick}
+              >
+                {isTaken ? takenText[b.action] : `${recommended ? "★ " : ""}${b.text}`}
+              </button>
+            );
+            return taken && n === 1 ? [<span key="change" className="change-label">or change to:</span>, button] : button;
+          })}
         </div>
       )}
 

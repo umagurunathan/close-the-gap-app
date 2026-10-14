@@ -7,6 +7,6 @@ pytest>=8.0
 
 # Added when we wire in Google services (install when needed):
 # google-adk            # agents (orchestrator + specialists)
-# google-genai          # Gemini API client
+google-genai>=1.0       # Gemini client (used through Vertex AI)
 # google-cloud-firestore  # real database
 # google-cloud-secret-manager

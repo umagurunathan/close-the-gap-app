@@ -116,6 +116,13 @@ class AiResult(BaseModel):
     suggestedProxyId: Optional[str] = None
     needsHumanChoice: bool = False
     fingerprint: list[dict] = Field(default_factory=list)
+    # Who produced this answer: "gemini" (possibly adjusted by the checks; see `checks`), "rules" (AI switched off),
+    # "rules_fallback" (the AI was unavailable) or "rules_override" (the checks rejected the AI's whole answer).
+    # The card shows a green tag for Gemini and a grey one for the rules.
+    engine: str = "rules"
+    model: Optional[str] = None   # the Gemini model that produced the answer (engine "gemini")
+    # Corrections the checking layer (agents/guard.py) made to the AI's answer, in plain words. Empty = none needed.
+    checks: list[str] = Field(default_factory=list)
 
 
 class MeetingItem(BaseModel):

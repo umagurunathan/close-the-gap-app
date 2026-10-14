@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
-import { fmtDay, fmtWhen } from "./format.js";
+import { fmtDay, fmtWhen, needAction, plural } from "./format.js";
 import MeetingCard from "./components/MeetingCard.jsx";
 import ProxyCard from "./components/ProxyCard.jsx";
 import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
@@ -106,27 +106,27 @@ export default function App() {
       {upcomingAbsence && (
         <div className="banner">
           You're out <b>{fmtDay(upcomingAbsence.start)} – {fmtDay(upcomingAbsence.end)}</b>.{" "}
-          {attendee.needsAction.length + noActionCount} meetings are affected; {counts.attendeeOpen} need action.
+          {plural(attendee.needsAction.length + noActionCount, "meeting is", "meetings are")} affected; {needAction(counts.attendeeOpen)}.
         </div>
       )}
 
       {metrics && (
         <div className="impact">
-          <div><b>{metrics.meetingsResolved}</b><span>meetings resolved</span></div>
-          <div><b>{metrics.avgLeadTimeDays}</b><span>days ahead on average</span></div>
-          <div><b>{metrics.attendeeMinutesSaved}</b><span>attendee-minutes saved (modeled)</span></div>
+          <div><b>{metrics.meetingsResolved}</b><span>Meetings resolved</span></div>
+          <div><b>{metrics.avgLeadTimeDays}</b><span>Days ahead, on average</span></div>
+          <div><b>{metrics.attendeeMinutesSaved}</b><span>Attendee-minutes saved (modeled)</span></div>
         </div>
       )}
 
       <nav className="tabs">
         <button className={tab === "attendee" ? "on" : ""} onClick={() => setTab("attendee")}>
-          Attendee Mode ({counts.attendee}){counts.attendeeOpen > 0 && <span className="open">{counts.attendeeOpen} need action</span>}
+          Attendee Mode ({counts.attendee}){counts.attendeeOpen > 0 && <span className="open">{needAction(counts.attendeeOpen)}</span>}
         </button>
         <button className={tab === "organizer" ? "on" : ""} onClick={() => setTab("organizer")}>
-          Organizer Mode ({counts.organizer}){counts.organizerOpen > 0 && <span className="open">{counts.organizerOpen} need action</span>}
+          Organizer Mode ({counts.organizer}){counts.organizerOpen > 0 && <span className="open">{needAction(counts.organizerOpen)}</span>}
         </button>
         <button className={tab === "proxy" ? "on" : ""} onClick={() => setTab("proxy")}>
-          Proxy Requests ({counts.proxyRequests}){counts.proxyOpen > 0 && <span className="open">{counts.proxyOpen} need action</span>}
+          Proxy Requests ({counts.proxyRequests}){counts.proxyOpen > 0 && <span className="open">{needAction(counts.proxyOpen)}</span>}
         </button>
         <button className={tab === "past" ? "on" : ""} onClick={() => setTab("past")}>Past</button>
       </nav>

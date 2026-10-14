@@ -456,3 +456,181 @@ def test_settings_file_loads_and_drives_the_app(tmp_path):
     assert other.urgency.soon_hours == 48
     with pytest.raises(AttributeError):
         other.urgency.urgent_hours
+
+
+# ---- the Gemini recommender, tested offline with a fake Gemini (no network, no cost) ----
+
+class _FakeGemini:
+    """Stands in for the Google client: returns a ready answer and remembers what it was asked."""
+    def __init__(self, answer):
+        self.answer, self.asked = answer, []
+        self.models = self
+
+    def generate_content(self, model, contents, config):
+        self.asked.append(contents)
+        from types import SimpleNamespace
+        return SimpleNamespace(parsed=self.answer)
+
+
+def _priya_event(svc, title):
+    item = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.event.title == title)
+    return svc.calendar.get(item.event.calendarEventId)
+
+
+def test_ai_prompt_holds_only_what_the_viewer_may_read_and_real_candidates(svc):
+    from agents.recommender_ai import build_prompt
+    people = svc.people_map()
+    priya = people["p_priya"]
+    # Design Review: its summaries are NOT shared with Priya -> none may appear
+    e = _priya_event(svc, "Design Review")
+    prompt = build_prompt(e, priya, people, svc.calendar.visible_notes(e, "p_priya"))
+    assert "(none available)" in prompt
+    # Q4 Budget Review: summaries are shared; Priya herself is not a candidate; the org-wide group never is
+    e = _priya_event(svc, "Q4 Budget Review")
+    prompt = build_prompt(e, priya, people, svc.calendar.visible_notes(e, "p_priya"))
+    assert "Priya owns the final vendor decision" in prompt
+    cand_section = prompt.split("Candidate proxies")[1]
+    assert "p_meena" in cand_section and "p_priya" not in cand_section
+    e = _priya_event(svc, "Site-wide Tech Talk: Cloud Cost Optimization")
+    assert "p_events" not in build_prompt(e, priya, people, []).split("Candidate proxies")[1]
+
+
+def test_ai_answer_becomes_the_cards_ai_block(svc):
+    from agents.recommender_ai import Recommendation, recommend_ai
+    from app.models import Action, Confidence, ItemKind
+    people = svc.people_map()
+    e = _priya_event(svc, "Q4 Budget Review")
+    notes = svc.calendar.visible_notes(e, "p_priya")
+    fake = _FakeGemini(Recommendation(kind=ItemKind.key_meeting, recommendation=Action.proxy, reason="Meena prepared the numbers.",
+                                      confidence=Confidence.high, suggested_proxy_id="p_meena"))
+    kind, card = recommend_ai(e, people["p_priya"], people, notes, client=fake)
+    assert kind == ItemKind.key_meeting and card.recommendation == Action.proxy and card.suggestedProxyId == "p_meena"
+    assert card.sources[0] == "previous summaries (1)" and card.summariesAvailable is True      # facts we know, not AI output
+    assert card.fingerprint and fake.asked
+    # no summaries: the card says so, whatever the model claimed
+    e2 = _priya_event(svc, "Design Review")
+    _, card2 = recommend_ai(e2, people["p_priya"], people, [], client=fake)
+    assert card2.summariesAvailable is False and "no summaries available to you" in card2.sources
+
+
+# ---- layer C (agents/guard.py) and the fallback, all offline ----
+
+def _guard_case(svc, title, **ai_fields):
+    from agents import guard
+    from agents.recommender import recommend
+    from app.models import AiResult, ItemKind
+    people = svc.people_map()
+    priya = people["p_priya"]
+    e = _priya_event(svc, title)
+    notes = svc.calendar.visible_notes(e, "p_priya")
+    kind = ai_fields.pop("kind", ItemKind.key_meeting)
+    ai = AiResult(**ai_fields)
+    return guard.check(kind, ai, e, priya, people, notes, svc._is_out, lambda: recommend(e, priya, people, notes))
+
+
+def test_guard_drops_a_proxy_who_is_not_a_candidate_or_is_out(client, svc):
+    from app.models import Action, Confidence
+    _, ai = _guard_case(svc, "Q4 Budget Review", recommendation=Action.proxy, confidence=Confidence.high, suggestedProxyId="p_zoya")
+    assert ai.suggestedProxyId is None and ai.needsHumanChoice and "not one of the candidates" in ai.checks[0]
+    client.post("/absences", json={"personId": "p_meena", "start": "2026-10-21", "end": "2026-10-21"}, headers=H("p_meena"))
+    _, ai = _guard_case(svc, "Q4 Budget Review", recommendation=Action.proxy, confidence=Confidence.high, suggestedProxyId="p_meena")
+    assert ai.suggestedProxyId is None and any("out of office" in c for c in ai.checks)
+
+
+def test_guard_caps_a_proxy_chosen_without_summaries_but_not_a_title_based_answer(svc):
+    from app.models import Action, Confidence
+    # Vendor Contract Decision has no summaries: a proxy picked from the reporting line is at most low
+    _, ai = _guard_case(svc, "Vendor Contract Decision", recommendation=Action.proxy, confidence=Confidence.high, suggestedProxyId="p_arjun")
+    assert ai.confidence == Confidence.low and any("lowered confidence" in c for c in ai.checks)
+    # but a reschedule judged from the title alone keeps its confidence
+    _, ai = _guard_case(svc, "Vendor Contract Decision", recommendation=Action.reschedule, confidence=Confidence.high)
+    assert ai.confidence == Confidence.high and ai.checks == []
+
+
+def test_guard_keeps_auto_handling_for_confident_cases_only(svc):
+    from app.models import Action, Confidence, ItemKind
+    kind, _ = _guard_case(svc, "Daily Stand-up", kind=ItemKind.team_checkin, recommendation=Action.proceed_without, confidence=Confidence.high)
+    assert kind == ItemKind.team_checkin
+    kind, ai = _guard_case(svc, "Daily Stand-up", kind=ItemKind.team_checkin, recommendation=Action.proceed_without, confidence=Confidence.medium)
+    assert kind == ItemKind.key_meeting and "not auto-handled" in ai.checks[-1]
+    kind, ai = _guard_case(svc, "Design Review", kind=ItemKind.team_checkin, recommendation=Action.proceed_without, confidence=Confidence.high)
+    assert kind == ItemKind.key_meeting and "no summaries" in ai.checks[0]          # Priya can't open its summaries
+
+
+def test_guard_never_lets_the_ai_recommend_attend(svc):
+    from app.models import Action, Confidence
+    _, ai = _guard_case(svc, "Q4 Budget Review", recommendation=Action.attend, confidence=Confidence.high)
+    assert ai.recommendation != Action.attend and "only the person can choose" in ai.checks[0]
+    assert ai.engine == "rules_override"          # the card must not claim this came from Gemini
+
+
+def test_ai_failure_retries_then_falls_back_to_rules_and_is_not_cached(svc, monkeypatch):
+    from agents import recommender_ai
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    monkeypatch.setattr(S.ai, "retry_wait_seconds", [0, 0])
+    calls = []
+
+    class TooMany(Exception):
+        code = 429
+
+    def failing(*a, **k):
+        calls.append(1)
+        raise TooMany("Resource exhausted")
+    monkeypatch.setattr(recommender_ai, "recommend_ai", failing)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()   # the seed analysed every card with the AI off; start fresh
+    view = svc._view(item, "p_priya")
+    assert len(calls) == S.ai.attempts                                    # tried a few times
+    assert view.ai.engine == "rules_fallback" and view.ai.recommendation is not None   # the card still has an answer
+    svc._view(item, "p_priya")
+    assert len(calls) == 2 * S.ai.attempts                                # not cached: asked again next time
+
+
+def test_ai_does_not_retry_our_own_mistakes(svc, monkeypatch):
+    from agents import recommender_ai
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    calls = []
+
+    class BadRequest(Exception):
+        code = 400
+
+    def failing(*a, **k):
+        calls.append(1)
+        raise BadRequest("bad")
+    monkeypatch.setattr(recommender_ai, "recommend_ai", failing)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()
+    assert svc._view(item, "p_priya").ai.engine == "rules_fallback" and len(calls) == 1
+
+
+def test_cache_reuses_answers_until_the_meeting_or_summaries_change(svc, monkeypatch):
+    from agents import recommender_ai
+    from app.models import Action, AiResult, Confidence, ItemKind
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    calls = []
+
+    def fake(event, absent, people, notes, client=None):
+        calls.append(event.description)
+        return ItemKind.key_meeting, AiResult(recommendation=Action.proxy, confidence=Confidence.high, reason="r")
+    monkeypatch.setattr(recommender_ai, "recommend_ai", fake)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()
+    svc._view(item, "p_priya"); svc._view(item, "p_priya")
+    assert len(calls) == 1                                   # same meeting, same summaries: Gemini asked once
+    svc.calendar.get(item.event.calendarEventId).description = "Now also: approve the travel budget."
+    svc._view(item, "p_priya")
+    assert len(calls) == 2                                   # the meeting changed: Gemini asked again
+
+
+def test_creating_cards_never_waits_for_the_ai(svc, monkeypatch, client):
+    from agents import recommender_ai
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    monkeypatch.setattr(S.ai, "analyse_on_creation", False)
+    called = []
+    monkeypatch.setattr(recommender_ai, "recommend_ai", lambda *a, **k: called.append(1))
+    r = client.post("/absences", json={"personId": "p_dev", "start": "2026-10-21", "end": "2026-10-21"}, headers=H("p_dev"))
+    assert r.status_code == 200 and called == []             # the absence was created with rule-based cards

@@ -51,3 +51,13 @@ export function fmtDay(isoDate) {
     month: "short", day: "numeric", timeZone: "UTC",
   });
 }
+
+// "1 meeting is" / "3 meetings are": counts read correctly in English.
+export function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+// The tab tag and banner text: "1 needs action", "3 need action".
+export function needAction(n) {
+  return `${n} ${n === 1 ? "needs" : "need"} action`;
+}
