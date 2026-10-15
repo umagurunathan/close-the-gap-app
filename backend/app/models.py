@@ -82,7 +82,7 @@ class DirectoryEntry(Person):
 
 
 class OrganizerMeeting(BaseModel):
-    """Organizer Mode card: ONE per meeting, naming everyone who is out (Decision 55). The absent people still each
+    """Organizer Mode card: ONE per meeting, naming everyone who is out. The absent people still each
     have their own card in Attendee Mode; this brings them together for the one person who decides for the meeting."""
     calendarEventId: str
     event: "EventRef"
@@ -133,6 +133,10 @@ class AiResult(BaseModel):
     summariesAvailable: bool = False
     suggestedProxyId: Optional[str] = None
     backupProxyId: Optional[str] = None   # the second choice: shown on the card, suggested if the first declines
+    kind: Optional[ItemKind] = None       # the kind of meeting this answer concluded (key meeting, team check-in, …)
+    # What simple rules alone would have said for the same meeting (only on AI answers), so the card can show the
+    # difference the AI makes: {"kind", "recommendation", "suggestedProxyId", "reason"}.
+    rulesAnswer: Optional[dict] = None
     needsHumanChoice: bool = False
     fingerprint: list[dict] = Field(default_factory=list)
     # Who produced this answer: "gemini" (possibly adjusted by the checks; see `checks`), "rules" (AI switched off),
@@ -323,8 +327,18 @@ class ProposedTime(BaseModel):
     none: bool = False
 
 
+class AbsenceReport(BaseModel):
+    """What saving an absence did: shown as a short confirmation ("2 meetings are affected")."""
+    absence: "Absence"
+    affected: int          # meetings affected (one card each)
+    needDecision: int      # of those, how many need a decision
+
+
 class Metrics(BaseModel):
-    """The impact tiles (D5, agreed 2026-10-15). Formulas and the minutes per action are in config/settings.toml."""
+    """The impact tiles. Formulas and the minutes per action are in config/settings.toml."""
+    absencesSpotted: int = 0         # absences in the window
+    teamHoursAtRisk: float = 0.0     # estimate: upcoming key meetings without a plan yet
+    handledAutomatically: int = 0    # of the meetings with a plan, how many were handled automatically (no person decided)
     meetingsWithPlan: int            # affected meetings that already have a plan
     meetingsAffected: int            # all meetings affected by an absence
     avgNoticeDays: float             # on average, how many days before the meeting the plan was made
@@ -336,3 +350,4 @@ class Metrics(BaseModel):
 
 OrganizerMeeting.model_rebuild()
 MeetingActionRequest.model_rebuild()
+AbsenceReport.model_rebuild()

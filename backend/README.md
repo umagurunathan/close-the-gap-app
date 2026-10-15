@@ -32,12 +32,13 @@ Copy-Item .env.example .env                                     # once
 | `app/calendar.py` | Simulated calendar. A real calendar can be added behind the same methods |
 | `app/store.py` | Storage interface. In-memory now; Firestore can be added behind it |
 | `app/notify.py` | Email outbox (stand-in for real email) |
-| `agents/orchestrator.py` | Decides how each card is analysed: rules when the AI is off or for a large event; otherwise the ADK agent, then (if it fails) one Gemini call with retries, then the rules; the checks run on any AI answer |
+| `agents/orchestrator.py` | Decides how each card is analyzed: rules when the AI is off or for a large event; otherwise the ADK agent, then (if it fails) one Gemini call with retries, then the rules; the checks run on any AI answer |
 | `agents/adk_advisor.py` | The meeting advisor, an ADK agent with four tools bound to one meeting and one viewer (`get_meeting`, `read_summaries`, `list_proxy_candidates`, `check_if_out`) |
 | `agents/recommender_ai.py` | The single-call Gemini recommender (the agent's fallback, and `[ai] engine = "genai"`): builds the prompt (only summaries the viewer can open, candidates who are not out that day), asks for a structured answer |
-| `agents/guard.py` | Plain-code checks on every AI answer (proxy must be a valid candidate, confidence caps, auto-handling only at high confidence) |
-| `agents/note_drafter.py` | The proxy's handover brief: one Gemini call with a fixed answer shape, plain-code checks, and the simple rule-based draft as fallback |
-| `agents/recommender.py`, `proxy_ranker.py` | The rule-based recommender (also the fallback) and proxy ranking |
+| `agents/guard.py` | Plain-code checks on every AI answer (proxy must be a valid candidate, confidence caps, auto-handling only at high confidence, text that tries to instruct the AI is flagged for a person) |
+| `agents/untrusted.py` | Prompt-injection defence: wraps typed text (agenda, summaries) in markers, tells Gemini it is data not instructions, and spots instructions aimed at the AI |
+| `agents/note_drafter.py` | The proxy's handover brief: one Gemini call with a fixed answer shape and plain-code checks |
+| `agents/fallback/` | **Fallback only** (AI off or unavailable): `rules_recommender.py` (keyword rules; also shown on cards as "what simple rules would have said"), `candidate_order.py` (orders the proxy panel's list), `simple_note.py` (a note without AI) |
 | `config/settings.toml` | Tunable values: reminder milestones, urgency lines, reschedule window, ranking weights, word lists, AI model and timeouts. Edit, restart, done. Read through `app/settings.py` |
 | `seed/seed.json` | The demo company: 18 people (some only in the directory, for outside proxies), events with meeting notes, 2 absences |
 

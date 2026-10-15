@@ -14,7 +14,7 @@
 
 # ---------------------------------------------------------------- Reminders
 [reminders]
-# RESERVED (the digest job is the next build; Decision 50).
+# RESERVED (for the reminder digest job).
 # Hours before a meeting starts at which a still-unresolved meeting is reminded about. A meeting created later than a
 # milestone never gets that milestone (no backfill).
 milestones_hours_before_meeting = [168, 72, 24, 4, 2]   # 7 days, 3 days, 24 hours, 4 hours, 2 hours
@@ -75,12 +75,15 @@ max_results = 20
 # ---------------------------------------------------------------- "Minutes saved" metric (WIRED)
 # Modeled, illustrative assumptions per attendee. Replace with the team's real numbers when confirmed.
 [metrics]
-# WIRED (D5, Uma 2026-10-15): the impact tiles. The estimate is labelled as such on screen, with this formula.
+# WIRED: the impact tiles. The estimate is labelled as such on screen, with this formula.
 # Card statuses that count as "the meeting has a plan" (and feed "days of notice").
 plan_statuses = ["auto_handled", "proceeding_without", "attending", "proxy_accepted", "rescheduled", "cancelled"]
+# "Still at risk": an upcoming key meeting with no plan yet costs each person this many minutes if nobody acts
+# (a failed start plus a follow-up meeting). Labelled as an estimate on screen.
+at_risk_minutes_per_invitee = 36
 # Team hours saved = per settled card, (people in the meeting) x (minutes saved per person for that outcome) / 60.
 # Baseline without the app: everyone joins, waits and gives up (failed start, about 6 min), and a covered decision
-# would otherwise need a follow-up meeting (about 30 min). Sources: the team's own incident (D5); illustrative.
+# would otherwise need a follow-up meeting (about 30 min). Based on the team's own experience; illustrative.
 [metrics.minutes_saved_per_invitee]
 proxy_accepted = 36       # the meeting goes ahead with a briefed proxy: no failed start, no follow-up meeting
 proceeding_without = 6    # the meeting goes ahead on time: nobody waits for the absent person
@@ -95,11 +98,15 @@ auto_handled = 0          # team check-ins and org-wide events: nothing would ha
 [recommendation]
 team_checkin_title_words = ["stand-up", "standup", "stand up", "dsu", "daily status", "status check", "check-in", "sync"]
 decision_words = ["decid", "decision", "approve", "owns", "owner", "action item", "to confirm", "sign off", "sign-off"]
-# Words that, next to the absent person's name, mean they run an org-wide event (Decisions 48 and 55)
+# Words that, next to the absent person's name, mean they run an org-wide event
 hosting_words = ["host", "emcee", "speaker", "presenter", "moderator", "organis", "organiz", "committee", "co-ordinat", "coordinat", "keynote", "guest", "panel"]
 # A meeting with more required invitees than this is a large event: ordinary attendees are not key people, only the
-# organizer and people in a hosting role (Decision 55). Invites to a distribution list are always large events.
-large_meeting_required_threshold = 35   # was 15; Uma 2026-10-15 ("15 is a small number")
+# organizer and people in a hosting role. Invites to a distribution list are always large events.
+large_meeting_required_threshold = 35   # was 15
+# A meeting with this many people or fewer (organizer and all invitees) is small: the organizer is the other side of
+# it, so the organizer is never suggested as the absent person's proxy (e.g. a "KT from Priya to
+# Arjun" organized by Arjun must not suggest Arjun). The person can still reschedule or pick anyone from the directory.
+small_meeting_max_people = 3
 # A proxy suggestion needs at least this score to be called "high confidence" (see proxy_ranking below)
 min_proxy_score_for_high_confidence = 10
 
@@ -128,14 +135,14 @@ temperature = 0.2
 [ai]
 # WIRED: false = the rule-based stand-ins decide (no network, used by the tests); true = Gemini decides.
 enabled = false
-# PROVISIONAL (decision A8): pick after comparing quality, speed and cost on our task. Run scripts/hello_gemini.py --list
-# to see what the project can use.
+# DECIDED FOR NOW: Gemini 2.5 Flash (fast in asia-south1, low cost, answers tested for
+# consistency). The demo and the live link always use the same model. The environment variable AI_MODEL overrides this line (no file edit needed).
 model = "gemini-2.5-flash"
 # Where Vertex AI serves the model from. Measured 2026-10-14 from India, same prompt, 6 calls each:
 # asia-south1 (Mumbai) median 0.8 s, global median 2.9 s. Our Cloud Run backend is also in asia-south1.
 # "global" is the fallback if a newer model is not offered in Mumbai.
 location = "asia-south1"
-# WIRED (Uma 2026-10-14): "adk" = the meeting advisor agent (agents/adk_advisor.py) decides, using tools; on any error
+# WIRED: "adk" = the meeting advisor agent (agents/adk_advisor.py) decides, using tools; on any error
 # the single Gemini call is used ("genai", agents/recommender_ai.py), then the rules. "genai" = skip the agent.
 engine = "adk"
 # Time limit for the agent's whole loop (several Gemini calls). Each single call still has timeout_seconds.
@@ -151,34 +158,34 @@ retry_status_codes = [429, 500, 502, 503, 504]
 # While any card on screen says "AI analysing…", the web app checks again this often.
 refresh_while_analysing_seconds = 4
 # "Thinking" makes the model reason before answering: better for hard problems, slower. 0 = off (our task is a short
-# classification). Raise it if answers look shallow. Measure before changing (A8).
+# classification). Raise it if answers look shallow. Measure before changing.
 thinking_budget = 0
 # false = cards are created with the rule-based answer and Gemini is asked the first time a card is viewed (then cached),
-# so startup and creating an absence never wait for the AI. First step of B22; the background queue comes next.
+# so startup and creating an absence never wait for the AI.
 analyse_on_creation = false
-# WIRED (Block 4; Uma 2026-10-13, to revisit with the team): try a few times on temporary errors (too many requests,
+# WIRED: try a few times on temporary errors (too many requests,
 # Google-side errors, timeouts), waiting between tries; then show the rule-based answer labelled "AI unavailable".
 attempts = 3
 retry_wait_seconds = [1, 3]
-# WIRED (B22, background analysis, Uma 2026-10-14): a card is answered at once with the rules' suggestion, labelled
+# WIRED (background analysis): a card is answered at once with the rules' suggestion, labelled
 # "AI analysing…", while the AI works in the background; the web app checks again until the AI's answer is in.
 # false = wait for the AI before answering (the tests use this).
 background = true
 # How many cards the AI works on at the same time. More = faster pages, but more risk of "too many requests" (429).
 background_workers = 3
 # How long a card may say "AI analysing…" before it shows "AI unavailable · rule-based suggestion" instead (the analysis
-# keeps running and the card updates later). Was 20 (Uma 2026-10-13); 60 because the ADK agent makes several calls.
+# keeps running and the card updates later). Was 20; 60 because the ADK agent makes several calls.
 analysing_label_max_seconds = 60
 # After the AI failed on a card, wait this long before asking again, so an outage cannot run up calls on every refresh.
 retry_after_failure_seconds = 300
-# WIRED (Uma 2026-10-15): queue the AI analysis in the background as soon as a card is created (from the absent
+# WIRED: queue the AI analysis in the background as soon as a card is created (from the absent
 # person's view), so cards are usually analysed before anyone opens them. Never makes creating an absence wait.
 analyse_in_background_on_creation = true
-# WIRED (Uma 2026-10-15): the AI may move a card the rules auto-handled (team check-in, org-wide event) up to "needs a
+# WIRED: the AI may move a card the rules auto-handled (team check-in, org-wide event) up to "needs a
 # decision", e.g. a "sync" whose summaries show sign-offs, or an all-hands the absent person presents at. Only upward:
 # the AI never hides a card on its own. Judged from the absent person's view; recorded in the history.
 ai_may_raise_to_key_meeting = true
-# WIRED (Uma 2026-10-15): in a large event, ask the AI when the absent person is NAMED in it (title, description or
+# WIRED: in a large event, ask the AI when the absent person is NAMED in it (title, description or
 # summaries), even without a hosting word. Everyone else in the audience still gets no AI call.
 large_event_ai_when_named = true
 # WIRED (2026-10-15): one tiny Gemini call in the background when the server starts, so the first real request (for
@@ -190,6 +197,9 @@ auto_handle_requires = "high"
 # WIRED (the checking layer, agents/guard.py): a proxy suggested with no summaries to support it can be at most this confident.
 # A conclusion drawn from the title or agenda alone (for example "Testing session with Priya") is NOT capped.
 max_confidence_for_proxy_without_summaries = "low"
-# The AI never sees the whole invitee list (Decision 55): only the count, plus at most this many likely candidates
+# ...unless the invite's agenda/notes name that person (e.g. "Rohan presents the capacity plan"): that is real evidence,
+# so the cap is higher. New meetings have no summaries, but often an agenda.
+max_confidence_for_proxy_named_in_agenda = "medium"
+# The AI never sees the whole invitee list: only the count, plus at most this many likely candidates
 # (people named in the summaries first, then the reporting line, then the organizer, then others).
 max_candidates = 20

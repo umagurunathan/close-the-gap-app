@@ -4,8 +4,8 @@
 - In a normal meeting, the key people are the organizer and the required invitees.
 - In a large event (sent to a distribution list, or more than `large_meeting_required_threshold` required invitees),
   ordinary attendees are NOT key people. Only the organizer and people in a hosting role count: named as host,
-  organizing committee, speaker, keynote or key guest in the invite or in summaries (Decisions 48 and 55).
-- Distribution lists are never expanded or processed (Decision 55).
+  organizing committee, speaker, keynote or key guest in the invite or in summaries.
+- Distribution lists are never expanded or processed.
 """
 from __future__ import annotations
 
@@ -41,6 +41,17 @@ def is_named_in(event: CalEvent, person: Person, notes: Optional[list[Note]] = N
     text = f"{event.title} {event.description} " + " ".join(n.text for n in (notes or []))
     first = person.name.split()[0]
     return bool(re.search(rf"\b{re.escape(first)}\b", text, re.IGNORECASE)) or person.name.lower() in text.lower()
+
+
+def people_count(event: CalEvent) -> int:
+    """Everyone in the meeting: the organizer and every invitee (required or optional)."""
+    return len({event.organizerId, *(a.personId for a in event.attendees)})
+
+
+def organizer_is_counterpart(event: CalEvent, absent_id: str) -> bool:
+    """In a small meeting the organizer is the other side (e.g. a KT from Priya TO Arjun, organized by Arjun), so they
+    cannot stand in for the absent person. `[recommendation] small_meeting_max_people` sets what counts as small."""
+    return event.organizerId != absent_id and people_count(event) <= S.recommendation.small_meeting_max_people
 
 
 def is_invited_as_optional(event: CalEvent, person_id: str) -> bool:

@@ -1,7 +1,7 @@
-"""Proxy ranker specialist.
+"""Orders the people in the proxy panel, and ranks proxies for the rule-based FALLBACK.
 
-STUB: rule-based so the app runs with no AI key. Replace the body of `rank_proxies` with an ADK/Gemini
-agent that returns the same list. Keep the signature and the return shape.
+The AI chooses the suggested proxy and the second choice itself (agents/adk_advisor.py). This plain ordering is used
+for the panel's list (most likely first, with a short reason) and when the AI is off or unavailable.
 
 Rules it follows:
 - The AI suggests only from existing invitees, excluding the absent person. (A person choosing a proxy can also search the whole directory; that is not the AI's call.)
