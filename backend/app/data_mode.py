@@ -10,7 +10,8 @@ VALID_MODES = {"memory", "firestore"}
 class FirestoreDataMode:
     def __init__(self):
         client = new_client(config.firestore_project(), config.firestore_database())
-        self._document = client.collection(f"{config.firestore_collection_prefix()}metadata").document("demo_mode")
+        workspace_id = config.firestore_workspace_id()
+        self._document = client.collection("metadata").document(f"{workspace_id}__demo_mode")
 
     def get(self) -> str:
         snapshot = self._document.get()
@@ -20,10 +21,10 @@ class FirestoreDataMode:
             return mode
         mode = (snapshot.to_dict() or {}).get("mode")
         if mode not in VALID_MODES:
-            raise RuntimeError("Firestore metadata/demo_mode has an unsupported data mode.")
+            raise RuntimeError("Firestore workspace metadata has an unsupported data mode.")
         return mode
 
     def set(self, mode: str) -> None:
         if mode not in VALID_MODES:
             raise ValueError(f"Unsupported data mode {mode!r}; expected 'memory' or 'firestore'.")
-        self._document.set({"mode": mode})
+        self._document.set({"mode": mode, "workspaceId": config.firestore_workspace_id()})

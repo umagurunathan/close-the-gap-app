@@ -40,6 +40,7 @@ export default function App() {
   const [settings, setSettings] = useState(null); // from GET /settings/public
   const [dataMode, setDataMode] = useState(null);
   const dataModeRef = useRef(null);
+  const autoSyncedCalendarFor = useRef(null);
   const [switchingDataMode, setSwitchingDataMode] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,9 +56,11 @@ export default function App() {
       window.history.replaceState({}, "", url);
     }
     if (calendarResult) {
-      setNotice(calendarResult === "connected"
-        ? "Google Calendar connected. Sync your calendar to find meetings affected by your absence."
-        : "Google Calendar connection failed. Check OAuth setup and try again.");
+      if (calendarResult === "connected") {
+        setNotice("Google Calendar connected. Importing your meetings now.");
+      } else {
+        setNotice("Google Calendar connection failed. Check OAuth setup and try again.");
+      }
       url.searchParams.delete("calendar");
       window.history.replaceState({}, "", url);
     }
@@ -120,6 +123,19 @@ export default function App() {
   }, [personId, firebaseAuthEnabled]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (!firebaseAuthEnabled || !firebaseUser || !personId || !calendarStatus.connected
+        || autoSyncedCalendarFor.current === personId) return;
+    autoSyncedCalendarFor.current = personId;
+    api("/integrations/google-calendar/sync", { method: "POST" }).then(async (result) => {
+      setNotice(`Google Calendar synced: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`);
+      await refresh();
+    }).catch((e) => {
+      autoSyncedCalendarFor.current = null;
+      setError(e.message);
+    });
+  }, [firebaseAuthEnabled, firebaseUser, personId, calendarStatus.connected, refresh]);
 
   // While Gemini is still analysing any card on screen, check again every few seconds; stop once all have answered.
   const analysing = [
@@ -228,7 +244,7 @@ export default function App() {
           <div className="tagline">Spot the gap early. Keep the meeting going.</div>
         </div>
         <div className="topbar-right">
-          {publicDemoMode && <a className="ghost" href="/">Sign in for connected demo</a>}
+          {publicDemoMode && <a className="ghost" href="/">Sign in with Google</a>}
           {dataMode?.canSwitch && <div className="data-mode" aria-label="Global demo data source">
             <span>Data source</span>
             <button className={dataMode.mode === "memory" ? "mode-active" : ""}
@@ -272,7 +288,7 @@ export default function App() {
       </header>
 
       {publicDemoMode && <div className="public-demo-banner">
-        Public demo · changes are saved in Firestore and shared with other visitors. Use fictional demo data only; Google Calendar is not connected.
+        Guest demo · changes are saved in the guest workspace and shared with other visitors. Use fictional data only; Google Calendar is available after signing in.
       </div>}
       <MessageBar kind="error" text={error} onClose={clearError} />
       <MessageBar kind="success" text={notice} onClose={clearNotice} hideAfter={settings?.messageHideSeconds ?? 6} />

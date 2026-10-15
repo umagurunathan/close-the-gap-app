@@ -19,6 +19,10 @@ Copy-Item .env.example .env                                     # once
 The optional Firebase Authentication mode signs users in with Google and verifies the Firebase ID token on every
 backend request. The verified email must match exactly one individual in the app directory; the client cannot choose
 another persona with `X-Person-Id`. The local demo persona selector remains available while authentication is off.
+At the hosted sign-in page, visitors can either continue with Google or continue as a guest using fictional demo
+data. Google sign-in resolves the company person from the verified email. Connecting Google Calendar is a separate
+OAuth consent; after a successful connection, the app automatically imports that calendar into the company workspace.
+Only attendees whose email addresses match directory people are included in the imported meeting.
 
 For the hosted app, configure a Firebase Web app in the `close-the-gap-2026` Firebase project, enable **Google** under
 Authentication → Sign-in method, and add `close-the-gap-2026.web.app` to Authentication → Settings → Authorized domains.
@@ -52,6 +56,7 @@ The backend can persist its data in a Firestore Native database. Create `backend
 STORE=firestore
 GOOGLE_CLOUD_PROJECT=your-project-id
 FIRESTORE_DATABASE=your-database-id
+FIRESTORE_WORKSPACE_ID=company
 ```
 For local development, authenticate with Application Default Credentials using `gcloud auth application-default login`.
 On Cloud Run, grant the service account the Firestore User role instead of using a local key file. The backend seeds
@@ -59,8 +64,17 @@ missing demo people, events, and absences on startup; it does not overwrite exis
 If Firestore is in a different project from Cloud Run, set `FIRESTORE_PROJECT_ID` to that project and grant the Cloud
 Run service account `roles/datastore.user` there. `GOOGLE_CLOUD_PROJECT` continues to identify the Cloud Run project.
 
-Firestore collections are `people`, `events`, `absences`, `items`, `proxy_requests`, `history`, `metadata`, and
-`meet_connections`, and `calendar_connections`.
+Both services use the same Firestore collection names: `people`, `events`, `absences`, `items`, `proxy_requests`,
+`history`, `metadata`, `meet_connections`, and `calendar_connections`. Each record carries a `workspaceId` and uses a
+workspace-qualified Firestore document ID (`company__...` or `guest__...`). The authenticated app uses `company`;
+the unauthenticated public demo uses `guest`. The backend filters every collection read by workspace, so public guest
+sessions do not read company calendars, tokens, absences, or actions. Firestore IAM is project-wide in this setup;
+the workspace boundary is enforced by the backend, not Firestore IAM.
+
+Deploy the signed-in service with `FIRESTORE_WORKSPACE_ID=company` and the public service with
+`FIRESTORE_WORKSPACE_ID=guest`. The hosted database has been migrated to this layout; legacy unscoped records and
+`public_demo_` collections were removed after verifying their workspace-scoped copies. Keep the public service's
+dedicated identity and do not attach Calendar OAuth secrets.
 Event documents include their notes and `sharedWith` lists. Notes are filtered by the backend before returning them;
 Firestore server credentials bypass Firestore Security Rules, so do not expose database credentials to the web app.
 In a meeting card's **Meeting notes** section, the organizer can add notes and choose which invitees can read each
@@ -86,7 +100,7 @@ GOOGLE_CLOUD_PROJECT=your-cloud-run-project
 FIRESTORE_PROJECT_ID=your-firestore-project
 ```
 Set the Firestore project separately only when it differs from the Cloud Run project. The selected mode is kept in
-Firestore at `metadata/demo_mode`, so it survives a Cloud Run restart. While the selector is enabled, configure Cloud
+Firestore at `metadata/company__demo_mode`, so it survives a Cloud Run restart. While the selector is enabled, configure Cloud
 Run with one maximum instance and request concurrency `1`; the seed data is intentionally instance-local, and mode
 changes must not race active requests. Only emails in
 `DATA_MODE_ADMIN_EMAILS` can change the global mode. Do not configure the selector without Firebase Authentication and
@@ -220,7 +234,7 @@ rule-based ranker. A person still chooses and sends the proxy request.
 ## Cloud Run
 `gcloud run deploy close-the-gap-api --source .` builds the `Dockerfile` in the cloud (`.gcloudignore` keeps `.venv`, `.env`, tests and local scripts out); Cloud Run sets `PORT`. Set `GOOGLE_CLOUD_PROJECT`, `AI_ENABLED`, `NOW` and `CORS_ORIGINS` as environment variables, keep one instance (`--min-instances 1 --max-instances 1`) and request concurrency `1` while the global in-memory mode is enabled, keep the CPU allocated (`--no-cpu-throttling`) so background AI analysis keeps running between requests, and give the service account the Vertex AI User role (`roles/aiplatform.user`).
 
-The unauthenticated public demo uses a separate Cloud Run service and the existing Firestore database, but writes only to collections prefixed `public_demo_` (for example, `public_demo_people`, `public_demo_events`, and `public_demo_items`). Configure `STORE=firestore`, `FIRESTORE_PROJECT_ID`, `FIRESTORE_DATABASE=meetingnotes`, and `FIRESTORE_COLLECTION_PREFIX=public_demo_`; leave Firebase Authentication, the global data-mode switch, AI, and Google Calendar disabled. Demo directory emails are rewritten to reserved `.invalid` addresses. The public service needs `roles/datastore.user` in the Firestore project; Firestore IAM is project-wide here, so the prefix is an application-level boundary, not an IAM boundary. Keep its dedicated service identity, keep the backend code constrained to prefixed collections, and never put real employee data or Calendar tokens in the public namespace. Set `CORS_ORIGINS=https://close-the-gap-2026.web.app`, `--max=1`, `--concurrency=1`, and `--min=0`. Set Hosting's `VITE_DEMO_API_URL` to this service's URL. An empty prefixed dataset is initialized from `seed/seed.json`; subsequent demo changes persist and are shared with visitors. Do not attach Calendar OAuth secrets.
+The unauthenticated public demo uses a separate Cloud Run service and writes to the `guest` workspace in the common Firestore collections. Configure `STORE=firestore`, `FIRESTORE_PROJECT_ID`, `FIRESTORE_DATABASE=meetingnotes`, and `FIRESTORE_WORKSPACE_ID=guest`; leave Firebase Authentication, the global data-mode switch, AI, and Google Calendar disabled. Demo directory emails are rewritten to reserved `.invalid` addresses. The public service needs `roles/datastore.user` in the Firestore project. Its workspace boundary is enforced by the backend because Firestore IAM is project-wide here. Keep its dedicated service identity, never expose company workspace records from guest API responses, and never store real employee data or Calendar tokens in the guest workspace. Set `CORS_ORIGINS=https://close-the-gap-2026.web.app`, `--max=1`, `--concurrency=1`, and `--min=0`. Set Hosting's `VITE_DEMO_API_URL` to this service's URL. Guest data is initialized from `seed/seed.json`; subsequent guest changes persist and are shared with visitors. Do not attach Calendar OAuth secrets.
 
 For hosted Calendar, store `GOOGLE_OAUTH_CLIENT_SECRET` and `GOOGLE_TOKEN_ENCRYPTION_KEY` in Secret Manager; do not put their values in deployment arguments, source control, or frontend configuration. Create the secrets and add a version using the Google Cloud Console or a secure local process. Grant the Cloud Run runtime service account `roles/secretmanager.secretAccessor` on both secrets. Then reference the secret IDs when deploying:
 ```powershell

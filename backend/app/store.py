@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
+from google.cloud.firestore_v1 import FieldFilter
 
-from .firestore import create_if_missing, decode_document, encode_model
+from .firestore import encode_model
 from .models import Absence, HistoryEvent, MeetingItem, Person, ProxyRequest
 
 
@@ -114,72 +116,100 @@ class InMemoryStore(Store):
 class FirestoreStore(Store):
     """Firestore-backed app state. IDs in model records are document IDs."""
 
-    def __init__(self, client: firestore.Client, collection_prefix: str = ""):
+    def __init__(self, client: firestore.Client, workspace_id: str = "company"):
         self._client = client
-        self._collection_prefix = collection_prefix
+        self._workspace_id = workspace_id
 
     def _collection(self, name: str):
-        return self._client.collection(f"{self._collection_prefix}{name}")
+        return self._client.collection(name)
+
+    def _document(self, collection: str, document_id: str):
+        return self._collection(collection).document(f"{self._workspace_id}__{document_id}")
+
+    def _encode(self, model) -> dict:
+        data = encode_model(model)
+        data["workspaceId"] = self._workspace_id
+        return data
+
+    def _decode(self, snapshot, model_type):
+        if not snapshot.exists:
+            return None
+        data = snapshot.to_dict()
+        data.pop("workspaceId", None)
+        return model_type.model_validate(data)
 
     def _all(self, collection: str, model_type):
-        return [model_type.model_validate(doc.to_dict()) for doc in self._collection(collection).stream()]
+        return [
+            model_type.model_validate({key: value for key, value in doc.to_dict().items()
+                                       if key != "workspaceId"})
+            for doc in self._collection(collection).where(
+                filter=FieldFilter("workspaceId", "==", self._workspace_id)
+            ).stream()
+        ]
 
     def people(self) -> list[Person]:
         return self._all("people", Person)
 
     def get_person(self, person_id: str) -> Optional[Person]:
-        return decode_document(self._collection("people").document(person_id).get(), Person)
+        return self._decode(self._document("people", person_id).get(), Person)
 
     def add_person_if_missing(self, person: Person) -> None:
-        create_if_missing(self._collection("people").document(person.id), person)
+        reference = self._document("people", person.id)
+        try:
+            reference.create(self._encode(person))
+        except AlreadyExists:
+            pass
 
-    def ensure_public_demo_person(self, person: Person) -> None:
-        reference = self._collection("people").document(person.id)
+    def ensure_guest_person(self, person: Person) -> None:
+        reference = self._document("people", person.id)
         snapshot = reference.get()
         if not snapshot.exists:
-            create_if_missing(reference, person)
+            try:
+                reference.create(self._encode(person))
+            except AlreadyExists:
+                pass
             return
         if (snapshot.to_dict() or {}).get("email") != person.email:
             reference.update({"email": person.email})
 
     def add_absence(self, absence: Absence) -> None:
-        self._collection("absences").document(absence.id).set(encode_model(absence))
+        self._document("absences", absence.id).set(self._encode(absence))
 
     def absences(self) -> list[Absence]:
         return self._all("absences", Absence)
 
     def add_item(self, item: MeetingItem) -> None:
-        self._collection("items").document(item.id).set(encode_model(item))
+        self._document("items", item.id).set(self._encode(item))
 
     def save_item(self, item: MeetingItem) -> None:
         self.add_item(item)
 
     def get_item(self, item_id: str) -> Optional[MeetingItem]:
-        return decode_document(self._collection("items").document(item_id).get(), MeetingItem)
+        return self._decode(self._document("items", item_id).get(), MeetingItem)
 
     def items(self) -> list[MeetingItem]:
         return self._all("items", MeetingItem)
 
     def add_proxy_request(self, req: ProxyRequest) -> None:
-        self._collection("proxy_requests").document(req.id).set(encode_model(req))
+        self._document("proxy_requests", req.id).set(self._encode(req))
 
     def save_proxy_request(self, req: ProxyRequest) -> None:
         self.add_proxy_request(req)
 
     def get_proxy_request(self, req_id: str) -> Optional[ProxyRequest]:
-        return decode_document(self._collection("proxy_requests").document(req_id).get(), ProxyRequest)
+        return self._decode(self._document("proxy_requests", req_id).get(), ProxyRequest)
 
     def proxy_requests(self) -> list[ProxyRequest]:
         return self._all("proxy_requests", ProxyRequest)
 
     def add_history(self, event: HistoryEvent) -> None:
-        self._collection("history").document(event.id).set(encode_model(event))
+        self._document("history", event.id).set(self._encode(event))
 
     def history(self) -> list[HistoryEvent]:
         return self._all("history", HistoryEvent)
 
     def next_id(self, prefix: str) -> str:
-        counter = self._collection("metadata").document("counters")
+        counter = self._document("metadata", "counters")
 
         @firestore.transactional
         def increment(transaction):
@@ -187,31 +217,34 @@ class FirestoreStore(Store):
             data = snapshot.to_dict() if snapshot.exists else {}
             value = int(data.get(prefix, 0)) + 1
             data[prefix] = value
+            data["workspaceId"] = self._workspace_id
             transaction.set(counter, data)
             return value
 
         return f"{prefix}_{increment(self._client.transaction()):03d}"
 
     def get_meet_token(self, person_id: str) -> Optional[str]:
-        snapshot = self._collection("meet_connections").document(person_id).get()
+        snapshot = self._document("meet_connections", person_id).get()
         if not snapshot.exists:
             return None
         return snapshot.to_dict()["encryptedToken"]
 
     def save_meet_token(self, person_id: str, encrypted_token: str) -> None:
-        self._collection("meet_connections").document(person_id).set({"encryptedToken": encrypted_token})
+        self._document("meet_connections", person_id).set(
+            {"encryptedToken": encrypted_token, "workspaceId": self._workspace_id})
 
     def delete_meet_token(self, person_id: str) -> None:
-        self._collection("meet_connections").document(person_id).delete()
+        self._document("meet_connections", person_id).delete()
 
     def get_calendar_token(self, person_id: str) -> Optional[str]:
-        snapshot = self._collection("calendar_connections").document(person_id).get()
+        snapshot = self._document("calendar_connections", person_id).get()
         if not snapshot.exists:
             return None
         return snapshot.to_dict()["encryptedToken"]
 
     def save_calendar_token(self, person_id: str, encrypted_token: str) -> None:
-        self._collection("calendar_connections").document(person_id).set({"encryptedToken": encrypted_token})
+        self._document("calendar_connections", person_id).set(
+            {"encryptedToken": encrypted_token, "workspaceId": self._workspace_id})
 
     def delete_calendar_token(self, person_id: str) -> None:
-        self._collection("calendar_connections").document(person_id).delete()
+        self._document("calendar_connections", person_id).delete()

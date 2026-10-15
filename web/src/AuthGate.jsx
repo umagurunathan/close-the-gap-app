@@ -63,10 +63,11 @@ export default function AuthGate({ children }) {
       <div className="auth-page">
         <section className="auth-card">
           <div className="brand">Close the Gap</div>
-          <p>Sign in with your company Google account to view your meetings and absence actions.</p>
+          <p>Sign in with the Google account linked to your company directory to view your meetings and absence actions.</p>
           {error && <div className="note warn" role="alert">{error}</div>}
           <button className="primary" type="button" onClick={signIn}>Continue with Google</button>
-          <a className="public-demo-link" href="/demo">Explore the public seed demo without signing in</a>
+          <p className="auth-help">After signing in, connect Google Calendar to import your meetings into the company workspace.</p>
+          <a className="public-demo-link" href="/demo">Continue as guest with fictional demo data</a>
         </section>
       </div>
     );

@@ -31,11 +31,14 @@ def firestore_database() -> str:
     return os.getenv("FIRESTORE_DATABASE", "(default)")
 
 
-def firestore_collection_prefix() -> str:
-    prefix = os.getenv("FIRESTORE_COLLECTION_PREFIX", "").strip()
-    if prefix and not re.fullmatch(r"[a-z][a-z0-9_]*", prefix):
-        raise ValueError("FIRESTORE_COLLECTION_PREFIX must start with a lowercase letter and contain only lowercase letters, digits, or underscores.")
-    return prefix
+def firestore_workspace_id() -> str:
+    workspace_id = os.getenv("FIRESTORE_WORKSPACE_ID", "company").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", workspace_id):
+        raise ValueError(
+            "FIRESTORE_WORKSPACE_ID must start with a lowercase letter and contain only lowercase letters, "
+            "digits, or underscores."
+        )
+    return workspace_id
 
 
 def firebase_auth_enabled() -> bool:

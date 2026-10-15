@@ -6,9 +6,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
+from google.cloud.firestore_v1 import FieldFilter
 
-from .firestore import create_if_missing, decode_document, encode_model
+from .firestore import encode_model
 from .models import CalEvent, Note
 
 
@@ -74,27 +76,47 @@ class SimCalendar:
 class FirestoreCalendar:
     """Firestore-backed calendar records, including their shared meeting notes."""
 
-    def __init__(self, client: firestore.Client, collection_prefix: str = ""):
-        self._events = client.collection(f"{collection_prefix}events")
+    def __init__(self, client: firestore.Client, workspace_id: str = "company"):
+        self._events = client.collection("events")
+        self._workspace_id = workspace_id
+
+    def _document(self, event_id: str):
+        return self._events.document(f"{self._workspace_id}__{event_id}")
 
     def get(self, event_id: str) -> Optional[CalEvent]:
-        return decode_document(self._events.document(event_id).get(), CalEvent)
+        snapshot = self._document(event_id).get()
+        if not snapshot.exists:
+            return None
+        data = snapshot.to_dict()
+        data.pop("workspaceId", None)
+        return CalEvent.model_validate(data)
 
     def all_events(self) -> list[CalEvent]:
-        return [CalEvent.model_validate(doc.to_dict()) for doc in self._events.stream()]
+        return [
+            CalEvent.model_validate({key: value for key, value in doc.to_dict().items()
+                                     if key != "workspaceId"})
+            for doc in self._events.where(
+                filter=FieldFilter("workspaceId", "==", self._workspace_id)
+            ).stream()
+        ]
 
     def add_event(self, event: CalEvent) -> CalEvent:
         self.save_event(event)
         return event
 
     def remove_event(self, event_id: str) -> None:
-        self._events.document(event_id).delete()
+        self._document(event_id).delete()
 
     def add_event_if_missing(self, event: CalEvent) -> bool:
-        return create_if_missing(self._events.document(event.id), event)
+        reference = self._document(event.id)
+        try:
+            reference.create({**encode_model(event), "workspaceId": self._workspace_id})
+        except AlreadyExists:
+            return False
+        return True
 
     def save_event(self, event: CalEvent) -> CalEvent:
-        self._events.document(event.id).set(encode_model(event))
+        self._document(event.id).set({**encode_model(event), "workspaceId": self._workspace_id})
         return event
 
     def involving(self, person_id: str) -> list[CalEvent]:
