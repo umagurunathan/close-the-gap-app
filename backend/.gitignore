@@ -2,3 +2,5 @@
 __pycache__/
 .pytest_cache/
 .env
+# Personal learning scripts (hello_gemini, structured_demo): kept locally, never published
+scripts/

@@ -14,17 +14,13 @@ from datetime import datetime, time, timedelta
 from typing import Optional
 
 from .calendar import SimCalendar
-from .models import Absence, CalEvent, ProposedTime
+from .models import Absence, CalEvent, Person, ProposedTime
+from .roles import key_people
 from .settings import settings as S
 
 # Tunable in config/settings.toml
 STEP_MINUTES = S.reschedule.step_minutes
 MAX_WORKING_DAYS = S.reschedule.max_working_days
-
-
-def key_people(event: CalEvent) -> list[str]:
-    ids = [event.organizerId] + [a.personId for a in event.attendees if not a.optional]
-    return list(dict.fromkeys(ids))
 
 
 def _on_leave(person_id: str, day, absences: list[Absence]) -> bool:
@@ -41,9 +37,10 @@ def find_slot(
     absences: list[Absence],
     now: datetime,
     max_working_days: int = MAX_WORKING_DAYS,
+    people: Optional[dict[str, Person]] = None,
 ) -> ProposedTime:
     duration = event.end - event.start
-    people = key_people(event)
+    people = key_people(event, people)
     original_tod = event.start.timetz()
 
     preferred = S.reschedule.preferred_window_hours

@@ -13,10 +13,11 @@ from .calendar import SimCalendar
 from .models import (
     AiResult, Absence, AbsenceSource, AbsenceType, Action, AttendeeItems, CalEvent, Counts, DirectoryEntry,
     EventAttendee, EventRef,
-    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, Person, ProposedTime, ProxyCandidate,
+    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, OrganizerMeeting, Person, ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
-from .scheduling import find_slot, key_people
+from .roles import is_invited_as_optional, required_ids
+from .scheduling import find_slot
 from .settings import settings as S
 from .store import Store
 
@@ -63,7 +64,7 @@ class Service:
                          use_ai=allow_ai)
         # Keep only a "final" answer: Gemini's when the AI is on, the rules' when it is off. A fallback answer, or a
         # rule-based placeholder made while creating the card, is not kept, so the AI is asked when the card is viewed.
-        if result[1].engine == ("gemini" if S.ai.enabled else "rules"):
+        if result[1].engine in (("gemini", "rules_policy") if S.ai.enabled else ("rules",)):
             self._analysis_cache[key] = result
         return result
 
@@ -171,7 +172,9 @@ class Service:
         many key people are out. Optional attendees never trigger it."""
         now, day = self.now(), e.start.date()
         created: list[MeetingItem] = []
-        for pid in key_people(e):
+        # Every required invitee who is out gets a card. In a large event, ordinary attendees get a quiet one
+        # (classified as an org-wide event); only the organizer and hosts need the organizer to act (Decision 55).
+        for pid in dict.fromkeys([e.organizerId] + required_ids(e)):
             if only is not None and pid not in only:
                 continue
             absence = next((a for a in self.store.absences() if a.personId == pid and a.start <= day <= a.end), None)
@@ -196,6 +199,8 @@ class Service:
         absent = self.person(absence.personId)
         created: list[MeetingItem] = []
         for e in self.calendar.events_in_window(absent.id, absence.start, absence.end):
+            if is_invited_as_optional(e, absent.id):
+                continue   # optional invitees never trigger anything
             item = self._create_item(absence, absent, e, now)
             if item:
                 created.append(item)
@@ -248,7 +253,9 @@ class Service:
                        if i.absentPersonId == me and not self._is_past(i)], key=lambda i: i.event.start)
         out = AttendeeItems()
         for i in mine:
-            if i.kind == ItemKind.team_checkin:
+            if i.status in TERMINAL:
+                out.noActionNeeded.rescheduledOrCancelled.append(i)
+            elif i.kind == ItemKind.team_checkin:
                 out.noActionNeeded.teamCheckins.append(i)
             elif i.kind == ItemKind.org_event:
                 out.noActionNeeded.orgEvents.append(i)
@@ -266,6 +273,94 @@ class Service:
                 out.append(self._view(i, me))
         return sorted(out, key=lambda i: i.event.start)
 
+    def organizer_meetings(self, me: str) -> list[OrganizerMeeting]:
+        """Organizer Mode: one card per meeting (Decision 55). Groups the per-person items of each meeting and gives
+        one recommendation for the whole meeting."""
+        groups: dict[str, list[MeetingItem]] = {}
+        for i in self.organizer_items(me):
+            groups.setdefault(i.event.calendarEventId, []).append(i)
+        out = []
+        for event_id, items in groups.items():
+            items.sort(key=lambda i: self.person(i.absentPersonId).name)
+            open_items = [i for i in items if i.needsAttention]
+            urgency = ("urgent" if any(i.urgency == "urgent" for i in open_items)
+                       else "soon" if any(i.urgency == "soon" for i in open_items) else None)
+            hours = [i.hoursToStart for i in open_items if i.hoursToStart is not None]
+            out.append(OrganizerMeeting(
+                calendarEventId=event_id, event=items[0].event, absentees=items, ai=self._meeting_ai(items),
+                needsAttention=bool(open_items), urgency=urgency, hoursToStart=min(hours) if hours else None,
+                done=all(i.status in TERMINAL for i in items)))
+        return sorted(out, key=lambda m: m.event.start)
+
+    def _meeting_ai(self, items: list[MeetingItem]) -> AiResult:
+        """One recommendation for the meeting, combined from each absent person's recommendation (no extra AI call):
+        reschedule wins (someone is essential), then cancel, then proxy (one per person), then go on without them.
+        Only people who still need a decision count, unless everyone is settled."""
+        base = [i for i in items if i.needsAttention] or items
+        if len(base) == 1:
+            return base[0].ai.model_copy()
+        order = [Action.reschedule, Action.cancel, Action.proxy, Action.proceed_without]
+        pick = min(base, key=lambda i: order.index(i.ai.recommendation) if i.ai.recommendation in order else len(order))
+        first = lambda i: self.person(i.absentPersonId).name.split()[0]   # noqa: E731
+        engines = {i.ai.engine for i in base}
+        return AiResult(
+            recommendation=pick.ai.recommendation,
+            reason=" ".join(f"{first(i)}: {i.ai.reason}" for i in base),
+            confidence=pick.ai.confidence,
+            sources=["each absent person's recommendation, combined"] + [s for s in pick.ai.sources if s not in ("",)],
+            summariesAvailable=any(i.ai.summariesAvailable for i in base),
+            needsHumanChoice=any(i.ai.needsHumanChoice for i in base),
+            engine=engines.pop() if len(engines) == 1 else "mixed",
+            model=pick.ai.model,
+            checks=[f"{first(i)}: {c}" for i in base for c in i.ai.checks],
+        )
+
+    def apply_meeting_action(self, event_id: str, caller: str, action: Action) -> Optional[OrganizerMeeting]:
+        """The organizer decides for the whole meeting (Decision 55): reschedule (one new time when every key person
+        is back), cancel (this occurrence), or go on without them (people still undecided go ahead; any proxy or
+        "I'll attend" already arranged is kept). A proxy is chosen per person, on that person's line."""
+        items = [i for i in self.store.items() if i.event.calendarEventId == event_id and i.kind == ItemKind.key_meeting
+                 and not self._is_past(i)]
+        if not items:
+            raise LookupError("meeting not found")
+        side = set().union(*(self._organizer_side(i) for i in items))
+        if caller not in side:
+            raise PermissionError("only the organizer can decide for the whole meeting")
+        if action not in (Action.reschedule, Action.cancel, Action.proceed_without):
+            raise ValueError("for the whole meeting: reschedule, cancel or proceed_without; a proxy is chosen per person")
+        open_items = [i for i in items if i.status not in TERMINAL]
+        if not open_items:
+            raise ValueError("this meeting has already been rescheduled or cancelled")
+
+        if action == Action.proceed_without:
+            # only people with nothing arranged; a pending or accepted proxy, or "I'll attend", is kept
+            undecided = {ItemStatus.pending_decision, ItemStatus.proxy_declined, ItemStatus.no_slot_found,
+                         ItemStatus.awaiting_organizer}
+            for i in open_items:
+                if i.status in undecided:
+                    self.apply_action(i.id, caller, Action.proceed_without)
+        elif action == Action.cancel:
+            for i in open_items:
+                self.apply_action(i.id, caller, Action.cancel)
+        else:
+            slot = self.proposed_time(open_items[0].id)
+            if slot.none:
+                for i in open_items:
+                    self.apply_action(i.id, caller, Action.reschedule)   # records "no suitable time found"
+            else:
+                e = self.calendar.get(event_id)
+                self.calendar.move_event(e.id, slot.proposedStart)   # ONE move for everyone
+                now = self.now()
+                for i in open_items:
+                    self._withdraw_requests(i, tell_accepted=False)
+                    i.originalStart = i.originalStart or i.event.start
+                    i.event.start, i.event.end = e.start, e.end
+                    i.rescheduledTo, i.status, i.chosenAction = slot.proposedStart, ItemStatus.rescheduled, Action.reschedule
+                    i.decidedBy, i.updatedAt = caller, now
+                    self.store.save_item(i)
+                    self._log(i.id, caller, "action_chosen", f"reschedule (whole meeting) => rescheduled to {slot.proposedStart}")
+        return next((m for m in self.organizer_meetings(caller) if m.calendarEventId == event_id), None)
+
     def past_items(self, me: str) -> list[MeetingItem]:
         """Finished meetings (last 30 days) where I was the absent person or on the organizer side. Same cards,
         read-only in the web app. Meetings I covered as a proxy come from proxy_requests_for(me, past=True)."""
@@ -279,7 +374,7 @@ class Service:
 
     def counts(self, me: str) -> Counts:
         listed_attendee = self.attendee_items(me).needsAction
-        listed_org = self.organizer_items(me)
+        listed_org = [m for m in self.organizer_meetings(me) if not m.done]   # one card per meeting; "Done" not counted
         open_attendee = [i for i in listed_attendee if i.needsAttention]
         open_org = [i for i in listed_org if i.needsAttention]
         # The number in each tab's brackets = cards listed in that tab. "N need action" = cards that are not settled.
@@ -406,6 +501,7 @@ class Service:
                     item.status = ItemStatus.no_slot_found
                 else:
                     self.calendar.move_event(e.id, slot.proposedStart)
+                    item.originalStart = item.originalStart or item.event.start
                     item.event.start, item.event.end = e.start, e.end
                     item.rescheduledTo = slot.proposedStart
                     item.status = ItemStatus.rescheduled  # the calendar itself notifies attendees
@@ -444,7 +540,7 @@ class Service:
         if not item:
             raise LookupError("item not found")
         e = self.calendar.get(item.event.calendarEventId)
-        return find_slot(e, self.calendar, self.store.absences(), self.now())
+        return find_slot(e, self.calendar, self.store.absences(), self.now(), people=self.people_map())
 
     def _invitee_ids(self, item: MeetingItem) -> set[str]:
         e = self.calendar.get(item.event.calendarEventId)
@@ -554,17 +650,25 @@ class Service:
         # Under-24-hour alert: if a meeting starting within 24 hours still needs someone to act
         # (not handled, proxy unanswered, waiting on the organizer, proxy declined, no slot found), the organizer is
         # emailed once. This is the only email organizers get for planned leave besides asks.
+        # One email per meeting (Decision 55), naming everyone who is out.
+        due: dict[tuple[str, str], list[MeetingItem]] = {}
         for i in self.store.items():
             if i.kind != ItemKind.key_meeting or i.organizerAlerted or i.status not in ATTENTION:
                 continue
             until = i.event.start - now
             if timedelta(0) < until <= timedelta(hours=S.reminders.organizer_alert_hours):
-                notify.send_email(self.person(self.organizer_decider(i)).email,
-                                  f"Unresolved: '{i.event.title}' starts within {S.reminders.organizer_alert_hours} hours and {self.person(i.absentPersonId).name} is out",
-                                  "Open Organizer Mode to decide.", now)
+                due.setdefault((i.event.calendarEventId, self.organizer_decider(i)), []).append(i)
+        for (_, decider), group in due.items():
+            names = sorted(self.person(i.absentPersonId).name for i in group)
+            who = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+            notify.send_email(self.person(decider).email,
+                              f"Unresolved: '{group[0].event.title}' starts within {S.reminders.organizer_alert_hours} hours "
+                              f"and {who} {'is' if len(names) == 1 else 'are'} out",
+                              "Open Organizer Mode to decide.", now)
+            for i in group:
                 i.organizerAlerted = True
                 self.store.save_item(i)
-                sent += 1
+            sent += 1
         # TODO: leaver prompt cadence (weekly, then daily within 3 days).
         return sent
 

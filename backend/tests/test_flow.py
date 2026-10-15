@@ -612,7 +612,7 @@ def test_cache_reuses_answers_until_the_meeting_or_summaries_change(svc, monkeyp
     monkeypatch.setattr(S.ai, "enabled", True)
     calls = []
 
-    def fake(event, absent, people, notes, client=None):
+    def fake(event, absent, people, notes, client=None, is_out=None):
         calls.append(event.description)
         return ItemKind.key_meeting, AiResult(recommendation=Action.proxy, confidence=Confidence.high, reason="r")
     monkeypatch.setattr(recommender_ai, "recommend_ai", fake)
@@ -634,3 +634,143 @@ def test_creating_cards_never_waits_for_the_ai(svc, monkeypatch, client):
     monkeypatch.setattr(recommender_ai, "recommend_ai", lambda *a, **k: called.append(1))
     r = client.post("/absences", json={"personId": "p_dev", "start": "2026-10-21", "end": "2026-10-21"}, headers=H("p_dev"))
     assert r.status_code == 200 and called == []             # the absence was created with rule-based cards
+
+
+# ---- Decision 55: one organizer card per meeting; large events; optional invitees ----
+
+def _two_out_meeting(client):
+    """Sam organizes a meeting on Oct 21 where both Priya (on leave Oct 20-22) and Dev (out that day) are required."""
+    client.post("/absences", json={"personId": "p_dev", "start": "2026-10-21", "end": "2026-10-21"}, headers=H("p_dev"))
+    r = client.post("/events", json={"title": "Budget Sync", "description": "Agree the Q4 numbers.",
+                                      "start": "2026-10-21T10:00:00Z", "end": "2026-10-21T11:00:00Z",
+                                      "attendees": [{"personId": "p_priya"}, {"personId": "p_dev"}, {"personId": "p_meena"}]},
+                    headers=H("p_sam"))
+    return r.json()["eventId"]
+
+
+def test_organizer_sees_one_card_per_meeting_naming_everyone_out(client):
+    event_id = _two_out_meeting(client)
+    meetings = client.get("/organizer/meetings", headers=H("p_sam")).json()
+    card = next(m for m in meetings if m["calendarEventId"] == event_id)
+    assert sorted(a["absentPersonId"] for a in card["absentees"]) == ["p_dev", "p_priya"]   # one card, both named
+    assert card["needsAttention"] and card["ai"]["recommendation"]
+    assert len([m for m in meetings if m["calendarEventId"] == event_id]) == 1
+    counts = client.get("/me", headers=H("p_sam")).json()["counts"]
+    assert counts["organizer"] == len(meetings)                                       # counted per meeting
+
+
+def test_meeting_level_reschedule_moves_once_and_settles_everyone(client, svc):
+    event_id = _two_out_meeting(client)
+    before = svc.calendar.get(event_id).start
+    card = client.post(f"/meetings/{event_id}/action", json={"action": "reschedule"}, headers=H("p_sam")).json()
+    after = svc.calendar.get(event_id).start
+    assert after.date().isoformat() == "2026-10-23" and after.hour == before.hour      # first day both are back, same time
+    assert {a["status"] for a in card["absentees"]} == {"rescheduled"}
+    assert client.post(f"/meetings/{event_id}/action", json={"action": "reschedule"}, headers=H("p_priya")).status_code == 403
+
+
+def test_rescheduled_meeting_moves_to_no_action_needed_and_leaves_the_counts(client):
+    event_id = _two_out_meeting(client)
+    before = client.get("/me", headers=H("p_dev")).json()["counts"]["attendee"]
+    org_before = client.get("/me", headers=H("p_sam")).json()["counts"]["organizer"]
+    client.post(f"/meetings/{event_id}/action", json={"action": "reschedule"}, headers=H("p_sam"))
+    dev = client.get("/items", params={"mode": "attendee"}, headers=H("p_dev")).json()
+    moved = [i for i in dev["noActionNeeded"]["rescheduledOrCancelled"] if i["event"]["calendarEventId"] == event_id]
+    assert len(moved) == 1 and moved[0]["originalStart"].startswith("2026-10-21T10:00")   # old time kept, to strike out
+    assert moved[0]["event"]["start"].startswith("2026-10-23")
+    assert not any(i["event"]["calendarEventId"] == event_id for i in dev["needsAction"])
+    assert client.get("/me", headers=H("p_dev")).json()["counts"]["attendee"] == before - 1
+    card = next(m for m in client.get("/organizer/meetings", headers=H("p_sam")).json() if m["calendarEventId"] == event_id)
+    assert card["done"]                                                               # organizer: under "Done"
+    assert client.get("/me", headers=H("p_sam")).json()["counts"]["organizer"] == org_before - 1
+
+
+def test_go_on_without_them_keeps_a_proxy_already_arranged(client, svc):
+    event_id = _two_out_meeting(client)
+    priya_item = next(i for i in svc.store.items() if i.event.calendarEventId == event_id and i.absentPersonId == "p_priya")
+    client.post(f"/items/{priya_item.id}/action", json={"action": "proxy", "proxyId": "p_meena"}, headers=H("p_priya"))
+    card = client.post(f"/meetings/{event_id}/action", json={"action": "proceed_without"}, headers=H("p_sam")).json()
+    status = {a["absentPersonId"]: a["status"] for a in card["absentees"]}
+    assert status == {"p_priya": "proxy_requested", "p_dev": "proceeding_without"}
+
+
+def test_alert_under_24_hours_is_one_email_per_meeting(client, svc):
+    from app import notify
+    event_id = _two_out_meeting(client)
+    for i in svc.store.items():
+        if i.event.calendarEventId == event_id:
+            i.organizerAlerted = False
+    svc.now = lambda: __import__("datetime").datetime(2026, 10, 20, 15, tzinfo=__import__("datetime").timezone.utc)
+    notify.clear()
+    svc.run_reminders()
+    to_sam = [m for m in notify.OUTBOX if m["to"] == "sam@example.com" and "Budget Sync" in m["subject"]]
+    assert len(to_sam) == 1 and "Dev Nair and Priya Sharma are out" in to_sam[0]["subject"]
+
+
+def test_large_event_ordinary_attendee_is_not_a_key_person(client, svc):
+    from app.settings import settings as S
+    many = [{"personId": p} for p in ("p_priya", "p_arjun", "p_meena", "p_kiran", "p_dev", "p_vera", "p_neha", "p_asha",
+                                       "p_rohan", "p_tara", "p_ishaan", "p_naomi", "p_leo", "p_zoya", "p_ben", "p_lena")]
+    assert len(many) > S.recommendation.large_meeting_required_threshold
+    r = client.post("/events", json={"title": "Q4 All-Hands", "description": "Vera will host. Ben is the keynote speaker.",
+                                      "start": "2026-10-21T16:00:00Z", "end": "2026-10-21T17:00:00Z", "attendees": many},
+                    headers=H("p_sam"))
+    event_id = r.json()["eventId"]
+    # Priya (on leave) is an ordinary attendee: her own quiet card only, no organizer card
+    mine = client.get("/items", params={"mode": "attendee"}, headers=H("p_priya")).json()
+    assert any(i["event"]["title"] == "Q4 All-Hands" for i in mine["noActionNeeded"]["orgEvents"])
+    assert all(m["calendarEventId"] != event_id for m in client.get("/organizer/meetings", headers=H("p_sam")).json())
+    # Ben is the keynote speaker: if he is out, the organizer needs to act
+    client.post("/absences", json={"personId": "p_ben", "start": "2026-10-21", "end": "2026-10-21"}, headers=H("p_ben"))
+    card = next(m for m in client.get("/organizer/meetings", headers=H("p_sam")).json() if m["calendarEventId"] == event_id)
+    assert [a["absentPersonId"] for a in card["absentees"]] == ["p_ben"]
+
+
+def test_optional_invitees_never_trigger_anything(client, svc):
+    r = client.post("/events", json={"title": "FYI Demo", "start": "2026-10-21T12:00:00Z", "end": "2026-10-21T12:30:00Z",
+                                      "attendees": [{"personId": "p_meena"}, {"personId": "p_neha", "optional": True}]},
+                    headers=H("p_sam"))
+    event_id = r.json()["eventId"]
+    client.post("/absences", json={"personId": "p_neha", "start": "2026-10-21", "end": "2026-10-21"}, headers=H("p_neha"))
+    assert not [i for i in svc.store.items() if i.event.calendarEventId == event_id]
+
+
+def test_ai_prompt_never_lists_the_whole_audience(svc):
+    from agents.recommender_ai import build_prompt
+    from app.models import CalEvent, EventAttendee
+    from app.settings import settings as S
+    from datetime import datetime, timezone
+    people = svc.people_map()
+    ids = [p for p in people if p not in ("p_priya", "p_events")]
+    e = CalEvent(id="evt_big", title="Planning", start=datetime(2026, 10, 21, 9, tzinfo=timezone.utc),
+                 end=datetime(2026, 10, 21, 10, tzinfo=timezone.utc), organizerId="p_sam",
+                 attendees=[EventAttendee(personId=p) for p in ids + ["p_priya"]])
+    old = S.ai.max_candidates
+    S.ai.max_candidates = 5
+    try:
+        prompt = build_prompt(e, people["p_priya"], people, [])
+    finally:
+        S.ai.max_candidates = old
+    listed = prompt.split("Candidate proxies")[1].strip().splitlines()[1:]
+    assert len(listed) == 5 and f"Invitees besides the person on leave: {len(ids)}" in prompt
+    assert any("p_arjun" in line for line in listed)        # the manager (reporting line) makes the short list
+
+
+
+def test_people_out_that_day_are_never_offered_to_the_ai(client, svc):
+    from agents.recommender_ai import build_prompt
+    event_id = _two_out_meeting(client)
+    e = svc.calendar.get(event_id)
+    people = svc.people_map()
+    prompt = build_prompt(e, people["p_dev"], people, [], svc._is_out)
+    cands = prompt.split("Candidate proxies")[1]
+    assert "p_priya" not in cands and "p_meena" in cands          # Priya is on leave that day too
+    # and if the AI names her anyway, the checks drop her and the reason says why
+    from app.models import Action, Confidence
+    from agents import guard
+    from agents.recommender import recommend
+    from app.models import AiResult, ItemKind
+    _, ai = guard.check(ItemKind.key_meeting, AiResult(recommendation=Action.proxy, confidence=Confidence.medium,
+                        reason="Priya can cover.", suggestedProxyId="p_priya"), e, people["p_dev"], people, [],
+                        svc._is_out, lambda: recommend(e, people["p_dev"], people, []))
+    assert ai.suggestedProxyId is None and "also out that day" in ai.reason
