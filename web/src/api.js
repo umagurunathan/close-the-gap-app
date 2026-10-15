@@ -3,14 +3,22 @@ const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const OFFLINE = "We can't reach the server right now. Please check your connection and try again.";
 
+let authTokenProvider = null;
+
+export function setAuthTokenProvider(provider) {
+  authTokenProvider = provider;
+}
+
 // Errors carry a message written for people (the server writes them that way); anything technical is replaced here.
 export async function api(path, { method = "GET", body, person } = {}) {
   let res;
   try {
+    const token = authTokenProvider ? await authTokenProvider() : null;
     res = await fetch(BASE + path, {
       method,
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(person ? { "X-Person-Id": person } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,

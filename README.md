@@ -13,6 +13,7 @@ When someone goes on leave they usually tell only their manager and reports. Col
 ## What it does
 - **Finds the affected meetings** from the calendar and recommends one action for each: go on without the person, name a proxy, reschedule, cancel, or "I'll attend" (for the person on leave).
 - **Explains every recommendation** with a reason, a confidence level and the sources used. A person always decides; the AI proposes.
+- **Optional Google Calendar integration:** locally, connect a demo persona's own account through the loopback-only flow; for the hosted demo, use Firebase Authentication and Firestore with the authenticated OAuth setup in [backend/README.md](backend/README.md).
 - **Reads meeting summaries only through each person's own access.** Nothing from a summary reaches someone who couldn't open it, and a missing summary never blocks anything.
 - **Handles team check-ins and org-wide events automatically** when it is highly confident (unless the person who is out organizes or hosts the event), and still lets people review and change them.
 - **Runs the proxy flow:** the proxy can be anyone in the company directory, on the invite or not, with no organizer approval needed; someone not yet invited is added to the meeting and sent the invite. Covering is always the proxy's choice: they accept or decline, silent proxies get reminders, a declined proxy sends the owner and the organizer back to choose again.
@@ -51,8 +52,12 @@ npm run dev
 Use the "Signed in as" dropdown to switch person: Priya (planned leave), Arjun (leave where the AI visibly beats simple rules), Kiran (sudden absence), Sam (organizer), Meena (proxy), Neha (unrelated). "Reset demo" restores the demo data and lets the AI analyse everything again. The "Schedule a meeting" and "Report an absence" buttons let you try both directions. A link can open the app as someone, on a tab: `?as=p_sam&tab=organizer`.
 
 ## Deploy
-- **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --no-cpu-throttling --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance, because the prototype keeps its data in memory; CPU always allocated, because the AI analysis runs in the background. The service account needs the Vertex AI User role to call Gemini.
+- **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --concurrency 1 --no-cpu-throttling --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance and one concurrent request keep the global in-memory seed mode consistent; CPU stays allocated for background AI analysis. The service account needs the Vertex AI User role to call Gemini.
 - **Web app → Firebase Hosting** (from `web/`): put the backend URL in `.env.production`, then `npm run build` and `firebase deploy --only hosting`.
+
+Google Calendar supports local demo OAuth and an authenticated hosted Firestore mode. For the hosted global
+Seed-file/Firestore selector, cross-project IAM, Firebase Authentication, presenter allowlisting, and Calendar OAuth
+setup, follow [backend/README.md](backend/README.md).
 
 ## Tests
 ```powershell

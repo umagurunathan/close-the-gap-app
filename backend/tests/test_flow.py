@@ -2,6 +2,7 @@
 import os
 
 os.environ["NOW"] = "2026-10-11T09:00:00Z"
+os.environ["STORE"] = "memory"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -134,6 +135,14 @@ def test_sick_person_and_organizer_can_both_act(client, svc):
     assert r.status_code == 400
 
 
+def test_only_absent_person_or_organizer_can_ask_for_proxy_guidance(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    for path in (f"/items/{item.id}/proxy-candidates", f"/items/{item.id}/proposed-time"):
+        assert client.get(path, headers=H("p_neha")).status_code == 403
+    assert client.get(f"/items/{item.id}/proxy-candidates", headers=H("p_priya")).status_code == 200
+    assert client.get(f"/items/{item.id}/proposed-time", headers=H("p_sam")).status_code == 200
+
+
 def test_organizer_can_act_proactively_on_planned_leave_and_leaver_is_told_on_change(client, svc):
     from app import notify
     item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
@@ -211,6 +220,338 @@ def test_ai_draft_only_when_the_sender_and_the_proxy_can_both_open_the_summary(c
     assert mine["available"] is False and "No meeting summary is available to you" in mine["reason"]
     # strangers cannot ask
     assert client.get(url, headers=H("p_neha")).status_code == 403
+
+
+def test_meeting_notes_can_be_added_and_are_only_visible_to_selected_invitees(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Design Review")
+    path = f"/items/{item.id}/notes"
+
+    assert client.get(path, headers=H("p_neha")).status_code == 403
+    assert client.post(path, json={"text": "Private draft", "sharedWith": ["p_dev"]},
+                       headers=H("p_priya")).status_code == 403
+
+    private = client.post(path, json={"text": "Dev-only handover", "sharedWith": ["p_dev"]},
+                          headers=H("p_meena"))
+    assert private.status_code == 200
+    assert private.json()["text"] == "Dev-only handover"
+    assert [n["text"] for n in client.get(path, headers=H("p_dev")).json()] == [
+        "Design review summary. Decision: go with layout B. Dev owns the final mockups.",
+        "Dev-only handover",
+    ]
+    assert all("Dev-only handover" != n["text"] for n in client.get(path, headers=H("p_priya")).json())
+
+    assert client.post(path, json={"text": "Bad audience", "sharedWith": ["p_neha"]},
+                       headers=H("p_meena")).status_code == 400
+    assert client.post(path, json={"text": "   ", "sharedWith": []},
+                       headers=H("p_meena")).status_code == 400
+
+    shared = client.post(path, json={"text": "Shared handover", "sharedWith": ["p_priya", "p_dev"]},
+                         headers=H("p_meena"))
+    assert shared.status_code == 200
+    assert any(n["text"] == "Shared handover" for n in client.get(path, headers=H("p_priya")).json())
+    assert client.get(f"/items/{item.id}/note-draft/available", headers=H("p_priya")).json() == {"available": True}
+
+
+def test_google_meet_oauth_imports_and_updates_transcript_note(client, svc, monkeypatch):
+    from urllib.parse import parse_qs, urlparse
+    from cryptography.fernet import Fernet
+    from app import google_meet
+
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "test-client")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/integrations/google-meet/callback")
+    monkeypatch.setenv("GOOGLE_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    item = next(i for i in svc.store.items() if i.event.title == "Design Review")
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, data):
+            self.data = data
+
+        def json(self):
+            return self.data
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, timeout):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def post(self, url, data):
+            assert url == google_meet.OAUTH_TOKEN_URL
+            return FakeResponse({"access_token": "test-access-token", "refresh_token": "test-refresh-token",
+                                 "expires_in": 3600})
+
+        def get(self, url, headers, params=None):
+            assert headers["Authorization"] == "Bearer test-access-token"
+            if url.endswith("/userinfo"):
+                return FakeResponse({"email": "meena@example.com", "verified_email": True})
+            if url.endswith("/conferenceRecords"):
+                return FakeResponse({"conferenceRecords": [{
+                    "name": "conferenceRecords/record-1",
+                    "startTime": "2026-10-22T18:00:00Z",
+                }]})
+            if url.endswith("/transcripts"):
+                return FakeResponse({"transcripts": [{
+                    "name": "conferenceRecords/record-1/transcripts/transcript-1",
+                    "state": "FILE_GENERATED",
+                    "startTime": "2026-10-22T19:00:00Z",
+                }]})
+            if url.endswith("/entries"):
+                return FakeResponse({"transcriptEntries": [
+                    {"startTime": "2026-10-22T18:01:00Z", "text": "Decision: approve the new design."},
+                    {"startTime": "2026-10-22T18:02:00Z", "text": "Dev owns the follow-up."},
+                ]})
+            raise AssertionError(f"Unexpected Google API URL: {url}")
+
+    monkeypatch.setattr(google_meet.httpx, "Client", FakeClient)
+    integration = google_meet.GoogleMeetIntegration(svc.store, svc.calendar)
+    auth_url = integration.authorization_url("p_meena")
+    state = parse_qs(urlparse(auth_url).query)["state"][0]
+    assert parse_qs(urlparse(auth_url).query)["scope"] == [
+        f"{google_meet.MEET_SCOPE} {google_meet.USERINFO_SCOPE}"
+    ]
+    assert integration.finish_authorization("test-code", state) == "p_meena"
+    stored = svc.store.get_meet_token("p_meena")
+    assert stored and "test-refresh-token" not in stored
+
+    integration.link_meeting(item.id, "p_meena", "https://meet.google.com/abc-defg-hij")
+    first = integration.import_transcript(item.id, "p_meena", ["p_priya"])
+    second = integration.import_transcript(item.id, "p_meena", ["p_priya"])
+    event = svc.calendar.get(item.event.calendarEventId)
+    imported = [n for n in event.notes if n.source == "google_meet_transcript"]
+    assert first.docId == second.docId and len(imported) == 1
+    assert first.text == "Decision: approve the new design.\nDev owns the follow-up."
+    assert [n.text for n in svc.meeting_notes(item.id, "p_priya") if n.source == "google_meet_transcript"] == [first.text]
+    assert not any(n.source == "google_meet_transcript" for n in svc.meeting_notes(item.id, "p_dev"))
+
+
+def test_google_meet_link_is_restricted_to_organizer_and_valid_meet_urls(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Design Review")
+    path = f"/items/{item.id}/meet"
+    assert client.put(path, json={"meetUrl": "https://meet.google.com/abc-defg-hij"},
+                      headers=H("p_priya")).status_code == 403
+    assert client.put(path, json={"meetUrl": "https://example.com/not-a-meet"},
+                      headers=H("p_meena")).status_code == 400
+    saved = client.put(path, json={"meetUrl": "https://meet.google.com/abc-defg-hij"},
+                       headers=H("p_meena"))
+    assert saved.status_code == 200 and saved.json()["meetUrl"] == "https://meet.google.com/abc-defg-hij"
+    assert client.get(path, headers=H("p_neha")).status_code == 403
+
+
+def test_google_calendar_oauth_and_sync_store_only_directory_people(svc, monkeypatch):
+    from urllib.parse import parse_qs, urlparse
+    from cryptography.fernet import Fernet
+    from app.google_calendar import CALENDAR_SCOPE, GoogleCalendarIntegration
+
+    monkeypatch.setenv("GOOGLE_CALENDAR_LOCAL_DEMO_ONLY", "true")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "test-client")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("GOOGLE_CALENDAR_REDIRECT_URI",
+                       "http://localhost:8000/integrations/google-calendar/callback")
+    monkeypatch.setenv("GOOGLE_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, data):
+            self.data = data
+
+        def json(self):
+            return self.data
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, timeout):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def post(self, url, data):
+            assert url == "https://oauth2.googleapis.com/token"
+            return FakeResponse({"access_token": "test-access-token", "refresh_token": "test-refresh-token",
+                                 "expires_in": 3600})
+
+        def get(self, url, headers, params=None):
+            assert headers["Authorization"] == "Bearer test-access-token"
+            if url.endswith("/userinfo"):
+                return FakeResponse({"email": "sam@example.com", "verified_email": True})
+            if url.endswith("/primary/events"):
+                return FakeResponse({"items": [{
+                    "id": "calendar-event-1",
+                    "iCalUID": "calendar-event-1@google.com",
+                    "summary": "Budget review",
+                    "description": "Review the quarter plan.",
+                    "start": {"dateTime": "2026-10-21T17:00:00Z"},
+                    "end": {"dateTime": "2026-10-21T18:00:00Z"},
+                    "organizer": {"email": "sam@example.com"},
+                    "attendees": [
+                        {"email": "priya@example.com"},
+                        {"email": "external@example.net"},
+                    ],
+                }]})
+            raise AssertionError(f"Unexpected Google Calendar API URL: {url}")
+
+    monkeypatch.setattr("app.google_calendar.httpx.Client", FakeClient)
+    integration = GoogleCalendarIntegration(svc.store)
+    auth_url = integration.authorization_url("p_sam")
+    query = parse_qs(urlparse(auth_url).query)
+    assert query["scope"] == [f"{CALENDAR_SCOPE} https://www.googleapis.com/auth/userinfo.email"]
+    assert integration.finish_authorization("test-code", query["state"][0]) == "p_sam"
+    encrypted = svc.store.get_calendar_token("p_sam")
+    assert encrypted and "test-refresh-token" not in encrypted
+
+    result = svc.sync_google_events(
+        "p_sam",
+        integration.list_events("p_sam", svc.now(), svc.now().replace(day=22)),
+    )
+    assert result == {"added": 1, "updated": 0, "skipped": 0, "affectedItems": 1}
+    event = next(event for event in svc.calendar.involving("p_sam")
+                 if event.googleEventId == "calendar-event-1")
+    assert event.organizerId == "p_sam"
+    assert event.googleCalendarOwnerId == "p_sam"
+    assert [attendee.personId for attendee in event.attendees] == ["p_priya"]
+    assert len([item for item in svc.store.items() if item.event.calendarEventId == event.id]) == 1
+    second = svc.sync_google_events(
+        "p_sam",
+        integration.list_events("p_sam", svc.now(), svc.now().replace(day=22)),
+    )
+    assert second == {"added": 0, "updated": 1, "skipped": 0, "affectedItems": 0}
+    assert len([event for event in svc.calendar.involving("p_sam")
+                if event.googleEventId == "calendar-event-1"]) == 1
+    cancelled = svc.sync_google_events("p_sam", [{"id": "calendar-event-1", "status": "cancelled"}])
+    assert cancelled == {"added": 0, "updated": 1, "skipped": 0, "affectedItems": 0}
+    assert svc.calendar.get(event.id).cancelled is True
+    assert next(item for item in svc.store.items() if item.event.calendarEventId == event.id).status.value == "cancelled"
+
+
+def test_google_calendar_write_failure_does_not_resolve_local_item(svc):
+    from app.google_calendar import CalendarIntegrationError
+    from app.models import Action
+
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    event = svc.calendar.get(item.event.calendarEventId)
+    event.googleEventId = "external-event-1"
+    event.googleCalendarOwnerId = event.organizerId
+
+    class FailedCalendarWrite:
+        def delete_event(self, person_id, event_id):
+            assert person_id == event.organizerId
+            assert event_id == "external-event-1"
+            raise CalendarIntegrationError("Google Calendar API request failed (HTTP 503).")
+
+    svc.google_calendar = FailedCalendarWrite()
+    with pytest.raises(CalendarIntegrationError):
+        svc.apply_action(item.id, "p_sam", Action.cancel)
+    assert svc.store.get_item(item.id).status.value == "pending_decision"
+    assert event.cancelled is False
+
+
+def test_google_calendar_oauth_is_restricted_to_loopback(client):
+    response = client.get("/integrations/google-calendar/authorize", headers=H("p_sam"))
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Google Calendar demo access is limited to local requests."
+
+
+def test_google_calendar_demo_mode_requires_in_memory_store(svc, monkeypatch):
+    from app.google_calendar import GoogleCalendarIntegration
+
+    monkeypatch.setenv("GOOGLE_CALENDAR_LOCAL_DEMO_ONLY", "true")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "test-client")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("GOOGLE_CALENDAR_REDIRECT_URI", "http://localhost/callback")
+    monkeypatch.setenv("GOOGLE_TOKEN_ENCRYPTION_KEY", "configured-but-not-used")
+    monkeypatch.setenv("STORE", "firestore")
+
+    integration = GoogleCalendarIntegration(svc.store)
+    assert integration.status("p_sam") == {"connected": False, "configured": False}
+
+
+def test_hosted_google_calendar_requires_firebase_auth_and_firestore(svc, monkeypatch):
+    from app.google_calendar import GoogleCalendarIntegration
+    from app.store import FirestoreStore
+
+    monkeypatch.setenv("GOOGLE_CALENDAR_ENABLED", "true")
+    monkeypatch.setenv("FIREBASE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "test-client")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("GOOGLE_CALENDAR_REDIRECT_URI", "https://api.example.com/callback")
+    monkeypatch.setenv("GOOGLE_TOKEN_ENCRYPTION_KEY", "configured-but-not-used")
+    monkeypatch.delenv("GOOGLE_CALENDAR_LOCAL_DEMO_ONLY", raising=False)
+
+    hosted = GoogleCalendarIntegration(FirestoreStore(object()))
+    assert hosted.hosted_enabled()
+    assert hosted.configured()
+
+    monkeypatch.setenv("FIREBASE_AUTH_ENABLED", "false")
+    assert not hosted.configured()
+    assert not GoogleCalendarIntegration(svc.store).configured()
+
+
+def test_vertex_proxy_suggestion_requires_an_eligible_person_and_exact_note_evidence(svc):
+    from types import SimpleNamespace
+    from agents.vertex_proxy_ranker import ProxySuggestion, suggest_proxy
+    from agents.proxy_ranker import rank_proxies
+
+    event = svc.calendar.get("evt_budget")
+    absent = svc.person("p_priya")
+    notes = svc.calendar.visible_notes(event, absent.id)
+    candidates = rank_proxies(event, absent, svc.people_map(), notes)
+
+    class FakeModels:
+        def __init__(self, parsed):
+            self.parsed = parsed
+
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(parsed=self.parsed, text="")
+
+    class FakeClient:
+        def __init__(self, parsed):
+            self.models = FakeModels(parsed)
+
+    evidence = notes[0].text.split(".")[0]
+    valid = ProxySuggestion(person_id="p_meena", confidence="high", reason="Named as the backup.",
+                            evidence_quote=evidence)
+    assert suggest_proxy(event, absent, svc.people_map(), notes, candidates, FakeClient(valid)) == valid
+
+    invalid = valid.model_copy(update={"person_id": "p_neha"})
+    assert suggest_proxy(event, absent, svc.people_map(), notes, candidates, FakeClient(invalid)) is None
+    ungrounded = valid.model_copy(update={"evidence_quote": "An invented note quote."})
+    assert suggest_proxy(event, absent, svc.people_map(), notes, candidates, FakeClient(ungrounded)) is None
+
+
+def test_recommender_uses_vertex_suggestion_when_enabled(svc, monkeypatch):
+    from agents import recommender
+    from agents.vertex_proxy_ranker import ProxySuggestion
+
+    event = svc.calendar.get("evt_budget")
+    absent = svc.person("p_priya")
+    notes = svc.calendar.visible_notes(event, absent.id)
+    quote = notes[0].text.split(".")[0]
+    monkeypatch.setattr(recommender.config, "llm_provider", lambda: "vertex")
+    monkeypatch.setattr(recommender, "suggest_proxy", lambda *args: ProxySuggestion(
+        person_id="p_meena", confidence="high", reason="She owns the related work.", evidence_quote=quote))
+
+    kind, result = recommender.recommend(event, absent, svc.people_map(), notes)
+
+    assert kind.value == "key_meeting"
+    assert result.suggestedProxyId == "p_meena"
+    assert result.confidence.value == "high"
+    assert "Vertex AI Gemini" in result.sources
 
 
 def test_note_travels_with_the_proxy_request(client, svc):

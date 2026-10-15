@@ -3,7 +3,7 @@
     {
       "id": "p_priya",
       "name": "Priya Sharma",
-      "email": "priya@example.com",
+      "email": "kamalakar.polavarapu@gmail.com",
       "title": "Senior Manager",
       "department": "Finance Ops",
       "managerId": "p_arjun"
@@ -11,7 +11,7 @@
     {
       "id": "p_arjun",
       "name": "Arjun Rao",
-      "email": "arjun@example.com",
+      "email": "g.umagurunathan@gmail.com",
       "title": "Director",
       "department": "Finance Ops",
       "managerId": null

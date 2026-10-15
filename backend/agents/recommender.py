@@ -16,10 +16,16 @@ What it does:
 """
 from __future__ import annotations
 
+import logging
+
+from app import config
 from app.models import AiResult, Action, CalEvent, Confidence, ItemKind, Note, Person
 from app.roles import has_hosting_role, is_large_meeting
 from app.settings import settings as S
 from .proxy_ranker import rank_proxies
+from .vertex_proxy_ranker import suggest_proxy
+
+logger = logging.getLogger(__name__)
 
 # Word lists and thresholds are tunable in config/settings.toml
 ROUTINE_TITLES = tuple(S.recommendation.team_checkin_title_words)
@@ -86,6 +92,20 @@ def recommend(
     ranked = rank_proxies(event, absent, people, notes)
     # second choice for a proxy recommendation: the next-ranked person, only if they have some supporting link
     backup = ranked[1]["personId"] if len(ranked) > 1 and ranked[1]["score"] > 0 else None
+    if notes and ranked and config.llm_provider() == "vertex":
+        try:
+            suggestion = suggest_proxy(event, absent, people, notes, ranked)
+        except Exception:
+            logger.warning("Vertex proxy suggestion failed; using the rule-based ranking", exc_info=True)
+            suggestion = None
+        if suggestion:
+            return ItemKind.key_meeting, AiResult(
+                recommendation=Action.proxy,
+                reason=f"{suggestion.reason} Evidence: \"{suggestion.evidence_quote}\"",
+                confidence=Confidence(suggestion.confidence), sources=sources + ["Vertex AI Gemini"],
+                summariesAvailable=True, suggestedProxyId=suggestion.person_id,
+                needsHumanChoice=suggestion.confidence == "low", fingerprint=fingerprint)
+
     first = absent.name.split()[0].lower()
     owns_decision = bool(notes) and first in text and has_decisions
     top = ranked[0] if ranked else None

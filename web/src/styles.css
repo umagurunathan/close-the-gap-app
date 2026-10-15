@@ -21,6 +21,56 @@ body {
   /* a soft coloured band behind the header that fades into the page tint, so the page is not flat white */
   background: linear-gradient(180deg, #dfe1f7 0px, #eceefa 220px, var(--bg) 420px) no-repeat, var(--bg);
   min-height: 100vh;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg, #f3f6fb);
+}
+
+.auth-card {
+  width: min(100%, 420px);
+  padding: 32px;
+  border: 1px solid var(--line, #dce3ec);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 12px 36px #172b4d14;
+}
+
+.auth-card .brand {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.auth-card p {
+  color: var(--muted, #526176);
+  line-height: 1.5;
+}
+
+.auth-card .primary {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.signed-in {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-error {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: #7b271a;
+  background: #fce8e6;
   color: var(--ink);
   font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
@@ -35,6 +85,9 @@ body {
 .tagline { font-size: 12px; color: var(--muted); }
 .topbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .switcher { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+.data-mode { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.data-mode button { padding: 6px 9px; font-size: 12px; }
+.data-mode button.mode-active { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
 select, input[type="date"], input[type="search"] {
   font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink);
 }
@@ -150,6 +203,20 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .note-label { display: grid; gap: 6px; margin-top: 12px; color: var(--muted); font-size: 13px; }
 .note-label textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; color: var(--ink); }
 .note-text { white-space: pre-wrap; margin-top: 4px; }
+.meeting-notes { margin: 4px 0 8px; }
+.meeting-notes > .link { padding-left: 0; }
+.meeting-note { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.meeting-note:last-of-type { border-bottom: 0; }
+.meeting-note .note-text { color: var(--ink); }
+.note-readers { display: grid; gap: 6px; margin-top: 12px; }
+.note-readers-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 13px; }
+.note-reader { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }
+.note-reader input { margin: 0; }
+.meet-capture { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.meet-capture h4 { margin: 0 0 6px; }
+.meet-link-form { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+.meet-link-form .note-label { flex: 1; min-width: 240px; }
+.meet-link-form input { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); }
 .candidates { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 8px; }
 .candidates li { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 

@@ -3,7 +3,7 @@ import { api } from "../api.js";
 
 // Demo form: the signed-in person schedules a meeting. If a key person (organizer or a required invitee) is already
 // out on that day, the backend starts the same flow at once and emails the organizer.
-export default function ScheduleMeeting({ people, me, onClose, onDone }) {
+export default function ScheduleMeeting({ people, me, calendarConnected, onClose, onDone }) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("2026-10-21");
   const [time, setTime] = useState("10:00");
@@ -58,7 +58,11 @@ export default function ScheduleMeeting({ people, me, onClose, onDone }) {
             </label>
           ))}
         </div>
-        <p className="reason">You are the organizer. If a required invitee is already out that day, you will be told straight away.</p>
+        <p className="reason">
+          {calendarConnected
+            ? "This creates a Google Calendar invitation from your connected account. Availability suggestions use calendars already synced to the app, not live Google FreeBusy. If a required invitee is already out, you will be told straight away."
+            : "Google Calendar is not connected, so this meeting will be added to the demo calendar only. If a required invitee is already out, you will be told straight away."}
+        </p>
         {error && <div className="note warn">{error}</div>}
         <div className="actions">
           <button className="primary" type="submit" disabled={busy}>Schedule</button>
