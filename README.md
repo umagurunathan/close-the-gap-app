@@ -18,14 +18,16 @@ When someone goes on leave they usually tell only their manager and reports. Col
 - **Runs the proxy flow:** the proxy can be anyone in the company directory, on the invite or not, with no organizer approval needed; someone not yet invited is added to the meeting and sent the invite. Covering is always the proxy's choice: they accept or decline, silent proxies get reminders, a declined proxy sends the owner and the organizer back to choose again.
 - **Reschedules safely:** same time of day, a day when every required person is free and none is on leave.
 - **Both sides can act:** the person who is out and the organizer. Urgency is highlighted for everyone: amber within 3 days, red within 24 hours.
-- **One card per meeting for the organizer,** naming everyone who is out, with one recommendation and one-click actions for the whole meeting. Large events (sent to a list, or more than 15 required people) only involve the organizer and the hosts.
+- **One card per meeting for the organizer,** naming everyone who is out, with one recommendation and one-click actions for the whole meeting. Large events (sent to a list, or more than 35 required people) only involve the organizer and the hosts, plus anyone the event names, whom the AI checks.
 - **Settled meetings get out of the way:** once a meeting is rescheduled or cancelled it moves to "No action needed" (or "Done" for the organizer), showing the old time struck through and the new one.
 
 ## How the AI works
-- **Gemini on Vertex AI** reads the meeting (title, description, invitees and the summaries the viewer can open) and returns a structured answer: the action, a one-line reason, a confidence level and, when useful, a suggested proxy.
+- **A meeting advisor agent built with Google's Agent Development Kit (ADK)** runs on Gemini on Vertex AI. It gets the meeting details and three tools, all bound to one meeting and one viewer: the summaries this viewer may open, the people who could cover (never anyone out that day), and "is this person out that day?". Gemini decides which to use and when to stop (a stand-up needs only the summaries; a proxy needs the candidate list) and returns a structured answer: the action, a one-line reason, a confidence level and, when useful, a suggested proxy. Privacy is enforced by the tools, so the agent cannot see more than the person it advises.
+- **Pages never wait for the AI:** a card first shows the rule-based suggestion marked "AI analysing…", the agent works on a few cards at a time in the background, and each card updates by itself when its answer arrives.
 - **Plain-code checks run on every answer** before anyone sees it: a suggested proxy must be a real candidate and not out that day, a proxy chosen without summaries is never high confidence, and only high-confidence answers are handled automatically. If a check changes the answer, the card says so.
-- **The app never waits on the AI to work:** on a timeout or error it retries, then falls back to the rule-based recommendation and labels the card accordingly. Answers are cached until the meeting or the summaries change.
-- Each card shows where its recommendation came from: the Gemini model, "Adjusted by rules", or "Rule-based".
+- **The app never depends on the AI to work:** if the agent fails, a single Gemini call answers; if that fails too, the rule-based recommendation is shown and labelled. Answers are cached until the meeting or the summaries change.
+- **Gemini drafts the proxy's handover brief:** what the meeting is for, what the proxy covers, what was decided and what is still open, from summaries that both the sender and the chosen proxy can open. The sender reviews and edits it before sending; when a draft is not available, the screen says why.
+- Each card shows where its recommendation came from ("Gemini 2.5 Flash · ADK agent", "Adjusted by rules", or "Rule-based") and, in its details, what the agent looked up.
 
 ## Run it locally (two terminals)
 
@@ -46,10 +48,10 @@ npm install      # once
 npm run dev
 ```
 
-Use the "Signed in as" dropdown to switch person: Priya (planned leave), Kiran (sudden absence), Sam (organizer), Meena (proxy), Neha (unrelated). The "Schedule a meeting" and "Report an absence" buttons let you try both directions. A link can open the app as someone, on a tab: `?as=p_sam&tab=organizer`.
+Use the "Signed in as" dropdown to switch person: Priya (planned leave), Arjun (leave where the AI visibly beats simple rules), Kiran (sudden absence), Sam (organizer), Meena (proxy), Neha (unrelated). "Reset demo" restores the demo data and lets the AI analyse everything again. The "Schedule a meeting" and "Report an absence" buttons let you try both directions. A link can open the app as someone, on a tab: `?as=p_sam&tab=organizer`.
 
 ## Deploy
-- **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance, because the prototype keeps its data in memory. The service account needs the Vertex AI User role to call Gemini.
+- **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --no-cpu-throttling --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance, because the prototype keeps its data in memory; CPU always allocated, because the AI analysis runs in the background. The service account needs the Vertex AI User role to call Gemini.
 - **Web app → Firebase Hosting** (from `web/`): put the backend URL in `.env.production`, then `npm run build` and `firebase deploy --only hosting`.
 
 ## Tests
@@ -66,7 +68,7 @@ web/       React app: Attendee Mode, Organizer Mode, Proxy Requests, Past
 
 ## Built with
 This list shows what is built today and is updated as the project ships.
-- **AI:** Gemini 2.5 Flash on Vertex AI, through the Google Gen AI SDK (`google-genai`) with structured output
+- **AI:** Gemini 2.5 Flash on Vertex AI (asia-south1); Agent Development Kit (ADK) for the meeting advisor agent; Google Gen AI SDK (`google-genai`) with structured output for the single-call fallback
 - **Google Cloud:** Cloud Run (backend), Cloud Build and Artifact Registry (container builds), Firebase Hosting (web app), Cloud Logging
 - **Backend:** Python 3.13, FastAPI, pydantic, pytest
 - **Web app:** React 19, Vite

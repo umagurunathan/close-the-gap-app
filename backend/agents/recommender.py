@@ -84,6 +84,8 @@ def recommend(
 
     # 3) Normal meetings: does the absent person own a decision?
     ranked = rank_proxies(event, absent, people, notes)
+    # second choice for a proxy recommendation: the next-ranked person, only if they have some supporting link
+    backup = ranked[1]["personId"] if len(ranked) > 1 and ranked[1]["score"] > 0 else None
     first = absent.name.split()[0].lower()
     owns_decision = bool(notes) and first in text and has_decisions
     top = ranked[0] if ranked else None
@@ -93,7 +95,7 @@ def recommend(
             recommendation=Action.proxy,
             reason=f"{absent.name} is named on decisions in the previous summaries; {people[top['personId']].name} is named there too.",
             confidence=Confidence.high, sources=sources, summariesAvailable=True,
-            suggestedProxyId=top["personId"], fingerprint=fingerprint)
+            suggestedProxyId=top["personId"], backupProxyId=backup, fingerprint=fingerprint)
     if notes and owns_decision:
         return ItemKind.key_meeting, AiResult(
             recommendation=Action.reschedule,
@@ -105,16 +107,17 @@ def recommend(
             recommendation=Action.proxy if top else Action.reschedule,
             reason="Summaries don't show a decision owned by the absent person.",
             confidence=Confidence.medium, sources=sources, summariesAvailable=True,
-            suggestedProxyId=top["personId"] if top else None, needsHumanChoice=top is None,
+            suggestedProxyId=top["personId"] if top else None, backupProxyId=backup if top else None,
+            needsHumanChoice=top is None,
             fingerprint=fingerprint)
 
     # 4) No summaries available: fall back to the reporting hierarchy, with lower confidence
     if top and top["score"] > 0:
         return ItemKind.key_meeting, AiResult(
             recommendation=Action.proxy,
-            reason=f"No summaries available to you. Suggested from the reporting line: {people[top['personId']].name} ({top['reason']}).",
+            reason=f"No summaries available to you. Suggested from the reporting line: {people[top['personId']].name} ({top['reason'].lower()}).",
             confidence=Confidence.low, sources=sources, summariesAvailable=False,
-            suggestedProxyId=top["personId"])
+            suggestedProxyId=top["personId"], backupProxyId=backup)
     return ItemKind.key_meeting, AiResult(
         recommendation=Action.reschedule,
         reason="No summaries available to you and no clear proxy, so a person needs to choose.",

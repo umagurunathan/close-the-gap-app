@@ -29,6 +29,7 @@ def rank_proxies(
         invitees.append(event.organizerId)
     scored = []
     text = " ".join(n.text.lower() for n in notes)
+    who = absent.name.split()[0]
     for pid in invitees:
         p = people.get(pid)
         if not p or p.isGroup:  # distribution lists can't cover a meeting
@@ -37,17 +38,19 @@ def rank_proxies(
         mentions = text.count(_first_name(p)) if text else 0
         if mentions:
             score += S.proxy_ranking.named_in_summaries_base + mentions
-            reasons.append(f"named {mentions}x in previous summaries")
+            reasons.append("mentioned in an earlier summary" if mentions == 1 else f"mentioned {mentions} times in earlier summaries")
         if absent.managerId == pid:
             score += S.proxy_ranking.absent_persons_manager
-            reasons.append("the absent person's manager")
+            reasons.append(f"{who}'s manager")
         elif p.managerId and p.managerId == absent.managerId:
             score += S.proxy_ranking.peer_same_manager
-            reasons.append("a peer (same manager)")
+            reasons.append(f"{who}'s peer (same manager)")
         elif p.managerId == absent.id:
             score += S.proxy_ranking.direct_report
-            reasons.append("a direct report")
-        scored.append((score, pid, "; ".join(reasons) or "invitee, no supporting evidence"))
+            reasons.append(f"reports to {who}")
+        # shown on screen next to the person: plain words, sentence case
+        reason = " · ".join(reasons) or "invited, no other link found"
+        scored.append((score, pid, reason[0].upper() + reason[1:]))
     scored.sort(key=lambda t: (-t[0], t[1]))
     return [{"personId": pid, "rank": i + 1, "reason": reason, "score": score}
             for i, (score, pid, reason) in enumerate(scored)]

@@ -6,6 +6,7 @@ import OrganizerCard from "./components/OrganizerCard.jsx";
 import ProxyCard from "./components/ProxyCard.jsx";
 import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
 import SettledCard from "./components/SettledCard.jsx";
+import MessageBar from "./components/MessageBar.jsx";
 
 const DEFAULT_PERSON = "p_priya";
 // A link can open the app as someone, on a tab: ?as=p_sam&tab=organizer (handy for demos and the judges' guide).
@@ -30,12 +31,15 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [notice, setNotice] = useState("");
+  const [settings, setSettings] = useState(null); // from GET /settings/public
   const [error, setError] = useState("");
 
   useEffect(() => {
     api("/people")
       .then((list) => setPeople(Object.fromEntries(list.map((p) => [p.id, p]))))
-      .catch((e) => setError(`Cannot reach the backend: ${e.message}. Is it running on port 8000?`));
+      .catch((e) => setError(e.message));
+    // the few settings the screen shows, from the backend's config file, so the two never disagree
+    api("/settings/public").then(setSettings).catch(() => {});
   }, []);
 
   const refresh = useCallback(async () => {
@@ -56,25 +60,52 @@ export default function App() {
       setMe(m); setAbsences(a); setAttendee(att); setOrganizer(org); setProxyReqs(pr); setPastItems(pi); setPastProxy(pp);
       setHistory(h); setMetrics(met); setOutbox(ob);
     } catch (e) {
-      setError(`Cannot reach the backend: ${e.message}. Is it running on port 8000?`);
+      setError(e.message);
     }
   }, [personId]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // While Gemini is still analysing any card on screen, check again every few seconds; stop once all have answered.
+  const analysing = [
+    ...attendee.needsAction, ...attendee.noActionNeeded.teamCheckins, ...attendee.noActionNeeded.orgEvents,
+    ...organizer.flatMap((m) => [m, ...m.absentees]), ...pastItems,
+  ].some((c) => c.ai?.engine === "analysing");
+  useEffect(() => {
+    if (!analysing) return undefined;
+    const timer = setTimeout(refresh, (settings?.refreshWhileAnalysingSeconds ?? 4) * 1000);
+    return () => clearTimeout(timer);
+  }, [analysing, refresh, attendee, organizer, settings]);
 
   function switchPerson(id) {
     localStorage.setItem("personId", id);
     setPersonId(id);
   }
 
-  async function respond(reqId, response) {
+  // Demo only: reload the demo data and clear the AI's cache, so every card is analysed again.
+  async function resetDemo() {
+    if (!window.confirm("Reset the demo? Everything done so far is undone, and the AI analyses every card again.")) return;
     try {
-      await api(`/proxy-requests/${reqId}/respond`, { method: "POST", person: personId, body: { response } });
+      await api("/dev/reset-demo", { method: "POST", person: personId });
+      setNotice("Demo reset. The AI is analysing every card again.");
       await refresh();
     } catch (e) {
       setError(e.message);
     }
   }
+
+  // Returns when done, so the card can lock its buttons meanwhile (no double answers).
+  async function respond(reqId, response) {
+    try {
+      await api(`/proxy-requests/${reqId}/respond`, { method: "POST", person: personId, body: { response } });
+      setNotice(response === "accepted" ? "Thanks, you're covering this meeting." : "Thanks, your answer has been sent.");
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  const clearError = useCallback(() => setError(""), []);
+  const clearNotice = useCallback(() => setNotice(""), []);
 
   const counts = me?.counts || { attendee: 0, organizer: 0, proxyRequests: 0, attendeeOpen: 0, organizerOpen: 0, proxyOpen: 0 };
   // Activity log lines per meeting, shown inside the cards in Past
@@ -85,6 +116,14 @@ export default function App() {
   const affectedCount = attendee.needsAction.length + noAction.teamCheckins.length + noAction.orgEvents.length;
   const activeMeetings = organizer.filter((m) => !m.done);
   const doneMeetings = organizer.filter((m) => m.done);
+  // Needs action first, the most urgent on top (red, then amber, then by date); settled ones below, by date.
+  const URGENCY = { urgent: 0, soon: 1 };
+  const openMeetings = activeMeetings.filter((m) => m.needsAttention)
+    .sort((a, b) => (URGENCY[a.urgency] ?? 2) - (URGENCY[b.urgency] ?? 2) || a.event.start.localeCompare(b.event.start));
+  const settledMeetings = activeMeetings.filter((m) => !m.needsAttention);
+  // Proxy requests: waiting for your answer first, then the ones you answered.
+  const waitingReqs = proxyReqs.filter((v) => v.request.status === "pending");
+  const answeredReqs = proxyReqs.filter((v) => v.request.status !== "pending");
   const upcomingAbsence = absences[0];
 
   return (
@@ -98,6 +137,8 @@ export default function App() {
           <button className="ghost" onClick={() => setShowSchedule(true)}>Schedule a meeting</button>
           <button className="ghost" onClick={() => setShowAdd(true)}>Report an absence</button>
           <button className="ghost" onClick={() => setShowEmails((v) => !v)}>Emails (demo) · {outbox.length}</button>
+          <button className="ghost" onClick={resetDemo}
+            title="Back to the demo data, with nothing cached: the AI analyses every card again">Reset demo</button>
           <label className="switcher">
             Signed in as
             <select value={personId} onChange={(e) => switchPerson(e.target.value)}>
@@ -109,8 +150,8 @@ export default function App() {
         </div>
       </header>
 
-      {error && <div className="banner warn">{error}</div>}
-      {notice && <div className="banner warn" onClick={() => setNotice("")}>{notice}</div>}
+      <MessageBar kind="error" text={error} onClose={clearError} />
+      <MessageBar kind="success" text={notice} onClose={clearNotice} hideAfter={settings?.messageHideSeconds ?? 6} />
 
       {upcomingAbsence && (
         <div className="banner">
@@ -120,11 +161,26 @@ export default function App() {
       )}
 
       {metrics && (
-        <div className="impact">
-          <div><b>{metrics.meetingsResolved}</b><span>Meetings resolved</span></div>
-          <div><b>{metrics.avgLeadTimeDays}</b><span>Days ahead, on average</span></div>
-          <div><b>{metrics.attendeeMinutesSaved}</b><span>Attendee-minutes saved (modeled)</span></div>
-        </div>
+        <section className="impact" aria-label="Impact so far">
+          <div title="Meetings affected by someone's absence that already have a plan: handled automatically, covered by a proxy, going ahead without them, rescheduled or cancelled.">
+            <b>{metrics.meetingsWithPlan}<small> of {metrics.meetingsAffected}</small></b>
+            <span>Affected meetings with a plan</span>
+          </div>
+          <div title="On average, how many days before the meeting the plan was made, instead of finding out when the meeting starts.">
+            <b>{metrics.avgNoticeDays}<small> days</small></b>
+            <span>Notice, on average</span>
+          </div>
+          <div title={metrics.estimateNote}>
+            <b>{metrics.teamHoursSaved}<small> h</small></b>
+            <span>Team time saved (estimate)</span>
+          </div>
+          <div title={metrics.decisionsCounted
+            ? `Of the ${metrics.decisionsCounted} decisions people made, how many followed the recommendation shown on the card.`
+            : "No decisions yet: this shows how often people follow the recommendation shown on the card."}>
+            <b>{metrics.recommendationsFollowedPct ?? "–"}{metrics.recommendationsFollowedPct != null && <small>%</small>}</b>
+            <span>Recommendations followed</span>
+          </div>
+        </section>
       )}
 
       <nav className="tabs">
@@ -174,7 +230,11 @@ export default function App() {
         {tab === "organizer" && (
           <>
             {activeMeetings.length === 0 && <div className="empty">No gaps in meetings you organize.</div>}
-            {activeMeetings.map((m) => (
+            {openMeetings.map((m) => (
+              <OrganizerCard key={m.calendarEventId} meeting={m} people={people} me={personId} refresh={refresh} />
+            ))}
+            {settledMeetings.length > 0 && <h4 className="group-title">Settled ({settledMeetings.length})</h4>}
+            {settledMeetings.map((m) => (
               <OrganizerCard key={m.calendarEventId} meeting={m} people={people} me={personId} refresh={refresh} />
             ))}
             {doneMeetings.length > 0 && (
@@ -193,7 +253,11 @@ export default function App() {
         {tab === "proxy" && (
           <>
             {proxyReqs.length === 0 && <div className="empty">No proxy requests.</div>}
-            {proxyReqs.map((v) => (
+            {waitingReqs.map((v) => (
+              <ProxyCard key={v.request.id} view={v} people={people} onRespond={respond} />
+            ))}
+            {answeredReqs.length > 0 && <h4 className="group-title">Answered ({answeredReqs.length})</h4>}
+            {answeredReqs.map((v) => (
               <ProxyCard key={v.request.id} view={v} people={people} onRespond={respond} />
             ))}
           </>
@@ -201,7 +265,7 @@ export default function App() {
 
         {tab === "past" && (
           <>
-            <p className="reason">Meetings whose time has passed, kept for 30 days.</p>
+            <p className="reason">Meetings whose time has passed{settings ? `, kept for ${settings.pastDays} days` : ""}.</p>
             {pastItems.length === 0 && pastProxy.length === 0 && <div className="empty">Nothing in the past yet.</div>}
             {pastItems.length > 0 && <h4 className="group-title">Your meetings</h4>}
             {pastItems.map((i) => (
@@ -252,6 +316,7 @@ export default function App() {
 
       {showAdd && (
         <AddAbsence
+          suddenHours={settings?.suddenNoticeHours}
           people={people}
           me={personId}
           onClose={() => setShowAdd(false)}
@@ -262,7 +327,7 @@ export default function App() {
   );
 }
 
-function AddAbsence({ people, me, onClose, onDone }) {
+function AddAbsence({ people, me, onClose, onDone, suddenHours }) {
   const [form, setForm] = useState({ personId: me, start: "2026-10-27", end: "2026-10-28" });
   const [error, setError] = useState("");
   async function submit(e) {
@@ -285,7 +350,7 @@ function AddAbsence({ people, me, onClose, onDone }) {
         </label>
         <label>From <input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></label>
         <label>To <input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
-        <p className="reason">If it starts within 24 hours it is treated as a sudden absence; otherwise it is planned leave.</p>
+        <p className="reason">If it starts within {suddenHours ?? 24} hours it is treated as a sudden absence; otherwise it is planned leave.</p>
         {error && <div className="note warn">{error}</div>}
         <div className="actions">
           <button className="primary" type="submit">Save</button>

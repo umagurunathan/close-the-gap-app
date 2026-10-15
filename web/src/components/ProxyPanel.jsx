@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { prettyModel } from "./aiBits.jsx";
 
 // Choose a proxy for ONE absent person's item: from the meeting's attendees or anyone in the directory, with an
 // optional note (Draft with AI only when allowed). Used on the person's card and on each line of the organizer's card.
@@ -10,7 +11,9 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
   const [matches, setMatches] = useState([]);
   const [note, setNote] = useState("");
   const [fromAi, setFromAi] = useState(false);
-  const [draftOk, setDraftOk] = useState(false);
+  const [draft, setDraft] = useState({ available: false, reason: "" }); // may the note start from an AI draft?
+  const [cleared, setCleared] = useState("");
+  const [draftSource, setDraftSource] = useState(null); // who wrote the draft: Gemini, or the simple draft
   const [drafting, setDrafting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -24,14 +27,39 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
       try {
         const list = await api(`/items/${item.id}/proxy-candidates`, { person: me });
         setCandidates(list);
-        setPick(ai.suggestedProxyId && list.some((c) => c.personId === ai.suggestedProxyId) ? ai.suggestedProxyId : "");
-        // "Draft with AI" is offered only when the host shared the summary with everyone invited
-        setDraftOk((await api(`/items/${item.id}/note-draft/available`, { person: me })).available);
+        // The first choice is pre-selected, unless someone already declined: then nothing is, it's the person's call.
+        const first = list.find((c) => c.choice === "first" && !c.declined);
+        setPick(first && !list.some((c) => c.declined) ? first.personId : "");
       } catch (e) {
         setError(e.message);
       }
     })();
   }, [item.id, me, ai.suggestedProxyId]);
+
+  // "Draft with AI" is offered only when the sender AND the chosen proxy can both open the meeting summary, so the
+  // note cannot reveal anything the proxy may not read. Asked again whenever the proxy changes; the reason is shown.
+  useEffect(() => {
+    let current = true;
+    (async () => {
+      try {
+        const q = pick ? `?proxyId=${encodeURIComponent(pick)}` : "";
+        const res = await api(`/items/${item.id}/note-draft/available${q}`, { person: me });
+        if (!current) return;
+        setDraft({ available: res.available, reason: res.reason || "" });
+        // An AI draft written for someone else must not go to a proxy who cannot open the summary.
+        if (!res.available && fromAi) {
+          setNote("");
+          setFromAi(false);
+          setCleared(`The AI draft was removed. ${res.reason || ""}`.trim());
+        }
+      } catch (e) {
+        if (current) setError(e.message);
+      }
+    })();
+    return () => { current = false; };
+    // fromAi is read, not watched: only a change of proxy should trigger this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, me, pick]);
 
   // Anyone in the company directory can be named, invited or not. The search runs on the server.
   async function searchDirectory(text) {
@@ -48,23 +76,17 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
 
   const invitedIds = new Set([ev.organizerId, ...ev.attendees.map((a) => a.personId)]);
   const pickedOutsider = pick && !invitedIds.has(pick);
-  // An AI draft is built from summaries shared with everyone invited, so it is off for someone who is not invited.
-  const canDraft = draftOk && !pickedOutsider;
-  // If an AI draft was already written and the sender then picks someone not invited, drop it.
-  useEffect(() => {
-    if (pickedOutsider && fromAi) {
-      setNote("");
-      setFromAi(false);
-    }
-  }, [pickedOutsider, fromAi]);
+  const canDraft = draft.available;
 
   async function draftWithAi() {
     setDrafting(true);
     setError("");
+    setCleared("");
     try {
-      const { draft } = await api(`/items/${item.id}/note-draft?proxyId=${pick}`, { method: "POST", person: me });
-      setNote(draft);
+      const res = await api(`/items/${item.id}/note-draft?proxyId=${pick}`, { method: "POST", person: me });
+      setNote(res.draft);
       setFromAi(true);
+      setDraftSource(res);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -91,19 +113,23 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
     <div className="panel">
       <h4>Choose a proxy for {name(item.absentPersonId)}</h4>
       {candidates.length > 0 && (
-        <>
-          <select value={candidates.some((c) => c.personId === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}>
+        <div className="pick-row">
+          <select value={candidates.some((c) => c.personId === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}
+            aria-describedby={`pick-why-${item.id}`}>
             <option value="">From this meeting's attendees…</option>
             {candidates.map((c) => (
               <option key={c.personId} value={c.personId}>
-                {name(c.personId)}{c.personId === ai.suggestedProxyId ? " (suggested)" : ""}
+                {name(c.personId)}
+                {(c.choice || c.declined) &&
+                  ` (${[c.choice && `${c.choice} choice`, c.declined && "declined"].filter(Boolean).join(", ")})`}
               </option>
             ))}
           </select>
+          {/* why this person: next to the list, not under it (so it isn't read as part of the search box) */}
           {pick && candidates.some((c) => c.personId === pick) && (
-            <p className="reason">{candidates.find((c) => c.personId === pick)?.reason}</p>
+            <span className="pick-why" id={`pick-why-${item.id}`}>{candidates.find((c) => c.personId === pick)?.reason}</span>
           )}
-        </>
+        </div>
       )}
       <input type="search" value={query} placeholder="Or search the company directory by email…"
         onChange={(e) => searchDirectory(e.target.value)} />
@@ -122,18 +148,40 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
       )}
       <label className="note-label">
         Note for the proxy (optional)
-        <textarea rows={4} value={note}
+        {/* taller once an AI brief is in, so the sender can read all of it before sending */}
+        <textarea rows={fromAi ? 14 : 4} value={note}
           placeholder={canDraft ? "Type a note, or use Draft with AI" : "Type your own note for the proxy"}
           onChange={(e) => setNote(e.target.value)} />
       </label>
       <div className="actions">
-        <button disabled={!canDraft || drafting} onClick={draftWithAi}>{drafting ? "Drafting…" : "Draft with AI"}</button>
+        <button disabled={!canDraft || drafting} onClick={draftWithAi} aria-describedby={`draft-why-${item.id}`}>
+          {drafting ? "Drafting…" : "Draft with AI"}
+        </button>
+        {fromAi && draftSource?.engine === "gemini" && (
+          <span className="pill src-ai" title="Written by Gemini from the summaries you and the proxy can both open.">
+            ✓ Drafted by {prettyModel(draftSource.model)}
+          </span>
+        )}
+        {fromAi && draftSource?.engine === "rules_fallback" && (
+          <span className="pill src-rules" title="Gemini did not answer, so a simple draft was made from the summary.">
+            Simple draft · AI unavailable
+          </span>
+        )}
         {fromAi && <span className="reason">Review and edit before sending.</span>}
       </div>
+      {/* A disabled button always says why (Uma 2026-10-14). */}
+      {cleared ? (
+        <p className="note warn" id={`draft-why-${item.id}`}>{cleared}</p>
+      ) : (
+        !canDraft && draft.reason && <p className="reason" id={`draft-why-${item.id}`}>{draft.reason}</p>
+      )}
       <div className="actions">
-        <button className="primary" disabled={busy || !pick} onClick={send}>Send proxy request</button>
+        <button className="primary" disabled={busy || !pick} onClick={send} aria-describedby={`send-why-${item.id}`}>
+          {busy ? "Sending…" : "Send proxy request"}
+        </button>
         <button className="link" onClick={onBack}>Back</button>
       </div>
+      {!pick && <p className="reason" id={`send-why-${item.id}`}>Choose a proxy above to send the request.</p>}
       {error && <div className="note warn">{error}</div>}
     </div>
   );
