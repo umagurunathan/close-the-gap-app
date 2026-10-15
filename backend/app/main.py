@@ -349,6 +349,8 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         """Back to the demo data, with an empty AI cache, so every card is analysed again (the "Reset demo" button)."""
         if config.firebase_auth_enabled():
             raise HTTPException(404, "This demo-only endpoint is disabled.")
+        if isinstance(svc.store, FirestoreStore):
+            raise HTTPException(404, "Reset is disabled for the persistent Firestore demo.")
         from .seed import build_service
         build_service(into=svc)
         return {"ok": True}

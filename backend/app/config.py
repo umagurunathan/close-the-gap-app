@@ -1,5 +1,6 @@
 """Settings come from environment variables so the same code runs locally and on Cloud Run."""
 import os
+import re
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -28,6 +29,13 @@ def firestore_project() -> str:
 
 def firestore_database() -> str:
     return os.getenv("FIRESTORE_DATABASE", "(default)")
+
+
+def firestore_collection_prefix() -> str:
+    prefix = os.getenv("FIRESTORE_COLLECTION_PREFIX", "").strip()
+    if prefix and not re.fullmatch(r"[a-z][a-z0-9_]*", prefix):
+        raise ValueError("FIRESTORE_COLLECTION_PREFIX must start with a lowercase letter and contain only lowercase letters, digits, or underscores.")
+    return prefix
 
 
 def firebase_auth_enabled() -> bool:

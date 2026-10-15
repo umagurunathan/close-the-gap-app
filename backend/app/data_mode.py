@@ -10,7 +10,7 @@ VALID_MODES = {"memory", "firestore"}
 class FirestoreDataMode:
     def __init__(self):
         client = new_client(config.firestore_project(), config.firestore_database())
-        self._document = client.collection("metadata").document("demo_mode")
+        self._document = client.collection(f"{config.firestore_collection_prefix()}metadata").document("demo_mode")
 
     def get(self) -> str:
         snapshot = self._document.get()

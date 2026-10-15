@@ -41,11 +41,16 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
                                AbsenceSource(absence_data["source"]), absence_data["enteredBy"])
     elif kind == "firestore":
         client = new_client(config.firestore_project(), config.firestore_database())
-        store = FirestoreStore(client)
-        calendar = FirestoreCalendar(client)
+        collection_prefix = config.firestore_collection_prefix()
+        store = FirestoreStore(client, collection_prefix)
+        calendar = FirestoreCalendar(client, collection_prefix)
         new_events = []
         for person in people:
-            store.add_person_if_missing(person)
+            if collection_prefix:
+                person.email = f"{person.id}@example.invalid"
+                store.ensure_public_demo_person(person)
+            else:
+                store.add_person_if_missing(person)
         for event in events:
             if calendar.add_event_if_missing(event):
                 new_events.append(event)

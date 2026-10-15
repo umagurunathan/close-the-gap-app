@@ -1349,6 +1349,16 @@ def test_reset_demo_restores_the_data_and_empties_the_ai_cache(client, svc):
     assert again.status.value == "pending_decision" and ("x",) not in svc._analysis_cache
 
 
+def test_reset_demo_is_disabled_for_firestore_backed_data(svc):
+    from app.store import FirestoreStore
+
+    svc.store = FirestoreStore(None)
+    client = TestClient(create_app(svc))
+    response = client.post("/dev/reset-demo")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Reset is disabled for the persistent Firestore demo."
+
+
 def test_routine_kind_with_an_action_becomes_a_key_meeting(svc):
     from agents import guard
     from agents.recommender import recommend

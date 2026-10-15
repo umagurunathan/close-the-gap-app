@@ -74,8 +74,8 @@ class SimCalendar:
 class FirestoreCalendar:
     """Firestore-backed calendar records, including their shared meeting notes."""
 
-    def __init__(self, client: firestore.Client):
-        self._events = client.collection("events")
+    def __init__(self, client: firestore.Client, collection_prefix: str = ""):
+        self._events = client.collection(f"{collection_prefix}events")
 
     def get(self, event_id: str) -> Optional[CalEvent]:
         return decode_document(self._events.document(event_id).get(), CalEvent)

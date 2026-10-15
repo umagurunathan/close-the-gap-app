@@ -114,11 +114,12 @@ class InMemoryStore(Store):
 class FirestoreStore(Store):
     """Firestore-backed app state. IDs in model records are document IDs."""
 
-    def __init__(self, client: firestore.Client):
+    def __init__(self, client: firestore.Client, collection_prefix: str = ""):
         self._client = client
+        self._collection_prefix = collection_prefix
 
     def _collection(self, name: str):
-        return self._client.collection(name)
+        return self._client.collection(f"{self._collection_prefix}{name}")
 
     def _all(self, collection: str, model_type):
         return [model_type.model_validate(doc.to_dict()) for doc in self._collection(collection).stream()]
@@ -131,6 +132,15 @@ class FirestoreStore(Store):
 
     def add_person_if_missing(self, person: Person) -> None:
         create_if_missing(self._collection("people").document(person.id), person)
+
+    def ensure_public_demo_person(self, person: Person) -> None:
+        reference = self._collection("people").document(person.id)
+        snapshot = reference.get()
+        if not snapshot.exists:
+            create_if_missing(reference, person)
+            return
+        if (snapshot.to_dict() or {}).get("email") != person.email:
+            reference.update({"email": person.email})
 
     def add_absence(self, absence: Absence) -> None:
         self._collection("absences").document(absence.id).set(encode_model(absence))

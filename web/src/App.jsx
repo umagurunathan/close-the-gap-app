@@ -253,8 +253,8 @@ export default function App() {
           ))}
           {!firebaseAuthEnabled && <>
             <button className="ghost" onClick={() => setShowEmails((v) => !v)}>Emails (demo) · {outbox.length}</button>
-            <button className="ghost" onClick={resetDemo}
-              title="Back to the demo data, with nothing cached: the AI analyses every card again">Reset demo</button>
+            {!publicDemoMode && <button className="ghost" onClick={resetDemo}
+              title="Back to the demo data, with nothing cached: the AI analyses every card again">Reset demo</button>}
             <label className="switcher">
               Signed in as
               <select value={personId} onChange={(e) => switchPerson(e.target.value)}>
@@ -272,7 +272,7 @@ export default function App() {
       </header>
 
       {publicDemoMode && <div className="public-demo-banner">
-        Public seed demo · changes are temporary and shared with other visitors. Google Calendar and Firestore are not connected.
+        Public demo · changes are saved in Firestore and shared with other visitors. Use fictional demo data only; Google Calendar is not connected.
       </div>}
       <MessageBar kind="error" text={error} onClose={clearError} />
       <MessageBar kind="success" text={notice} onClose={clearNotice} hideAfter={settings?.messageHideSeconds ?? 6} />
