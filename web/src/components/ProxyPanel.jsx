@@ -131,7 +131,7 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
           )}
         </div>
       )}
-      <input type="search" value={query} placeholder="Or search the company directory by email…"
+      <input type="search" value={query} placeholder="Or search the company directory by name or email…"
         onChange={(e) => searchDirectory(e.target.value)} />
       {matches.length > 0 && (
         <select value={matches.some((p) => p.id === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}>
@@ -169,7 +169,7 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
         )}
         {fromAi && <span className="reason">Review and edit before sending.</span>}
       </div>
-      {/* A disabled button always says why (Uma 2026-10-14). */}
+      {/* A disabled button always says why. */}
       {cleared ? (
         <p className="note warn" id={`draft-why-${item.id}`}>{cleared}</p>
       ) : (
