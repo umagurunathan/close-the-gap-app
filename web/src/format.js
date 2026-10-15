@@ -39,17 +39,25 @@ export function urgencyLabel(urgency, hours) {
   return days <= 1 ? "Tomorrow" : `In ${days} days`;
 }
 
-export function fmtWhen(iso) {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC",
-  }) + " UTC";
+// ONE date format everywhere, whatever the browser's language: "Tue, 27 Oct · 3:00 pm", in the viewer's own time zone
+// (the calendar's way: a meeting at 09:30 UTC shows as 3:00 pm in India).
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function fmtTime(d) {
+  const h = d.getHours();
+  return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
 }
 
+export function fmtWhen(iso) {
+  const d = new Date(iso);
+  return `${WEEKDAY[d.getDay()]}, ${d.getDate()} ${MONTH[d.getMonth()]} · ${fmtTime(d)}`;
+}
+
+// A calendar date ("2026-10-27") with no time: "27 Oct". Read as a plain date, so no time zone can shift it.
 export function fmtDay(isoDate) {
-  return new Date(isoDate + "T00:00:00Z").toLocaleDateString(undefined, {
-    month: "short", day: "numeric", timeZone: "UTC",
-  });
+  const [, m, day] = isoDate.split("-").map(Number);
+  return `${day} ${MONTH[m - 1]}`;
 }
 
 // "1 meeting is" / "3 meetings are": counts read correctly in English.

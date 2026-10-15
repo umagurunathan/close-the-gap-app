@@ -35,6 +35,14 @@ def has_hosting_role(event: CalEvent, person: Person, notes: Optional[list[Note]
     return any(first in s.lower() and any(w in s.lower() for w in words) for s in re.split(r"(?<=[.!?])\s+", text))
 
 
+def is_named_in(event: CalEvent, person: Person, notes: Optional[list[Note]] = None) -> bool:
+    """The person's name appears in the title, description or the summaries the viewer may read. Used to decide if a
+    large event is worth an AI look: "Arjun walks us through the H2 numbers" has no hosting word, but names him."""
+    text = f"{event.title} {event.description} " + " ".join(n.text for n in (notes or []))
+    first = person.name.split()[0]
+    return bool(re.search(rf"\b{re.escape(first)}\b", text, re.IGNORECASE)) or person.name.lower() in text.lower()
+
+
 def is_invited_as_optional(event: CalEvent, person_id: str) -> bool:
     """Only optional on this invite (not the organizer, not required): such a person never triggers anything."""
     if person_id == event.organizerId:

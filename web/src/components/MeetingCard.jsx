@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { actionLabel, statusLabel, urgencyLabel, fmtWhen } from "../format.js";
-import { AiSource, RecommendationDetails, cap } from "./aiBits.jsx";
+import { AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
 
@@ -57,12 +57,16 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
 
   // The recommended action comes first and stands out; the others follow in the usual order.
   const firstName = (id) => name(id).split(" ")[0];
+  // After a proxy declined, it is the person's call again: a general "Choose another proxy", no star, all buttons equal.
+  const declined = item.declinedProxyIds || [];
+  const afterDecline = item.status === "proxy_declined" && declined.length > 0;
   const buttons = [
     mine && item.ownerRole === "leaver" && { action: "attend", text: label("attend"), onClick: () => act("attend") },
     { action: "proceed_without", text: label("proceed_without"), onClick: () => act("proceed_without") },
     {
       action: "proxy",
-      text: ai.recommendation === "proxy" && ai.suggestedProxyId ? `Ask ${firstName(ai.suggestedProxyId)} to cover` : "Choose a proxy",
+      text: afterDecline ? "Choose another proxy"
+        : ai.recommendation === "proxy" && ai.suggestedProxyId ? `Ask ${firstName(ai.suggestedProxyId)} to cover` : "Choose a proxy",
       onClick: () => setMode("proxy"),
     },
     { action: "reschedule", text: iAmOrganizer ? "Reschedule" : "Ask organizer to reschedule", onClick: onReschedule },
@@ -70,7 +74,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   ].filter(Boolean);
   // Only point at the recommendation while a decision is still needed (not after someone already acted on it).
   const deciding = ["pending_decision", "proxy_declined", "no_slot_found"].includes(item.status);
-  const highlight = deciding ? ai.recommendation : null;
+  const highlight = deciding && !afterDecline ? ai.recommendation : null;
   // Once someone has acted, that action comes first in green with a tick and says what happened; the rest stay
   // available after "or change to:", because people may change their mind.
   const taken = !deciding && item.chosenAction ? item.chosenAction : null;
@@ -110,21 +114,18 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
           <AiSource ai={ai} />
         </div>
         <p className="reason">{ai.reason}</p>
-        {ai.suggestedProxyId ? (
-          <div className="meta"><span>Suggested proxy: <b>{name(ai.suggestedProxyId)}</b></span></div>
-        ) : ai.recommendation === "proxy" && ai.needsHumanChoice ? (
-          <div className="meta"><span>No clear proxy. Please choose one.</span></div>
-        ) : null}
+        <ProxySuggestions ai={ai} declined={declined} name={name} />
         <RecommendationDetails ai={ai} />
       </section>
 
-      {(item.chosenProxyId || item.decidedBy) && (
+      {((item.chosenProxyId && !afterDecline) || item.decidedBy) && (
         <div className="note">
-          {[item.chosenProxyId && `Proxy: ${name(item.chosenProxyId)}`, item.decidedBy && `Decided by ${name(item.decidedBy)}`]
+          {[item.chosenProxyId && !afterDecline && `Proxy: ${name(item.chosenProxyId)}`, item.decidedBy && `Decided by ${name(item.decidedBy)}`]
             .filter(Boolean).join(" · ")}
         </div>
       )}
       {item.rescheduledTo && <div className="note">Moved to {fmtWhen(item.rescheduledTo)}</div>}
+      {afterDecline && <div className="note warn">{declineNotice(ai, declined, name)}</div>}
       {item.status === "no_slot_found" && <div className="note warn">No time works for everyone in the next working days. Please pick a time in your calendar.</div>}
       {item.status === "awaiting_organizer" && <div className="note">The organizer has been asked to {item.chosenAction}.</div>}
 
@@ -154,6 +155,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
             );
             return taken && n === 1 ? [<span key="change" className="change-label">or change to:</span>, button] : button;
           })}
+          {busy && <span className="saving" role="status">Saving…</span>}
         </div>
       )}
 
@@ -186,7 +188,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
           <summary>Activity ({activity.length})</summary>
           <ul>
             {activity.map((h) => (
-              <li key={h.id}>{fmtWhen(h.at)} · {name(h.actorId)} · {h.type} · {h.detail}</li>
+              <li key={h.id}><span className="activity-when">{fmtWhen(h.at)}</span> {h.text || `${name(h.actorId)}: ${h.detail}`}</li>
             ))}
           </ul>
         </details>

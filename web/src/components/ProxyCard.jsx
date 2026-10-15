@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fmtWhen, urgencyLabel } from "../format.js";
 import Invitees from "./Invitees.jsx";
 
@@ -12,6 +13,15 @@ const STATUS = {
 // has passed; then it moves to Past. `onRespond` is null on finished meetings (read-only).
 export default function ProxyCard({ view, people, onRespond = null, activity = [] }) {
   const { request: r, item, notesAvailable } = view;
+  const [busy, setBusy] = useState(false);   // locked while the answer is being sent: no double answers
+  async function answer(response) {
+    setBusy(true);
+    try {
+      await onRespond(r.id, response);
+    } finally {
+      setBusy(false);
+    }
+  }
   const name = (id) => people[id]?.name ?? id;
   const st = STATUS[r.status];
   const urgency = r.status === "pending" ? urgencyLabel(item.urgency, item.hoursToStart) : null;
@@ -51,8 +61,9 @@ export default function ProxyCard({ view, people, onRespond = null, activity = [
 
       {onRespond && r.status === "pending" && (
         <div className="actions">
-          <button className="primary" onClick={() => onRespond(r.id, "accepted")}>Accept</button>
-          <button onClick={() => onRespond(r.id, "declined")}>Decline</button>
+          <button className="primary" disabled={busy} onClick={() => answer("accepted")}>Accept</button>
+          <button disabled={busy} onClick={() => answer("declined")}>Decline</button>
+          {busy && <span className="saving" role="status">Saving…</span>}
         </div>
       )}
 
@@ -61,7 +72,7 @@ export default function ProxyCard({ view, people, onRespond = null, activity = [
           <summary>Activity ({activity.length})</summary>
           <ul>
             {activity.map((h) => (
-              <li key={h.id}>{fmtWhen(h.at)} · {name(h.actorId)} · {h.type} · {h.detail}</li>
+              <li key={h.id}><span className="activity-when">{fmtWhen(h.at)}</span> {h.text || `${name(h.actorId)}: ${h.detail}`}</li>
             ))}
           </ul>
         </details>

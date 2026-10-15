@@ -1,11 +1,15 @@
 """The app's logic. Everything the API endpoints do lives here, so it can be tested without a web server."""
 from __future__ import annotations
 
+import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
+from time import monotonic
 from typing import Optional
 
 from agents.note_drafter import draft_note
-from agents.orchestrator import analyze
+from agents.orchestrator import ai_needed, analyze
 from agents.proxy_ranker import rank_proxies
 
 from . import config, notify
@@ -13,7 +17,8 @@ from .calendar import SimCalendar
 from .models import (
     AiResult, Absence, AbsenceSource, AbsenceType, Action, AttendeeItems, CalEvent, Counts, DirectoryEntry,
     EventAttendee, EventRef,
-    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, OrganizerMeeting, Person, ProposedTime, ProxyCandidate,
+    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, NoteDraft, NoteDraftAvailable, OrganizerMeeting, Person,
+    ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
 from .roles import is_invited_as_optional, required_ids
@@ -33,6 +38,7 @@ ATTENTION = {
     ItemStatus.proxy_declined, ItemStatus.no_slot_found,
 }
 # The numbers below are tunable in config/settings.toml
+log = logging.getLogger("close_the_gap.service")
 PAST_DAYS = S.visibility.past_days            # how long a finished meeting stays visible in Past
 URGENT_HOURS = S.urgency.urgent_hours          # red chip
 SOON_HOURS = S.urgency.soon_hours              # amber chip
@@ -47,26 +53,110 @@ class Service:
         # fingerprint of the summaries visible to the viewer, so two viewers who can open the same documents share
         # one result, and a changed or newly shared summary triggers a fresh analysis.
         self._analysis_cache: dict[tuple, tuple[ItemKind, AiResult]] = {}
+        # Background analysis (B22): cards are answered at once with the rules' suggestion ("AI analysing…") while the
+        # AI works in a small pool of threads; the web app checks again until every card has its final answer.
+        self._lock = threading.Lock()
+        self._pending: dict[tuple, float] = {}                                  # key -> when the analysis started
+        self._failed: dict[tuple, tuple[float, tuple[ItemKind, AiResult]]] = {}  # key -> when it failed, fallback shown
+        self._pool: Optional[ThreadPoolExecutor] = None
+        self.replaying = False   # True while the seed replays a past week: no background AI for those cards
+
+    def _cache_key(self, item: MeetingItem, e, visible) -> tuple:
+        # Same meeting + same summaries this viewer can read + same AI setup = same answer, so it is reused and the AI
+        # is not asked again. Any change to the meeting or its summaries makes a new key, so the AI looks again.
+        return (item.id,
+                (e.title, e.description, e.start.isoformat(), e.organizerId,
+                 tuple((a.personId, a.optional) for a in e.attendees)),
+                tuple((n.docId, n.modifiedAt.isoformat()) for n in visible),
+                (S.ai.enabled, S.ai.model, S.ai.engine))
+
+    @staticmethod
+    def _is_final(result: tuple[ItemKind, AiResult]) -> bool:
+        """Keep only a final answer: Gemini's (or a large-event policy answer) when the AI is on, the rules' when it is
+        off. A fallback or a placeholder is not kept, so the AI is asked again later."""
+        return result[1].engine in (("gemini_adk", "gemini", "rules_policy") if S.ai.enabled else ("rules",))
 
     def _analyze(self, item: MeetingItem, viewer: str, allow_ai: bool = True) -> tuple[ItemKind, AiResult]:
         e = self.calendar.get(item.event.calendarEventId)
         visible = self.calendar.visible_notes(e, viewer)
-        # Same meeting + same summaries this viewer can read + same AI setup = same answer, so it is reused and the AI
-        # is not asked again. Any change to the meeting or its summaries makes a new key, so the AI looks again.
-        key = (item.id,
-               (e.title, e.description, e.start.isoformat(), e.organizerId,
-                tuple((a.personId, a.optional) for a in e.attendees)),
-               tuple((n.docId, n.modifiedAt.isoformat()) for n in visible),
-               (S.ai.enabled, S.ai.model))
+        key = self._cache_key(item, e, visible)
         if key in self._analysis_cache:
             return self._analysis_cache[key]
-        result = analyze(e, self.person(item.absentPersonId), viewer, self.people_map(), self.calendar, self._is_out,
-                         use_ai=allow_ai)
-        # Keep only a "final" answer: Gemini's when the AI is on, the rules' when it is off. A fallback answer, or a
-        # rule-based placeholder made while creating the card, is not kept, so the AI is asked when the card is viewed.
-        if result[1].engine in (("gemini", "rules_policy") if S.ai.enabled else ("rules",)):
-            self._analysis_cache[key] = result
-        return result
+        absent = self.person(item.absentPersonId)
+        run = lambda use_ai: analyze(e, absent, viewer, self.people_map(), self.calendar, self._is_out,  # noqa: E731
+                                     use_ai=use_ai)
+        if not (S.ai.enabled and allow_ai and S.ai.background and ai_needed(e, absent, visible)):
+            result = run(allow_ai)   # AI off, card creation, tests, or a large event the rules handle: answer now
+            if self._is_final(result):
+                self._analysis_cache[key] = result
+                self._maybe_raise(item.id, viewer, *result)
+            return result
+
+        clock = monotonic()
+        with self._lock:
+            failed = self._failed.get(key)
+            if failed and clock - failed[0] < S.ai.retry_after_failure_seconds:
+                return failed[1]       # the AI failed a moment ago: show the fallback, do not ask again yet
+            started = self._pending.get(key)
+            if started is None:
+                started = self._pending[key] = clock
+                self._background().submit(self._analyze_in_background, key, run, item.id, viewer)
+        # Answer now with the rules' suggestion, labelled; the web app asks again until the AI's answer is in.
+        kind, ai = run(False)
+        ai = ai.model_copy()
+        if clock - started < S.ai.analysing_label_max_seconds:
+            ai.engine = "analysing"
+        else:
+            ai.engine = "rules_fallback"
+            ai.checks = ["the AI is taking longer than usual; rule-based suggestion shown, the card updates when it answers"]
+        return kind, ai
+
+    def _background(self) -> ThreadPoolExecutor:
+        if self._pool is None:
+            self._pool = ThreadPoolExecutor(max_workers=S.ai.background_workers, thread_name_prefix="ai-analysis")
+        return self._pool
+
+    def _analyze_in_background(self, key: tuple, run, item_id: str, viewer: str) -> None:
+        try:
+            result = run(True)
+        except Exception as err:   # noqa: BLE001 - never let a background failure disappear silently
+            log.warning("background analysis failed: %s", err)
+            result = None
+        with self._lock:
+            self._pending.pop(key, None)
+            if result and self._is_final(result):
+                self._analysis_cache[key] = result
+                self._failed.pop(key, None)
+            elif result:
+                self._failed[key] = (monotonic(), result)
+        if result and self._is_final(result):
+            self._maybe_raise(item_id, viewer, *result)
+
+    def _maybe_raise(self, item_id: str, viewer: str, kind: ItemKind, ai: AiResult) -> None:
+        """The AI may move a card the rules auto-handled up to "needs a decision" (`[ai] ai_may_raise_to_key_meeting`):
+        a "sync" whose summaries show sign-offs, an all-hands the absent person presents at. Only upward, only from the
+        absent person's own view (the view the card was classified from), only if nobody has acted on it yet."""
+        if not (S.ai.ai_may_raise_to_key_meeting and kind == ItemKind.key_meeting
+                and ai.engine in ("gemini", "gemini_adk")):
+            return
+        with self._lock:
+            item = self.store.get_item(item_id)
+            if (not item or viewer != item.absentPersonId or item.kind == ItemKind.key_meeting
+                    or item.status != ItemStatus.auto_handled or item.decidedBy):
+                return
+            was = item.kind.value
+            item.kind, item.status, item.chosenAction = ItemKind.key_meeting, ItemStatus.pending_decision, None
+            item.updatedAt = self.now()
+            self.store.save_item(item)
+        self._log(item_id, "system", "ai_raised", f"the AI found this {was.replace('_', ' ')} needs a decision: {ai.reason}",
+                  f"The AI found that this meeting needs a decision: {ai.reason}")
+
+    def wait_for_analysis(self, cancel: bool = False) -> None:
+        """Tests and scripts: wait until every background analysis has finished. `cancel` drops the queued ones
+        (used by "Reset demo"; one already talking to Gemini is left to finish on its own)."""
+        if self._pool:
+            self._pool.shutdown(wait=not cancel, cancel_futures=cancel)
+            self._pool = None
 
     # ---------- helpers ----------
     def now(self) -> datetime:
@@ -78,12 +168,39 @@ class Service:
     def person(self, person_id: str) -> Person:
         p = self.store.get_person(person_id)
         if not p:
-            raise LookupError(f"unknown person {person_id}")
+            raise LookupError(f"We couldn't find that person ({person_id}) in the directory.")
         return p
 
-    def _log(self, item_id: str, actor: str, type_: str, detail: str) -> None:
+    def _log(self, item_id: str, actor: str, type_: str, detail: str, text: str = "") -> None:
+        """`detail` is the technical record (audits); `text` is the same event in a plain sentence for the card."""
         self.store.add_history(HistoryEvent(
-            id=self.store.next_id("h"), itemId=item_id, actorId=actor, type=type_, detail=detail, at=self.now()))
+            id=self.store.next_id("h"), itemId=item_id, actorId=actor, type=type_, detail=detail, at=self.now(),
+            text=text))
+
+    def _first(self, person_id: str) -> str:
+        return self.person(person_id).name.split()[0]
+
+    def _decision_text(self, item: MeetingItem, caller: str, action: Action, proxy_id: Optional[str]) -> str:
+        """What a person decided, in a plain sentence (activity log and emails)."""
+        who, absent = self._first(caller), self._first(item.absentPersonId)
+        s = item.status
+        if action == Action.attend:
+            return f"{who} will attend despite being out."
+        if action == Action.proceed_without:
+            return f"{who} chose to go ahead without {absent}." if caller != item.absentPersonId \
+                else f"{who} chose to let the meeting go ahead without them."
+        if action == Action.proxy:
+            return (f"{who} asked {self._first(proxy_id)} to cover." if caller == item.absentPersonId
+                    else f"{who} asked {self._first(proxy_id)} to cover for {absent}.")
+        if s == ItemStatus.awaiting_organizer:
+            return f"{who} asked the organizer to {action.value} the meeting."
+        if s == ItemStatus.no_slot_found:
+            return f"{who} tried to reschedule, but no time worked for everyone; the organizer will pick one."
+        if s == ItemStatus.rescheduled:
+            return f"{who} rescheduled the meeting to a time when everyone is back."
+        if s == ItemStatus.cancelled:
+            return f"{who} cancelled this meeting."
+        return f"{who} updated the plan for this meeting."
 
     def organizer_decider(self, item: MeetingItem) -> str:
         """Who decides an organizer-owned item. Normally the organizer; if the organizer is the absent
@@ -136,7 +253,11 @@ class Service:
             item.status = ItemStatus.auto_handled
             item.chosenAction = Action.proceed_without
         self.store.add_item(item)
-        self._log(item.id, "system", "item_created", f"{kind.value}: {ai.recommendation.value if ai.recommendation else '-'}")
+        self._log(item.id, "system", "item_created", f"{kind.value}: {ai.recommendation.value if ai.recommendation else '-'}",
+                  f"{absent.name.split()[0]} is out, so this meeting was flagged"
+                  + (" and handled automatically (nothing depends on them)." if kind != ItemKind.key_meeting else "."))
+        if S.ai.enabled and S.ai.background and S.ai.analyse_in_background_on_creation and not self.replaying:
+            self._analyze(item, absent.id)   # queued, never waited for; the AI may then raise the card (see _maybe_raise)
         return item
 
     # ---------- a meeting is scheduled (or changed) while a key person is already out ----------
@@ -146,24 +267,24 @@ class Service:
         on that day, the same flow starts right away: cards are created and the organizer gets one email."""
         self.person(organizer_id)
         if end <= start:
-            raise ValueError("the meeting must end after it starts")
+            raise ValueError("The meeting must end after it starts. Please check the times.")
         for a in attendees:
             self.person(a.personId)
         event = CalEvent(id=self.store.next_id("evt"), title=title.strip() or "Untitled meeting", description=description,
                          start=start, end=end, organizerId=organizer_id, attendees=attendees)
         self.calendar.add_event(event)
-        self._log("-", organizer_id, "meeting_scheduled", event.title)
+        self._log("-", organizer_id, "meeting_scheduled", event.title, f"{self._first(organizer_id)} scheduled the meeting.")
         return event, self._scan_event(event)
 
     def add_attendee(self, event_id: str, caller: str, person_id: str, optional: bool = False) -> list[MeetingItem]:
         e = self.calendar.get(event_id)
         if not e:
-            raise LookupError("meeting not found")
+            raise LookupError("This meeting no longer exists. Please refresh the page to see the latest.")
         if caller != e.organizerId:
-            raise PermissionError("only the organizer can add people to the meeting")
+            raise PermissionError("Only the organizer can add people to this meeting.")
         self.person(person_id)
         if person_id == e.organizerId or any(a.personId == person_id for a in e.attendees):
-            raise ValueError("that person is already invited")
+            raise ValueError("That person is already invited to this meeting.")
         e.attendees.append(EventAttendee(personId=person_id, optional=optional))
         return self._scan_event(e, only=[person_id])
 
@@ -222,7 +343,10 @@ class Service:
         return created
 
     def absences_for(self, person_id: str) -> list[Absence]:
-        return sorted([a for a in self.store.absences() if a.personId == person_id], key=lambda a: a.start)
+        """This person's current and upcoming absences, earliest first (an absence that has ended is not shown)."""
+        today = self.now().date()
+        return sorted([a for a in self.store.absences() if a.personId == person_id and a.end >= today],
+                      key=lambda a: a.start)
 
     # ---------- listing ----------
     def _is_past(self, item: MeetingItem) -> bool:
@@ -244,8 +368,11 @@ class Service:
             urgency = "urgent"
         elif needs and hours <= SOON_HOURS:
             urgency = "soon"
-        _, ai = self._analyze(item, viewer)
+        # A finished meeting is not analysed again (no AI cost, and no answer the person never saw): it shows the
+        # recommendation recorded when someone decided, or the one the card was created with.
+        ai = (item.aiWhenDecided or item.ai) if self._is_past(item) else self._analyze(item, viewer)[1]
         return item.model_copy(update={"ai": ai, "needsAttention": needs, "urgency": urgency,
+                                       "declinedProxyIds": self._declined(item.id),
                                        "hoursToStart": round(hours, 1) if needs else None})
 
     def attendee_items(self, me: str) -> AttendeeItems:
@@ -303,6 +430,10 @@ class Service:
         pick = min(base, key=lambda i: order.index(i.ai.recommendation) if i.ai.recommendation in order else len(order))
         first = lambda i: self.person(i.absentPersonId).name.split()[0]   # noqa: E731
         engines = {i.ai.engine for i in base}
+        if engines == {"gemini", "gemini_adk"}:   # all written by Gemini, some by the agent and some by one call
+            engines = {"gemini"}
+        if "analysing" in engines:                # the AI is still working on someone on this meeting
+            engines = {"analysing"}
         return AiResult(
             recommendation=pick.ai.recommendation,
             reason=" ".join(f"{first(i)}: {i.ai.reason}" for i in base),
@@ -322,15 +453,15 @@ class Service:
         items = [i for i in self.store.items() if i.event.calendarEventId == event_id and i.kind == ItemKind.key_meeting
                  and not self._is_past(i)]
         if not items:
-            raise LookupError("meeting not found")
+            raise LookupError("This meeting no longer exists. Please refresh the page to see the latest.")
         side = set().union(*(self._organizer_side(i) for i in items))
         if caller not in side:
-            raise PermissionError("only the organizer can decide for the whole meeting")
+            raise PermissionError("Only the organizer can decide for the whole meeting.")
         if action not in (Action.reschedule, Action.cancel, Action.proceed_without):
-            raise ValueError("for the whole meeting: reschedule, cancel or proceed_without; a proxy is chosen per person")
+            raise ValueError("For the whole meeting you can reschedule, cancel or go on without them. A proxy is chosen for each person.")
         open_items = [i for i in items if i.status not in TERMINAL]
         if not open_items:
-            raise ValueError("this meeting has already been rescheduled or cancelled")
+            raise ValueError("This meeting has already been rescheduled or cancelled, so there is nothing left to decide.")
 
         if action == Action.proceed_without:
             # only people with nothing arranged; a pending or accepted proxy, or "I'll attend", is kept
@@ -358,7 +489,8 @@ class Service:
                     i.rescheduledTo, i.status, i.chosenAction = slot.proposedStart, ItemStatus.rescheduled, Action.reschedule
                     i.decidedBy, i.updatedAt = caller, now
                     self.store.save_item(i)
-                    self._log(i.id, caller, "action_chosen", f"reschedule (whole meeting) => rescheduled to {slot.proposedStart}")
+                    self._log(i.id, caller, "action_chosen", f"reschedule (whole meeting) => rescheduled to {slot.proposedStart}",
+                              f"{self._first(caller)} rescheduled the meeting to a time when everyone is back.")
         return next((m for m in self.organizer_meetings(caller) if m.calendarEventId == event_id), None)
 
     def past_items(self, me: str) -> list[MeetingItem]:
@@ -391,57 +523,70 @@ class Service:
             side.add(self.organizer_decider(item))
         return side
 
-    def _openly_shared_notes(self, item: MeetingItem, caller: str):
-        """summaries the host shared with EVERYONE invited (the organizer always has access). A partly
-        shared summary does not count. Only notes the caller can open are considered."""
+    def _draft_notes(self, item: MeetingItem, caller: str, proxy_id: Optional[str]):
+        """The summaries an AI-drafted note for this proxy may use: those the sender can open AND the chosen proxy can
+        open, so the note cannot reveal anything the proxy may not read (Uma 2026-10-14; replaces "shared with
+        everyone invited"). Returns (event, notes, reason); the reason says in plain words why no draft is possible."""
         if caller not in ({item.absentPersonId} | self._organizer_side(item)):
-            raise PermissionError("only the absent person or the organizer can do this")
+            raise PermissionError("Only the person who is out or the organizer can do this.")
         e = self.calendar.get(item.event.calendarEventId)
-        return e, [n for n in self.calendar.visible_notes(e, caller)
-                   if all(a.personId == e.organizerId or a.personId in n.sharedWith for a in e.attendees)]
+        if not proxy_id:
+            return e, [], "Choose a proxy first. A draft is offered when they can open the meeting summary."
+        mine = self.calendar.visible_notes(e, caller)
+        if not mine:
+            return e, [], "No meeting summary is available to you for this meeting, so there is nothing to draft from."
+        theirs = {n.docId for n in self.calendar.visible_notes(e, proxy_id)}
+        shared = [n for n in mine if n.docId in theirs]
+        if not shared:
+            return e, [], (f"The meeting summary isn't shared with {self.person(proxy_id).name}, so a draft could "
+                           f"reveal it. Please type your own note.")
+        return e, shared, None
 
-    def note_draft_available(self, item_id: str, caller: str, proxy_id: Optional[str] = None) -> bool:
-        """An AI-drafted note for the proxy is offered only when the summary is openly shared with everyone invited,
-        and the chosen proxy is one of them. Otherwise it is off and the sender types their own note. No reason is
-        shown for why."""
+    def note_draft_available(self, item_id: str, caller: str, proxy_id: Optional[str] = None) -> NoteDraftAvailable:
         item = self.store.get_item(item_id)
         if not item:
-            raise LookupError("item not found")
-        if proxy_id and proxy_id not in self._invitee_ids(item):
-            return False
-        return bool(self._openly_shared_notes(item, caller)[1])
+            raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
+        _, notes, reason = self._draft_notes(item, caller, proxy_id)
+        return NoteDraftAvailable(available=bool(notes), reason=reason)
 
-    def note_draft(self, item_id: str, caller: str, proxy_id: Optional[str] = None) -> str:
+    def note_draft(self, item_id: str, caller: str, proxy_id: Optional[str] = None) -> NoteDraft:
         item = self.store.get_item(item_id)
         if not item:
-            raise LookupError("item not found")
-        if proxy_id and proxy_id not in self._invitee_ids(item):
-            raise ValueError("an AI draft is not available for a proxy who is not on the invite")
-        e, notes = self._openly_shared_notes(item, caller)
+            raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
+        e, notes, reason = self._draft_notes(item, caller, proxy_id)
         if not notes:
-            raise ValueError("an AI draft is not available for this meeting")
-        return draft_note(e, self.person(item.absentPersonId), notes)
+            raise ValueError(reason)
+        text, engine = draft_note(e, self.person(item.absentPersonId), notes, self.person(proxy_id),
+                                  organizer=self.store.get_person(e.organizerId))
+        return NoteDraft(draft=text, engine=engine, model=S.ai.model if engine == "gemini" else None)
 
     def apply_action(self, item_id: str, caller: str, action: Action, proxy_id: Optional[str] = None,
                      note: Optional[str] = None, note_from_ai: bool = False) -> MeetingItem:
         item = self.store.get_item(item_id)
         if not item:
-            raise LookupError("item not found")
+            raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
         if item.status in TERMINAL:
-            raise ValueError(f"item is already {item.status.value}")
+            raise ValueError(f"This meeting has already been {item.status.value}, so it can't be changed any more.")
         e = self.calendar.get(item.event.calendarEventId)
         organizer_side = self._organizer_side(item)
         is_organizer = caller in organizer_side
         # Who may act: BOTH the absent person and the organizer side, for planned and sudden absences.
         may_act = {item.absentPersonId} | organizer_side
         if caller not in may_act:
-            raise PermissionError("only the absent person or the organizer can do this")
+            raise PermissionError("Only the person who is out or the organizer can do this.")
         previous_decider, previous_status = item.decidedBy, item.status
         now = self.now()
+        # What the decider was shown as the recommendation, kept to count how often recommendations are followed.
+        # Read from the cache when possible; never waits for the AI.
+        shown = self._analysis_cache.get(self._cache_key(item, e, self.calendar.visible_notes(e, caller)))
+        shown_ai = shown[1] if shown else item.ai
+        item.recommendedWhenDecided = shown_ai.recommendation
+        item.aiWhenDecided = shown_ai.model_copy(deep=True)
+        note_log = None
 
         if action == Action.attend:
             if item.ownerRole != "leaver" or caller != item.absentPersonId:
-                raise ValueError("'I'll attend' only applies to the leaver's own planned-leave items")
+                raise ValueError("Only the person on planned leave can choose \"I'll attend\" for their own meeting.")
             item.status, item.chosenAction = ItemStatus.attending, action
             notify.send_email(self.person(item.event.organizerId).email,
                               f"FYI: {self.person(item.absentPersonId).name} will still attend '{item.event.title}'",
@@ -452,18 +597,20 @@ class Service:
 
         elif action == Action.proxy:
             if not proxy_id:
-                raise ValueError("proxyId is required when choosing a proxy")
+                raise ValueError("Please choose who should cover the meeting.")
             # The proxy can be anyone in the company directory, invited or not. No organizer permission is needed
             # (forwarding an invite is allowed); the history log records who brought them in. Covering is still the
             # proxy's own choice: they are on the invite either way and may decline the proxy role.
             proxy_person = self.store.get_person(proxy_id)
             if not proxy_person or proxy_person.isGroup or proxy_id == item.absentPersonId:
-                raise ValueError("the proxy must be an individual in the company directory, and not the absent person")
+                raise ValueError("Please choose one person from the company directory, other than the person who is out.")
             if self._is_out(proxy_id, item.event.start.date()):
-                raise ValueError(f"{proxy_person.name} is out of office that day")
+                raise ValueError(f"{proxy_person.name} is out of office that day. Please choose someone else.")
             invited = proxy_id in self._invitee_ids(item)
-            if note_from_ai and not invited:
-                raise ValueError("an AI draft is not available for a proxy who is not on the invite")
+            if note_from_ai:
+                _, shared, reason = self._draft_notes(item, caller, proxy_id)
+                if not shared:   # the note started as an AI draft from a summary this proxy may not read
+                    raise ValueError(f"This note started as an AI draft. {reason}")
             self._withdraw_requests(item, tell_accepted=True)   # a new proxy replaces the earlier one(s)
             note = (note or "").strip() or None
             req = ProxyRequest(id=self.store.next_id("pr"), itemId=item.id, proxyId=proxy_id, requestedBy=caller,
@@ -480,8 +627,10 @@ class Service:
                 body += f"\n\nNote from {self.person(caller).name}:\n{note}"
             notify.send_email(self.person(proxy_id).email,
                               f"Can you cover '{item.event.title}' for {self.person(item.absentPersonId).name}?", body, now)
-            self._log(item.id, caller, "proxy_note",
-                      "note sent" + (" (started as an AI draft)" if note_from_ai else "") if note else "no note")
+            # logged after the decision itself (below), so the activity reads in order
+            note_log = ("note sent" + (" (started as an AI draft)" if note_from_ai else "") if note else "no note",
+                        ("A handover note was sent with the request" + (" (started as an AI draft)." if note_from_ai else ".")
+                         if note else "The request was sent without a note."))
             item.status, item.chosenAction, item.chosenProxyId = ItemStatus.proxy_requested, action, proxy_id
 
         elif action in (Action.reschedule, Action.cancel):
@@ -490,7 +639,7 @@ class Service:
                 item.status, item.chosenAction = ItemStatus.awaiting_organizer, action
                 notify.send_email(self.person(item.event.organizerId).email,
                                   f"{self.person(item.absentPersonId).name} suggests you {action.value} '{item.event.title}'",
-                                  "Open Organizer Mode: one click to proceed.", now)
+                                  "Open Organizer Mode to do it in one click.", now)
             elif action == Action.cancel:
                 self.calendar.cancel_event(e.id)
                 item.status, item.chosenAction = ItemStatus.cancelled, action
@@ -512,13 +661,16 @@ class Service:
         item.decidedBy = caller
         item.updatedAt = now
         self.store.save_item(item)
-        self._log(item.id, caller, "action_chosen", f"{action.value}{' -> ' + proxy_id if proxy_id else ''} => {item.status.value}")
+        self._log(item.id, caller, "action_chosen", f"{action.value}{' -> ' + proxy_id if proxy_id else ''} => {item.status.value}",
+                  self._decision_text(item, caller, action, proxy_id))
+        if note_log:
+            self._log(item.id, caller, "proxy_note", *note_log)
         # If someone changes a decision the other side already made, tell them (no email otherwise).
         if (previous_decider and previous_decider != caller and previous_decider in may_act
                 and previous_status not in (ItemStatus.pending_decision, ItemStatus.auto_handled)):
             notify.send_email(self.person(previous_decider).email,
                               f"{self.person(caller).name} changed the decision for '{item.event.title}'",
-                              f"It is now: {item.status.value}.", now)
+                              self._decision_text(item, caller, action, proxy_id), now)
         return self._view(item, caller)
 
     def _withdraw_requests(self, item: MeetingItem, tell_accepted: bool) -> None:
@@ -538,7 +690,7 @@ class Service:
     def proposed_time(self, item_id: str) -> ProposedTime:
         item = self.store.get_item(item_id)
         if not item:
-            raise LookupError("item not found")
+            raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
         e = self.calendar.get(item.event.calendarEventId)
         return find_slot(e, self.calendar, self.store.absences(), self.now(), people=self.people_map())
 
@@ -560,7 +712,8 @@ class Service:
             notify.send_email(self.person(e.organizerId).email,
                               f"{proxy.name} was added to '{e.title}' as a proxy for {absent.name}",
                               f"{self.person(req.requestedBy).name} named them. They can still decline to cover. No action needed.", now)
-        self._log(item.id, req.requestedBy, "proxy_added_to_meeting", f"{proxy.name} added as an attendee")
+        self._log(item.id, req.requestedBy, "proxy_added_to_meeting", f"{proxy.name} added as an attendee",
+                  f"{proxy.name.split()[0]} was added to the meeting as an optional attendee.")
 
     def _sync_invitees(self, e: CalEvent) -> None:
         """Keep every card's copy of the invitee list in step with the calendar."""
@@ -581,11 +734,22 @@ class Service:
     def proxy_candidates(self, item_id: str, caller: str) -> list[ProxyCandidate]:
         item = self.store.get_item(item_id)
         if not item:
-            raise LookupError("item not found")
+            raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
         e = self.calendar.get(item.event.calendarEventId)
         notes = self.calendar.visible_notes(e, caller)
         ranked = rank_proxies(e, self.person(item.absentPersonId), self.people_map(), notes)
-        return [ProxyCandidate(personId=r["personId"], rank=r["rank"], reason=r["reason"]) for r in ranked]
+        ai = self._view(item, caller).ai            # the recommendation this caller sees (cached; no new AI call)
+        choice = {ai.suggestedProxyId: "first", ai.backupProxyId: "second"}
+        declined = set(self._declined(item.id))
+        return [ProxyCandidate(personId=r["personId"], rank=r["rank"], reason=r["reason"],
+                               choice=choice.get(r["personId"]), declined=r["personId"] in declined) for r in ranked]
+
+    def _declined(self, item_id: str) -> list[str]:
+        """Who declined to cover this card, in the order they declined. A fact, so no AI is needed after a decline."""
+        reqs = sorted((r for r in self.store.proxy_requests()
+                       if r.itemId == item_id and r.status == ProxyRequestStatus.declined),
+                      key=lambda r: r.respondedAt or r.createdAt)
+        return list(dict.fromkeys(r.proxyId for r in reqs))
 
     # ---------- proxy requests ----------
     def proxy_requests_for(self, me: str, past: bool = False) -> list[ProxyRequestView]:
@@ -608,13 +772,15 @@ class Service:
     def respond_proxy(self, req_id: str, caller: str, response: ProxyRequestStatus) -> ProxyRequest:
         req = self.store.get_proxy_request(req_id)
         if not req:
-            raise LookupError("request not found")
+            raise LookupError("This proxy request no longer exists. Please refresh the page to see the latest.")
         if caller != req.proxyId:
-            raise PermissionError("only the requested proxy can answer")
+            raise PermissionError("Only the person who was asked to cover can answer this request.")
+        if req.status == response:
+            return req      # the same answer again (a double click): already recorded, nothing to do
         if req.status != ProxyRequestStatus.pending:
-            raise ValueError("request already answered")
+            raise ValueError("You've already answered this request.")
         if response not in (ProxyRequestStatus.accepted, ProxyRequestStatus.declined):
-            raise ValueError("response must be accepted or declined")
+            raise ValueError("Please choose Accept or Decline.")
         now = self.now()
         req.status, req.respondedAt = response, now
         self.store.save_proxy_request(req)
@@ -629,7 +795,8 @@ class Service:
                                   "Choose another proxy or reschedule.", now)
         item.updatedAt = now
         self.store.save_item(item)
-        self._log(item.id, caller, "proxy_response", response.value)
+        self._log(item.id, caller, "proxy_response", response.value,
+                  f"{self._first(caller)} {'accepted and will cover' if response == ProxyRequestStatus.accepted else 'declined to cover'} the meeting.")
         return req
 
     def run_reminders(self) -> int:
@@ -680,13 +847,26 @@ class Service:
                       key=lambda h: h.at, reverse=True)
 
     def metrics(self) -> Metrics:
-        resolved = [i for i in self.store.items() if i.status in RESOLVED]
-        leads = [max((i.event.instanceStart - i.updatedAt).total_seconds() / 86400, 0) for i in resolved]
-        saved = 0
-        for i in resolved:
-            if i.status in (ItemStatus.proxy_accepted, ItemStatus.rescheduled, ItemStatus.cancelled):
-                n = len(i.event.attendees)
-                saved += n * (S.metrics.minutes_lost_in_failed_meeting + S.metrics.minutes_lost_in_follow_up)
-        return Metrics(meetingsResolved=len(resolved),
-                       avgLeadTimeDays=round(sum(leads) / len(leads), 1) if leads else 0.0,
-                       attendeeMinutesSaved=saved)
+        """The impact tiles. Every number and which statuses count are in [metrics] in config/settings.toml.
+        - Meetings with a plan: affected meetings whose card is settled (auto-handled, proxy, go on without, ...).
+        - Days of notice: how long before the meeting the plan was made, on average (vs. finding out at the start).
+        - Team hours saved (estimate): per settled card, the people in the meeting x the minutes that outcome saves
+          each of them (e.g. a covered meeting avoids a failed start and a follow-up meeting).
+        - Recommendations followed: of the decisions people made, how many matched what was recommended."""
+        items = self.store.items()
+        planned = [i for i in items if i.status.value in S.metrics.plan_statuses]
+        leads = [max((i.event.instanceStart - i.updatedAt).total_seconds() / 86400, 0) for i in planned]
+        per_person = S.metrics.minutes_saved_per_invitee
+        minutes = sum(len(i.event.attendees) * getattr(per_person, i.status.value, 0) for i in planned)
+        decided = [i for i in items if i.decidedBy and i.recommendedWhenDecided and i.chosenAction]
+        followed = [i for i in decided if i.chosenAction == i.recommendedWhenDecided]
+        return Metrics(
+            meetingsWithPlan=len(planned), meetingsAffected=len(items),
+            avgNoticeDays=round(sum(leads) / len(leads), 1) if leads else 0.0,
+            teamHoursSaved=round(minutes / 60, 1),
+            recommendationsFollowedPct=round(100 * len(followed) / len(decided)) if decided else None,
+            decisionsCounted=len(decided),
+            estimateNote="Estimate. For each meeting with a plan: people in the meeting × minutes saved per person — "
+                         + ", ".join(f"{k.replace('_', ' ')} {v} min" for k, v in vars(per_person).items() if v)
+                         + ". Baseline: without a plan, people join, wait and give up, and a covered decision needs a "
+                           "follow-up meeting.")

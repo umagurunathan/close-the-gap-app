@@ -132,6 +132,7 @@ class AiResult(BaseModel):
     sources: list[str] = Field(default_factory=list)
     summariesAvailable: bool = False
     suggestedProxyId: Optional[str] = None
+    backupProxyId: Optional[str] = None   # the second choice: shown on the card, suggested if the first declines
     needsHumanChoice: bool = False
     fingerprint: list[dict] = Field(default_factory=list)
     # Who produced this answer: "gemini" (possibly adjusted by the checks; see `checks`), "rules" (AI switched off),
@@ -141,6 +142,8 @@ class AiResult(BaseModel):
     model: Optional[str] = None   # the Gemini model that produced the answer (engine "gemini")
     # Corrections the checking layer (agents/guard.py) made to the AI's answer, in plain words. Empty = none needed.
     checks: list[str] = Field(default_factory=list)
+    # The tools the ADK agent called, in order (engine "gemini_adk"), e.g. ["get_meeting", "read_summaries"].
+    toolsUsed: list[str] = Field(default_factory=list)
 
 
 class MeetingItem(BaseModel):
@@ -156,10 +159,13 @@ class MeetingItem(BaseModel):
     chosenProxyId: Optional[str] = None
     rescheduledTo: Optional[datetime] = None
     originalStart: Optional[datetime] = None   # the time before the first reschedule, shown struck through
+    recommendedWhenDecided: Optional[Action] = None   # the recommendation the decider saw when they acted
+    aiWhenDecided: Optional[AiResult] = None          # the whole recommendation they saw (shown on Past cards, no new AI call)
     # Computed when listing (not stored); the same for every viewer:
     needsAttention: bool = False          # still needs someone to act (not settled)
     urgency: Optional[str] = None         # "soon" (<= 3 days) | "urgent" (<= 24 hours), only while needsAttention
     hoursToStart: Optional[float] = None  # hours until the meeting starts, while needsAttention
+    declinedProxyIds: list[str] = Field(default_factory=list)   # who declined to cover this card (never suggested again)
     decidedBy: Optional[str] = None       # who last chose an action (absent person or organizer side)
     organizerAlerted: bool = False        # the under-24-hour alert has been sent once
     createdAt: datetime
@@ -184,8 +190,9 @@ class HistoryEvent(BaseModel):
     itemId: str
     actorId: str
     type: str
-    detail: str
+    detail: str            # technical record, for audits
     at: datetime
+    text: str = ""         # the same event in a plain sentence, shown on the card ("Priya asked Meena to cover.")
 
 
 # ---- Simulated calendar (stands in for Google Calendar + shared notes) ----
@@ -249,10 +256,13 @@ class ActionRequest(BaseModel):
 
 class NoteDraftAvailable(BaseModel):
     available: bool
+    reason: Optional[str] = None   # why not, in plain words, shown under the disabled button
 
 
 class NoteDraft(BaseModel):
     draft: str
+    engine: str = "rules"            # "gemini" | "rules" (AI off) | "rules_fallback" (Gemini failed; simple draft)
+    model: Optional[str] = None      # the Gemini model, when engine is "gemini"
 
 
 class RespondRequest(BaseModel):
@@ -302,6 +312,8 @@ class ProxyCandidate(BaseModel):
     personId: str
     rank: int
     reason: str
+    choice: Optional[str] = None   # "first" | "second": the recommendation's first and second choice
+    declined: bool = False         # already declined to cover this meeting (still pickable by hand)
 
 
 class ProposedTime(BaseModel):
@@ -312,9 +324,14 @@ class ProposedTime(BaseModel):
 
 
 class Metrics(BaseModel):
-    meetingsResolved: int
-    avgLeadTimeDays: float
-    attendeeMinutesSaved: int
+    """The impact tiles (D5, agreed 2026-10-15). Formulas and the minutes per action are in config/settings.toml."""
+    meetingsWithPlan: int            # affected meetings that already have a plan
+    meetingsAffected: int            # all meetings affected by an absence
+    avgNoticeDays: float             # on average, how many days before the meeting the plan was made
+    teamHoursSaved: float            # estimated, from the minutes per invitee in [metrics]
+    recommendationsFollowedPct: Optional[int] = None   # of the decisions people made, how many followed the recommendation
+    decisionsCounted: int = 0        # how many decisions that percentage is based on
+    estimateNote: str = ""           # how "team time saved" is estimated, in words, built from the config values
 
 
 OrganizerMeeting.model_rebuild()

@@ -17,17 +17,22 @@ from .models import (
 )
 from .seed import build_service
 from .service import Service
+from .settings import settings as S
 
 
 def create_app(service: Optional[Service] = None) -> FastAPI:
     svc = service or build_service()
+    if service is None and S.ai.enabled and S.ai.warm_up_on_start:
+        import threading
+        from agents.recommender_ai import warm_up
+        threading.Thread(target=warm_up, name="ai-warm-up", daemon=True).start()   # never delays the start
     app = FastAPI(title="Close the Gap API", version="0.2")
     app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
 
     def me(x_person_id: Optional[str] = Header(default=None)) -> str:
         """Simulated sign-in: the persona switcher sends the signed-in person's id in this header."""
         if not x_person_id or not svc.store.get_person(x_person_id):
-            raise HTTPException(401, "send a valid X-Person-Id header")
+            raise HTTPException(401, "Please choose who you are signed in as.")
         return x_person_id
 
     def guard(fn):
@@ -59,6 +64,13 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     @app.post("/events/{event_id}/attendees", response_model=list[MeetingItem])
     def post_attendee(event_id: str, body: AttendeeAdd, who: str = Depends(me)):
         return guard(lambda: [svc._view(i, who) for i in svc.add_attendee(event_id, who, body.personId, body.optional)])
+
+    @app.get("/settings/public")
+    def public_settings():
+        """The few settings the web app shows or uses, so the screen never disagrees with config/settings.toml."""
+        return {"pastDays": S.visibility.past_days, "suddenNoticeHours": S.absence.sudden_notice_hours,
+                "refreshWhileAnalysingSeconds": S.ai.refresh_while_analysing_seconds,
+                "messageHideSeconds": S.ui.message_hide_seconds}
 
     @app.get("/people")
     def people():
@@ -105,11 +117,11 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.get("/items/{item_id}/note-draft/available", response_model=NoteDraftAvailable)
     def get_note_draft_available(item_id: str, proxyId: Optional[str] = None, who: str = Depends(me)):
-        return guard(lambda: NoteDraftAvailable(available=svc.note_draft_available(item_id, who, proxyId)))
+        return guard(lambda: svc.note_draft_available(item_id, who, proxyId))
 
     @app.post("/items/{item_id}/note-draft", response_model=NoteDraft)
     def post_note_draft(item_id: str, proxyId: Optional[str] = None, who: str = Depends(me)):
-        return guard(lambda: NoteDraft(draft=svc.note_draft(item_id, who, proxyId)))
+        return guard(lambda: svc.note_draft(item_id, who, proxyId))
 
     @app.get("/items/{item_id}/proxy-candidates", response_model=list[ProxyCandidate])
     def get_candidates(item_id: str, who: str = Depends(me)):
@@ -149,6 +161,13 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     @app.get("/dev/outbox")
     def outbox():
         return notify.OUTBOX
+
+    @app.post("/dev/reset-demo")
+    def reset_demo():
+        """Back to the demo data, with an empty AI cache, so every card is analysed again (the "Reset demo" button)."""
+        from .seed import build_service
+        build_service(into=svc)
+        return {"ok": True}
 
     @app.post("/jobs/run-reminders")
     def run_reminders():

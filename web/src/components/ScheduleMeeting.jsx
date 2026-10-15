@@ -19,7 +19,7 @@ export default function ScheduleMeeting({ people, me, onClose, onDone }) {
     setBusy(true);
     setError("");
     try {
-      const start = new Date(`${date}T${time}:00Z`);
+      const start = new Date(`${date}T${time}:00`);   // the viewer's own time zone, like every time on screen
       const end = new Date(start.getTime() + Number(minutes) * 60000);
       const attendees = invitable
         .filter((p) => role[p.id])
@@ -43,7 +43,7 @@ export default function ScheduleMeeting({ people, me, onClose, onDone }) {
         <label>Title <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Vendor kickoff" required /></label>
         <div className="row">
           <label>Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></label>
-          <label>Start (UTC) <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></label>
+          <label>Start <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></label>
           <label>Minutes <input type="number" min="15" step="15" value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
         </div>
         <div className="invite-grid">

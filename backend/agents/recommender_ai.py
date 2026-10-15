@@ -30,6 +30,9 @@ class Recommendation(BaseModel):
     confidence: Confidence
     suggested_proxy_id: Optional[str] = Field(
         default=None, description="the id of ONE candidate who should cover, only when the recommendation is proxy; otherwise null")
+    backup_proxy_id: Optional[str] = Field(
+        default=None, description="the id of a DIFFERENT candidate as second choice, in case the first declines; only "
+                                  "when the recommendation is proxy AND a second person is also clearly suitable; otherwise null")
     needs_human_choice: bool = Field(
         default=False, description="true when a person must choose, for example no candidate is clearly suitable")
 
@@ -39,14 +42,19 @@ The goal is that the meeting runs without interruption in the most efficient way
 
 1) Choose the kind of meeting:
 - team_checkin: a stand-up or status sync where the absence changes nothing. Only if the summaries show status updates only.
-- org_event: a town hall, talk or site-wide event for a large audience. NOT if the absent person organizes it or is named as host, speaker or on the committee.
+- org_event: a town hall, talk or site-wide event for a large audience. NOT if the absent person organizes it, is named as host, speaker or on the committee, or presents, speaks or leads any part of it (for example "Arjun walks us through the numbers").
 - key_meeting: everything else; a person must decide.
 
 2) Recommend one action:
 - proceed_without: the meeting can go ahead without them. Right for team_checkin and org_event, or when nothing depends on them.
 - proxy: someone else attends in their place, with context. PREFER THIS when the absent person owns an item or decision but another invitee can cover it. Choose ONLY from the candidates listed. Prefer a candidate who is named in the summaries on the same topic; then the absent person's manager, a peer under the same manager, or a direct report.
   NEVER GUESS. If no candidate is clearly suitable, set suggested_proxy_id to null and needs_human_choice to true.
+  Also name a second choice (backup_proxy_id), a different candidate, in case the first declines; only if they are
+  also clearly suitable, otherwise leave it null.
 - reschedule: the absent person is essential and nobody else can decide or speak for them. A later date is the best way to save everyone's time.
+  Choose this, NOT a proxy, only when the input explicitly says the meeting cannot work without the person themselves
+  (for example a customer will only commit with them on the call). Owning a decision is NOT enough on its own: a
+  briefed proxy can often carry their position, so prefer a proxy when a suitable candidate exists.
 - cancel: only if the meeting has no purpose without them. Rarely the right answer.
 - attend: never recommend this; only the person themselves can choose it.
 
@@ -123,6 +131,18 @@ def _get_client() -> Any:
     return _client
 
 
+def warm_up() -> None:
+    """One tiny call at server start (in the background), so the first real request does not pay for setting up the
+    connection and sign-in ([ai] warm_up_on_start). Failures are ignored: it is only a head start."""
+    try:
+        from google.genai import types
+        _get_client().models.generate_content(
+            model=S.ai.model, contents="Reply with OK.",
+            config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_budget=0)))
+    except Exception:   # noqa: BLE001
+        pass
+
+
 def ask_gemini(prompt: str, client: Any = None) -> Recommendation:
     from google.genai import types
     client = client or _get_client()
@@ -133,7 +153,7 @@ def ask_gemini(prompt: str, client: Any = None) -> Recommendation:
             system_instruction=INSTRUCTIONS,
             response_mime_type="application/json",
             response_schema=Recommendation,
-            temperature=0,
+            temperature=S.ai.temperature,
             # "Thinking" = the model reasons step by step before answering: better for hard problems, but slower.
             # Our task is a short classification, so it is tunable in settings ([ai] thinking_budget; 0 = off).
             thinking_config=types.ThinkingConfig(thinking_budget=S.ai.thinking_budget),
@@ -153,6 +173,7 @@ def to_ai_result(rec: Recommendation, notes: list[Note]) -> tuple[ItemKind, AiRe
         sources=sources,
         summariesAvailable=bool(notes),
         suggestedProxyId=rec.suggested_proxy_id,
+        backupProxyId=rec.backup_proxy_id if rec.backup_proxy_id != rec.suggested_proxy_id else None,
         needsHumanChoice=rec.needs_human_choice,
         fingerprint=[{"docId": n.docId, "modifiedAt": n.modifiedAt.isoformat()} for n in notes],
         model=S.ai.model,

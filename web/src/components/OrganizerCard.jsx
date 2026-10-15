@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { statusLabel, urgencyLabel, fmtWhen } from "../format.js";
-import { AiSource, RecommendationDetails, cap } from "./aiBits.jsx";
+import { AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
 
@@ -67,13 +67,20 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
   }
 
   // Meeting-level buttons; the recommended one comes first and stands out while a decision is needed.
-  const highlight = meeting.needsAttention ? ai.recommendation : null;
+  // after a proxy declined, no button is singled out: it is the organizer's call again
+  const allDeclined = open.length > 0 && open.every((a) => a.status === "proxy_declined");
+  const highlight = meeting.needsAttention && !allDeclined ? ai.recommendation : null;
   const actions = [
     { action: "reschedule", onClick: askReschedule },
     { action: "proceed_without", onClick: () => decide("proceed_without") },
     { action: "cancel", onClick: () => decide("cancel"), danger: true },
   ];
-  const ordered = [...actions.filter((b) => b.action === highlight), ...actions.filter((b) => b.action !== highlight)];
+  // "Go on without them" already chosen for everyone still out: shown in green with a tick, like on the person's card.
+  const goingOnWithout = !meeting.needsAttention && !terminal &&
+    people_.every((a) => ["proceeding_without", "auto_handled"].includes(a.status));
+  const taken = goingOnWithout ? "proceed_without" : null;
+  const first_ = taken ?? highlight;
+  const ordered = [...actions.filter((b) => b.action === first_), ...actions.filter((b) => b.action !== first_)];
 
   return (
     <article className={`card attn-${attention}`}>
@@ -106,6 +113,9 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
           const deciding = DECIDING.includes(a.status);
           const suggested = a.ai.suggestedProxyId;
           const hasProxy = a.status === "proxy_requested" || a.status === "proxy_accepted";
+          const declined = a.declinedProxyIds || [];
+          const afterDecline = a.status === "proxy_declined" && declined.length > 0;   // the person's call again
+          const stars = deciding && !afterDecline && a.ai.recommendation === "proxy";
           return (
             <div key={a.id} className="absentee">
               <div className="absentee-row">
@@ -116,17 +126,21 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
                     {a.status === "proxy_accepted" ? `✓ ${first(a.chosenProxyId)} will cover` : `✓ ${first(a.chosenProxyId)} asked to cover`}
                   </button>
                 )}
-                {!terminal && deciding && (
+                {/* A proxy can still be chosen after "go on without them" or "they'll attend": people change their mind.
+                    Only while a decision is needed does the AI's suggestion stand out. */}
+                {!terminal && !hasProxy && (
                   <button
-                    className={a.ai.recommendation === "proxy" ? "primary" : ""}
+                    className={stars ? "primary" : ""}
                     aria-label={`Choose a proxy for ${name(a.absentPersonId)}`}
                     onClick={() => setProxyFor(a.id)}
                   >
-                    {a.ai.recommendation === "proxy" ? "★ " : ""}
-                    {suggested ? `Ask ${first(suggested)} to cover` : "Choose a proxy"}
+                    {stars ? "★ " : ""}
+                    {afterDecline ? "Choose another proxy" : deciding && suggested ? `Ask ${first(suggested)} to cover` : "Choose a proxy"}
                   </button>
                 )}
               </div>
+              {!terminal && <ProxySuggestions ai={a.ai} declined={declined} name={name} />}
+              {afterDecline && <div className="note warn">{declineNotice(a.ai, declined, name)}</div>}
               {a.decidedBy && <div className="absentee-note">Decided by {name(a.decidedBy)}</div>}
               {proxyFor === a.id && (
                 <ProxyPanel item={a} me={me} people={people}
@@ -142,17 +156,21 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
       {!terminal && !proposal && (
         <div className="actions">
           <span className="change-label">For the whole meeting:</span>
-          {ordered.map((b) => {
+          {ordered.map((b, n) => {
             const recommended = b.action === highlight;
-            return (
-              <button key={b.action} disabled={busy}
-                className={[recommended ? "primary" : "", b.danger ? "danger" : ""].join(" ").trim()}
-                aria-label={recommended ? `Recommended: ${MEETING_LABEL[b.action]}` : MEETING_LABEL[b.action]}
+            const isTaken = b.action === taken;
+            const button = (
+              <button key={b.action} disabled={busy || isTaken}
+                className={[recommended ? "primary" : "", isTaken ? "taken" : "", b.danger && !isTaken ? "danger" : ""].join(" ").trim()}
+                title={isTaken ? "Done" : undefined}
+                aria-label={isTaken ? "Going on without them (done)" : recommended ? `Recommended: ${MEETING_LABEL[b.action]}` : MEETING_LABEL[b.action]}
                 onClick={b.onClick}>
-                {recommended ? "★ " : ""}{MEETING_LABEL[b.action]}
+                {isTaken ? "✓ Going on without them" : `${recommended ? "★ " : ""}${MEETING_LABEL[b.action]}`}
               </button>
             );
+            return taken && n === 1 ? [<span key="change" className="change-label">or change to:</span>, button] : button;
           })}
+          {busy && <span className="saving" role="status">Saving…</span>}
         </div>
       )}
 

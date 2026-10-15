@@ -11,6 +11,14 @@ from app.seed import build_service
 from app.scheduling import find_slot
 
 
+@pytest.fixture(autouse=True)
+def _single_call_unless_asked(monkeypatch):
+    """Tests never reach Google. AI tests fake the single Gemini call; the ADK tests switch the agent back on."""
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "engine", "genai")
+    monkeypatch.setattr(S.ai, "background", False)   # wait for the (fake) AI, so each test sees the final answer
+
+
 @pytest.fixture()
 def svc():
     return build_service()
@@ -90,7 +98,8 @@ def test_reschedule_keeps_time_of_day_and_avoids_leave(svc):
     slot = find_slot(e, svc.calendar, svc.store.absences(), svc.now())
     assert not slot.none
     assert slot.proposedStart.date().isoformat() == "2026-10-23"
-    assert slot.proposedStart.hour == 17 and slot.windowUsed == "±1h"
+    assert (slot.proposedStart.hour, slot.proposedStart.minute) == (e.start.hour, e.start.minute)   # same time of day
+    assert slot.windowUsed == "±1h"
 
 
 def test_sudden_absence_goes_to_the_organizer(client):
@@ -101,7 +110,8 @@ def test_sudden_absence_goes_to_the_organizer(client):
     assert {"Q4 Budget Review", "Vendor Contract Decision"} <= {i["event"]["title"] for i in org}
     # no "who is responsible" rule: every unsettled card needs action, for everyone
     counts = client.get("/me", headers=H("p_sam")).json()["counts"]
-    assert counts["organizer"] == len(org) and counts["organizerOpen"] == len(org)
+    meetings = {i["event"]["calendarEventId"] for i in org}       # counted per meeting (one card even if two are out)
+    assert counts["organizer"] == len(meetings) and counts["organizerOpen"] == len(meetings)
     assert all(i["needsAttention"] for i in org)
     by = {i["event"]["title"]: i for i in org}
     assert by["Release Readiness"]["urgency"] == "soon"      # starts in 30 hours: amber
@@ -178,21 +188,27 @@ def test_each_viewer_gets_a_recommendation_from_what_they_can_open(client):
     assert sam["recommendation"] == priya_q4["recommendation"] == "proxy"
 
 
-def test_ai_draft_only_when_the_summary_is_shared_with_everyone_invited(client, svc):
-    from app.models import EventAttendee
+def test_ai_draft_only_when_the_sender_and_the_proxy_can_both_open_the_summary(client, svc):
     item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
     url = f"/items/{item.id}/note-draft/available"
-    # the host shared the Budget Review notes with every invitee -> the draft is offered
-    assert client.get(url, headers=H("p_priya")).json() == {"available": True}
-    ok = client.post(f"/items/{item.id}/note-draft", headers=H("p_priya"))
+    # no proxy chosen yet -> off, with a reason
+    first = client.get(url, headers=H("p_priya")).json()
+    assert first["available"] is False and "Choose a proxy first" in first["reason"]
+    # Meena can open the Budget Review summary -> the draft is offered, and it uses the summary
+    assert client.get(url, params={"proxyId": "p_meena"}, headers=H("p_priya")).json() == {"available": True, "reason": None}
+    ok = client.post(f"/items/{item.id}/note-draft", params={"proxyId": "p_meena"}, headers=H("p_priya"))
     assert ok.status_code == 200 and "vendor" in ok.json()["draft"].lower()
-    # a partly shared summary (Dev is invited but the notes are not shared with him) -> no draft for anyone
-    svc.calendar.get("evt_budget").attendees.append(EventAttendee(personId="p_dev"))
-    assert client.get(url, headers=H("p_priya")).json() == {"available": False}
-    assert client.post(f"/items/{item.id}/note-draft", headers=H("p_priya")).status_code == 400
-    # Design Review notes are shared with Dev only -> not open to everyone
+    # Design Review: the summary is shared with Dev only. Meena (organizer) may draft for Dev, who can open it...
     design = next(i for i in svc.store.items() if i.event.title == "Design Review")
-    assert client.get(f"/items/{design.id}/note-draft/available", headers=H("p_meena")).json() == {"available": False}
+    durl = f"/items/{design.id}/note-draft/available"
+    assert client.get(durl, params={"proxyId": "p_dev"}, headers=H("p_meena")).json()["available"] is True
+    # ...but not for someone who cannot, and the reason names them
+    no = client.get(durl, params={"proxyId": "p_asha"}, headers=H("p_meena")).json()
+    assert no["available"] is False and "isn't shared with Asha" in no["reason"]
+    assert client.post(f"/items/{design.id}/note-draft", params={"proxyId": "p_asha"}, headers=H("p_meena")).status_code == 400
+    # Priya cannot open the Design Review summary at all -> nothing to draft from
+    mine = client.get(durl, params={"proxyId": "p_dev"}, headers=H("p_priya")).json()
+    assert mine["available"] is False and "No meeting summary is available to you" in mine["reason"]
     # strangers cannot ask
     assert client.get(url, headers=H("p_neha")).status_code == 403
 
@@ -233,7 +249,7 @@ def test_accepted_proxy_request_stays_visible_until_the_meeting_has_passed(clien
     monkeypatch.setattr(config, "now", lambda: datetime(2026, 10, 22, 20, 0, tzinfo=timezone.utc))
     assert client.get("/proxy-requests", headers=H("p_meena")).json() == []
     past = client.get("/proxy-requests", params={"past": "true"}, headers=H("p_meena")).json()
-    assert [v["item"]["event"]["title"] for v in past] == ["Q4 Budget Review"]
+    assert "Q4 Budget Review" in [v["item"]["event"]["title"] for v in past]   # (the demo's past week adds others)
     priya_now = client.get("/items", params={"mode": "attendee"}, headers=H("p_priya")).json()
     assert "Q4 Budget Review" not in [i["event"]["title"] for i in priya_now["needsAction"]]
     priya_past = client.get("/items", params={"mode": "past"}, headers=H("p_priya")).json()
@@ -360,7 +376,7 @@ def test_silent_proxy_gets_reminders_but_nothing_is_changed(client, svc):
     client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_meena"}, headers=H("p_priya"))
     for _ in range(5):
         client.post("/jobs/run-reminders")
-    req = svc.store.proxy_requests()[0]
+    req = next(r for r in svc.store.proxy_requests() if r.itemId == item.id)
     assert req.remindersSent == 3 and req.status.value == "pending"
     assert svc.store.get_item(item.id).status.value == "proxy_requested"
 
@@ -707,10 +723,11 @@ def test_alert_under_24_hours_is_one_email_per_meeting(client, svc):
     assert len(to_sam) == 1 and "Dev Nair and Priya Sharma are out" in to_sam[0]["subject"]
 
 
-def test_large_event_ordinary_attendee_is_not_a_key_person(client, svc):
+def test_large_event_ordinary_attendee_is_not_a_key_person(monkeypatch, client, svc):
     from app.settings import settings as S
     many = [{"personId": p} for p in ("p_priya", "p_arjun", "p_meena", "p_kiran", "p_dev", "p_vera", "p_neha", "p_asha",
                                        "p_rohan", "p_tara", "p_ishaan", "p_naomi", "p_leo", "p_zoya", "p_ben", "p_lena")]
+    monkeypatch.setattr(S.recommendation, "large_meeting_required_threshold", 15)   # the rule, whatever the config value
     assert len(many) > S.recommendation.large_meeting_required_threshold
     r = client.post("/events", json={"title": "Q4 All-Hands", "description": "Vera will host. Ben is the keynote speaker.",
                                       "start": "2026-10-21T16:00:00Z", "end": "2026-10-21T17:00:00Z", "attendees": many},
@@ -774,3 +791,298 @@ def test_people_out_that_day_are_never_offered_to_the_ai(client, svc):
                         reason="Priya can cover.", suggestedProxyId="p_priya"), e, people["p_dev"], people, [],
                         svc._is_out, lambda: recommend(e, people["p_dev"], people, []))
     assert ai.suggestedProxyId is None and "also out that day" in ai.reason
+
+
+# ---- the ADK meeting advisor (agents/adk_advisor.py), all offline: a fake loop stands in for Gemini ----
+
+def _adk_on(monkeypatch, fake_run):
+    from agents import adk_advisor
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    monkeypatch.setattr(S.ai, "engine", "adk")
+    monkeypatch.setattr(adk_advisor, "_get_agent_client", lambda: None)
+    monkeypatch.setattr(adk_advisor, "_run_sync", fake_run)
+
+
+def test_adk_tools_see_only_this_meeting_and_this_viewers_summaries(svc, client):
+    from agents.adk_advisor import make_tools
+    people = svc.people_map()
+    e = _priya_event(svc, "Design Review")                      # its summaries are NOT shared with Priya
+    tools = {t.__name__: t for t in make_tools(e, people["p_priya"], people, svc.calendar.visible_notes(e, "p_priya"))}
+    assert set(tools) == {"read_summaries", "list_proxy_candidates", "check_if_out"}
+    assert tools["read_summaries"]() == {"summaries": [], "count": 0}
+    from agents.adk_advisor import describe_meeting
+    assert "Meeting: Design Review" in describe_meeting(e, people["p_priya"], people)      # details go in the message
+    # people out that day are never candidates, and check_if_out answers by name or id
+    event_id = _two_out_meeting(client)
+    e2 = svc.calendar.get(event_id)
+    tools2 = {t.__name__: t for t in make_tools(e2, people["p_priya"], people, [], svc._is_out)}
+    ids = [c["id"] for c in tools2["list_proxy_candidates"]()["candidates"]]
+    assert "p_dev" not in ids and "p_priya" not in ids and "p_meena" in ids
+    assert tools2["check_if_out"]("Dev")["out_on_meeting_day"] is True
+    assert tools2["check_if_out"]("p_meena")["out_on_meeting_day"] is False
+    assert tools2["check_if_out"]("Nobody")["found"] is False
+
+
+def test_adk_agent_answers_the_card_with_the_tools_it_used(monkeypatch, svc):
+    def fake_run(agent, text):
+        assert agent.name == "meeting_advisor" and len(agent.tools) == 3 and "Q4 Budget Review" in text
+        summaries = agent.tools[0]()                         # the loop calls our real tools
+        assert summaries["count"] == 1
+        return ({"kind": "key_meeting", "recommendation": "proxy", "reason": "Meena prepared the cost comparison.",
+                 "confidence": "high", "suggested_proxy_id": "p_meena"}, ["get_meeting", "read_summaries", "list_proxy_candidates"])
+    _adk_on(monkeypatch, fake_run)
+    item = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()
+    ai = svc._view(item, "p_priya").ai
+    assert ai.engine == "gemini_adk" and ai.suggestedProxyId == "p_meena"
+    assert ai.toolsUsed == ["get_meeting", "read_summaries", "list_proxy_candidates"]
+
+
+def test_adk_answer_is_still_checked_by_our_rules(monkeypatch, client, svc):
+    event_id = _two_out_meeting(client)
+    _adk_on(monkeypatch, lambda agent, text: ({"kind": "key_meeting", "recommendation": "proxy", "reason": "Dev can cover.",
+                                         "confidence": "high", "suggested_proxy_id": "p_dev"}, ["list_proxy_candidates"]))
+    item = next(i for i in svc.store.items() if i.event.calendarEventId == event_id and i.absentPersonId == "p_priya")
+    svc._analysis_cache.clear()
+    ai = svc._view(item, "p_sam").ai
+    assert ai.engine == "gemini_adk" and ai.suggestedProxyId is None and "also out that day" in ai.reason
+
+
+def test_adk_failure_falls_back_to_the_single_call_then_the_rules(monkeypatch, svc):
+    from agents import recommender_ai
+    from agents.recommender_ai import Recommendation
+    from app.models import Action, Confidence, ItemKind
+    from app.settings import settings as S
+
+    def broken(agent, text):
+        raise TimeoutError("agent too slow")
+    _adk_on(monkeypatch, broken)
+    monkeypatch.setattr(S.ai, "retry_wait_seconds", [0, 0])
+    single = []
+
+    def one_call(event, absent, people, notes, client=None, is_out=None):
+        single.append(1)
+        return recommender_ai.to_ai_result(Recommendation(kind=ItemKind.key_meeting, recommendation=Action.proxy,
+                                           reason="Meena can cover.", confidence=Confidence.medium,
+                                           suggested_proxy_id="p_meena"), notes)
+    monkeypatch.setattr(recommender_ai, "recommend_ai", one_call)
+    item = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()
+    ai = svc._view(item, "p_priya").ai
+    assert ai.engine == "gemini" and single and any("ADK agent unavailable" in c for c in ai.checks)
+
+    def also_broken(*a, **k):
+        raise TimeoutError("no answer")
+    monkeypatch.setattr(recommender_ai, "recommend_ai", also_broken)
+    svc._analysis_cache.clear()
+    assert svc._view(item, "p_priya").ai.engine == "rules_fallback"
+
+
+def test_background_analysis_answers_at_once_then_fills_in_the_ai(monkeypatch, svc):
+    from app.settings import settings as S
+    _adk_on(monkeypatch, lambda agent, text: ({"kind": "key_meeting", "recommendation": "proxy", "reason": "Meena can cover.",
+                                         "confidence": "high", "suggested_proxy_id": "p_meena"}, ["get_meeting"]))
+    monkeypatch.setattr(S.ai, "background", True)
+    item = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()
+    first = svc._view(item, "p_priya").ai
+    assert first.engine == "analysing" and first.recommendation is not None   # rules' suggestion shown right away
+    svc.wait_for_analysis()
+    assert svc._view(item, "p_priya").ai.engine == "gemini_adk"                # then the agent's answer
+
+    # a failure is shown as "AI unavailable" and not retried on every refresh
+    def broken(agent, text):
+        raise TimeoutError("slow")
+    from agents import adk_advisor, recommender_ai
+    monkeypatch.setattr(adk_advisor, "_run_sync", broken)
+    monkeypatch.setattr(recommender_ai, "recommend_ai", lambda *a, **k: (_ for _ in ()).throw(TimeoutError("slow")))
+    monkeypatch.setattr(S.ai, "retry_wait_seconds", [0, 0])
+    svc._analysis_cache.clear()
+    svc._view(item, "p_priya"); svc.wait_for_analysis()
+    assert svc._view(item, "p_priya").ai.engine == "rules_fallback"
+    assert not svc._pending                                                    # nothing re-queued straight away
+
+
+# ---- the Gemini handover brief (agents/note_drafter.py), offline ----
+
+def test_gemini_handover_brief_is_built_from_the_shared_summaries(monkeypatch, svc):
+    from agents import note_drafter
+    from agents.note_drafter import HandoverBrief, draft_note
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    people = svc.people_map()
+    e = _priya_event(svc, "Q4 Budget Review")
+    notes = svc.calendar.visible_notes(e, "p_priya")
+    fake = _FakeGemini(HandoverBrief(
+        meeting_purpose="The quarterly review of the budget and vendor choice.",
+        covering_for="You cover Priya's final vendor decision and sign-off.",
+        key_points=["Vendor shortlist approved.", "  ", "Meena prepared the cost comparison."],
+        open_items=["Confirm the contract terms."], check_with="Check with Sam (organizer) if unsure."))
+    text, engine = draft_note(e, people["p_priya"], notes, people["p_meena"], client=fake)
+    assert engine == "gemini" and text.startswith("Hi Meena, thanks for covering 'Q4 Budget Review'")
+    assert "- Vendor shortlist approved." in text and "Still open:" in text and "- Confirm the contract terms." in text
+    assert "-   " not in text                                         # empty points dropped by our code
+    prompt = fake.asked[0]
+    assert "Priya owns the final vendor decision" in prompt and "Meena Iyer" in prompt
+    # privacy: only the summaries passed in reach Gemini
+    _, engine2 = draft_note(e, people["p_priya"], [], people["p_meena"], client=fake)
+    assert "Priya owns" not in fake.asked[1]
+
+
+def test_handover_brief_falls_back_to_the_simple_draft(monkeypatch, client, svc):
+    from agents import note_drafter
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    monkeypatch.setattr(S.ai, "retry_wait_seconds", [0, 0])
+
+    def broken(prompt, client=None):
+        raise TimeoutError("no answer")
+    monkeypatch.setattr(note_drafter, "ask_gemini", broken)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    r = client.post(f"/items/{item.id}/note-draft", params={"proxyId": "p_meena"}, headers=H("p_priya")).json()
+    assert r["engine"] == "rules_fallback" and "vendor" in r["draft"].lower()      # still a usable draft
+
+
+def test_handover_brief_never_sends_the_proxy_to_themselves_or_to_the_absent_person(svc):
+    from agents.note_drafter import _check_with
+    people = svc.people_map()
+    priya, dev, meena, sam = people["p_priya"], people["p_dev"], people["p_meena"], people["p_sam"]
+    assert _check_with("If unsure, check with Dev.", priya, dev, meena) == \
+        "If anything is unclear, check with Meena, who organizes the meeting."          # not the proxy himself
+    assert "Sam" in _check_with("Check with Priya if anything is unclear.", priya, meena, sam)   # Priya is away
+    assert _check_with("Ask Dev.", priya, dev, dev) == "If anything is unclear, reply to this note."  # proxy organizes
+    assert _check_with("Check with Arjun, her manager.", priya, meena, sam) == "Check with Arjun, her manager."
+
+
+def test_large_event_goes_to_the_ai_only_when_the_absent_person_is_named(svc):
+    from agents.orchestrator import ai_needed
+    from app.models import CalEvent, EventAttendee
+    from datetime import datetime, timezone
+    people = svc.people_map()
+    when = datetime(2026, 10, 27, 10, tzinfo=timezone.utc)
+    base = dict(id="x", start=when, end=when, organizerId="p_vera", inviteGroup="site-all",
+                attendees=[EventAttendee(personId="p_arjun"), EventAttendee(personId="p_meena")])
+    talk = CalEvent(title="All-hands: H2 plan", description="Arjun walks us through the H2 numbers.", **base)
+    assert ai_needed(talk, people["p_arjun"], []) is True          # named, no hosting word: the AI should look
+    assert ai_needed(talk, people["p_meena"], []) is False         # ordinary attendee: rules, no AI call
+
+
+def test_ai_can_raise_an_auto_handled_card_but_never_hide_one(monkeypatch, svc):
+    from app.models import AiResult, Confidence, ItemKind, ItemStatus, Action
+    from app.settings import settings as S
+    standup = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.kind == ItemKind.team_checkin)
+    assert standup.status == ItemStatus.auto_handled
+    ai = AiResult(recommendation=Action.proxy, confidence=Confidence.high, reason="Sign-offs happen here.", engine="gemini_adk")
+    svc._maybe_raise(standup.id, "p_sam", ItemKind.key_meeting, ai)              # not the absent person's view: no change
+    assert svc.store.get_item(standup.id).kind == ItemKind.team_checkin
+    svc._maybe_raise(standup.id, "p_priya", ItemKind.key_meeting, ai)            # the absent person's view: raised
+    raised = svc.store.get_item(standup.id)
+    assert raised.kind == ItemKind.key_meeting and raised.status == ItemStatus.pending_decision
+    assert any(h.type == "ai_raised" for h in svc.store.history())
+    budget = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.event.title == "Q4 Budget Review")
+    svc._maybe_raise(budget.id, "p_priya", ItemKind.team_checkin, ai)            # never downwards
+    assert svc.store.get_item(budget.id).kind == ItemKind.key_meeting
+    monkeypatch.setattr(S.ai, "ai_may_raise_to_key_meeting", False)              # and it can be switched off
+    other = next(i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.kind == ItemKind.team_checkin)
+    svc._maybe_raise(other.id, "p_priya", ItemKind.key_meeting, ai)
+    assert svc.store.get_item(other.id).kind == ItemKind.team_checkin
+
+
+def test_impact_tiles_start_from_the_handled_past_week(client, svc):
+    m = client.get("/metrics").json()
+    assert m["meetingsWithPlan"] >= 4 and m["meetingsAffected"] > m["meetingsWithPlan"]
+    assert m["teamHoursSaved"] > 0 and m["avgNoticeDays"] > 0
+    assert m["decisionsCounted"] >= 4 and m["recommendationsFollowedPct"] is not None
+    assert "proxy accepted 36 min" in m["estimateNote"]                      # the formula comes from the config
+    # the past week does not show as an upcoming absence
+    assert client.get("/absences", headers=H("p_dev")).json() == []
+
+
+def test_reset_demo_restores_the_data_and_empties_the_ai_cache(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    client.post(f"/items/{item.id}/action", json={"action": "proceed_without"}, headers=H("p_priya"))
+    svc._analysis_cache[("x",)] = None
+    assert client.post("/dev/reset-demo").json() == {"ok": True}
+    again = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    assert again.status.value == "pending_decision" and ("x",) not in svc._analysis_cache
+
+
+def test_routine_kind_with_an_action_becomes_a_key_meeting(svc):
+    from agents import guard
+    from agents.recommender import recommend
+    from app.models import Action, AiResult, Confidence, ItemKind
+    people = svc.people_map()
+    e = svc.calendar.get("evt_allhands")
+    kind, ai = guard.check(ItemKind.org_event, AiResult(recommendation=Action.reschedule, confidence=Confidence.high,
+                           reason="Arjun presents the H2 numbers."), e, people["p_arjun"], people, [],
+                           svc._is_out, lambda: recommend(e, people["p_arjun"], people, []))
+    assert kind == ItemKind.key_meeting and any("needs a decision" in c for c in ai.checks)
+
+
+def test_a_repeated_answer_is_harmless_and_messages_are_polite(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_meena"}, headers=H("p_priya"))
+    req = next(r for r in svc.store.proxy_requests() if r.itemId == item.id and r.status.value == "pending")
+    url = f"/proxy-requests/{req.id}/respond"
+    assert client.post(url, json={"response": "accepted"}, headers=H("p_meena")).status_code == 200
+    assert client.post(url, json={"response": "accepted"}, headers=H("p_meena")).status_code == 200   # double click
+    changed = client.post(url, json={"response": "declined"}, headers=H("p_meena"))
+    assert changed.status_code == 400 and changed.json()["detail"] == "You've already answered this request."
+    missing = client.post("/items/nope/action", json={"action": "proceed_without"}, headers=H("p_priya")).json()["detail"]
+    assert missing[0].isupper() and missing.endswith(".")
+
+
+def test_second_choice_is_checked_like_the_first(client, svc):
+    from agents import guard
+    from agents.recommender import recommend
+    from app.models import Action, AiResult, Confidence, ItemKind
+    people = svc.people_map()
+    event_id = _two_out_meeting(client)                       # Budget Sync, Oct 21: Priya and Dev out, Meena in
+    e = svc.calendar.get(event_id)
+    chk = lambda ai: guard.check(ItemKind.key_meeting, ai, e, people["p_priya"], people, [], svc._is_out,   # noqa: E731
+                                 lambda: recommend(e, people["p_priya"], people, []))
+    # second choice out that day -> dropped
+    _, ai = chk(AiResult(recommendation=Action.proxy, confidence=Confidence.medium, reason="x",
+                         suggestedProxyId="p_meena", backupProxyId="p_dev"))
+    assert ai.suggestedProxyId == "p_meena" and ai.backupProxyId is None
+    # first choice out, second fine -> the second moves up, and the reason says so
+    _, ai = chk(AiResult(recommendation=Action.proxy, confidence=Confidence.medium, reason="x",
+                         suggestedProxyId="p_dev", backupProxyId="p_meena"))
+    assert ai.suggestedProxyId == "p_meena" and ai.backupProxyId is None and "Meena Iyer is suggested instead" in ai.reason
+    # same person twice, or a second choice on a non-proxy answer -> dropped
+    _, ai = chk(AiResult(recommendation=Action.proxy, confidence=Confidence.medium, reason="x",
+                         suggestedProxyId="p_meena", backupProxyId="p_meena"))
+    assert ai.backupProxyId is None
+    _, ai = chk(AiResult(recommendation=Action.reschedule, confidence=Confidence.medium, reason="x", backupProxyId="p_meena"))
+    assert ai.backupProxyId is None
+
+
+def test_a_decline_is_shown_without_asking_the_ai_again(monkeypatch, client, svc):
+    from agents import recommender_ai
+    from agents.recommender_ai import Recommendation
+    from app.models import Action, Confidence, ItemKind
+    from app.settings import settings as S
+    monkeypatch.setattr(S.ai, "enabled", True)
+    calls = []
+
+    def fake(event, absent, people, notes, client=None, is_out=None):
+        calls.append(1)
+        return recommender_ai.to_ai_result(Recommendation(kind=ItemKind.key_meeting, recommendation=Action.proxy,
+                                           reason="Meena prepared the numbers.", confidence=Confidence.high,
+                                           suggested_proxy_id="p_meena", backup_proxy_id="p_arjun"), notes)
+    monkeypatch.setattr(recommender_ai, "recommend_ai", fake)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    svc._analysis_cache.clear()
+    first = svc._view(item, "p_priya")
+    assert (first.ai.suggestedProxyId, first.ai.backupProxyId) == ("p_meena", "p_arjun") and len(calls) == 1
+    client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_meena"}, headers=H("p_priya"))
+    req = next(r for r in svc.store.proxy_requests() if r.itemId == item.id and r.status.value == "pending")
+    client.post(f"/proxy-requests/{req.id}/respond", json={"response": "declined"}, headers=H("p_meena"))
+    after = svc._view(svc.store.get_item(item.id), "p_priya")
+    assert after.status.value == "proxy_declined" and after.declinedProxyIds == ["p_meena"]
+    assert len(calls) == 1                                                    # no new AI call after the decline
+    assert after.ai.backupProxyId == "p_arjun"                                # the second choice is still on the card
+    cands = {c["personId"]: c for c in client.get(f"/items/{item.id}/proxy-candidates", headers=H("p_priya")).json()}
+    assert cands["p_meena"]["declined"] is True and cands["p_meena"]["choice"] == "first"   # still pickable, marked
+    assert cands["p_arjun"]["choice"] == "second"
