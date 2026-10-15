@@ -66,6 +66,7 @@ export default function AuthGate({ children }) {
           <p>Sign in with your company Google account to view your meetings and absence actions.</p>
           {error && <div className="note warn" role="alert">{error}</div>}
           <button className="primary" type="button" onClick={signIn}>Continue with Google</button>
+          <a className="public-demo-link" href="/demo">Explore the public seed demo without signing in</a>
         </section>
       </div>
     );

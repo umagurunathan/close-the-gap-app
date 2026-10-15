@@ -8,6 +8,7 @@ import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
 import SettledCard from "./components/SettledCard.jsx";
 import MessageBar from "./components/MessageBar.jsx";
 import { useAuth } from "./AuthGate.jsx";
+import { publicDemoMode } from "./firebase.js";
 
 const DEFAULT_PERSON = "p_priya";
 // A link can open the app as someone, on a tab: ?as=p_sam&tab=organizer (handy for demos and the judges' guide).
@@ -227,6 +228,7 @@ export default function App() {
           <div className="tagline">Spot the gap early. Keep the meeting going.</div>
         </div>
         <div className="topbar-right">
+          {publicDemoMode && <a className="ghost" href="/">Sign in for connected demo</a>}
           {dataMode?.canSwitch && <div className="data-mode" aria-label="Global demo data source">
             <span>Data source</span>
             <button className={dataMode.mode === "memory" ? "mode-active" : ""}
@@ -242,13 +244,13 @@ export default function App() {
           </div>}
           <button className="ghost" onClick={() => setShowSchedule(true)}>Schedule a meeting</button>
           <button className="ghost" onClick={() => setShowAdd(true)}>Report an absence</button>
-          {calendarStatus.connected ? (
+          {!publicDemoMode && (calendarStatus.connected ? (
             <button className="ghost" onClick={syncCalendar}>Sync Google Calendar</button>
           ) : (
             <button className="ghost" onClick={connectCalendar} disabled={!calendarStatus.configured}>
               Connect Google Calendar
             </button>
-          )}
+          ))}
           {!firebaseAuthEnabled && <>
             <button className="ghost" onClick={() => setShowEmails((v) => !v)}>Emails (demo) · {outbox.length}</button>
             <button className="ghost" onClick={resetDemo}
@@ -269,6 +271,9 @@ export default function App() {
         </div>
       </header>
 
+      {publicDemoMode && <div className="public-demo-banner">
+        Public seed demo · changes are temporary and shared with other visitors. Google Calendar and Firestore are not connected.
+      </div>}
       <MessageBar kind="error" text={error} onClose={clearError} />
       <MessageBar kind="success" text={notice} onClose={clearNotice} hideAfter={settings?.messageHideSeconds ?? 6} />
 

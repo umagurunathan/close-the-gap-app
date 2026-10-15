@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env*.local
+.env.production
 # Firebase CLI's local cache and logs
 .firebase/
 firebase-debug.log

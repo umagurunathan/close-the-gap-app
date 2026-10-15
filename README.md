@@ -54,6 +54,7 @@ Use the "Signed in as" dropdown to switch person: Priya (planned leave), Arjun (
 ## Deploy
 - **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --concurrency 1 --no-cpu-throttling --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance and one concurrent request keep the global in-memory seed mode consistent; CPU stays allocated for background AI analysis. The service account needs the Vertex AI User role to call Gemini.
 - **Web app → Firebase Hosting** (from `web/`): put the backend URL in `.env.production`, then `npm run build` and `firebase deploy --only hosting`.
+- **Public seed demo:** deploy a separate `close-the-gap-public-demo` service with `STORE=memory`, `FIREBASE_AUTH_ENABLED=false`, and `CORS_ORIGINS=https://close-the-gap-2026.web.app`. Set `VITE_DEMO_API_URL` to that service URL in the ignored local `web/.env.production` before building Hosting. The `/demo` route uses this API; it never uses the authenticated Firestore service. Keep the public demo's max instances and concurrency at `1`. Visitors share temporary changes; the in-memory seed resets when Cloud Run scales the service to zero or restarts.
 
 Google Calendar supports local demo OAuth and an authenticated hosted Firestore mode. For the hosted global
 Seed-file/Firestore selector, cross-project IAM, Firebase Authentication, presenter allowlisting, and Calendar OAuth

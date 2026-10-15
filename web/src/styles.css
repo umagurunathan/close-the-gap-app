@@ -55,6 +55,14 @@ body {
   margin-top: 12px;
 }
 
+.public-demo-link {
+  display: block;
+  margin-top: 18px;
+  color: var(--primary);
+  text-align: center;
+  font-size: 14px;
+}
+
 .signed-in {
   display: flex;
   align-items: center;
@@ -84,6 +92,15 @@ body {
 .brand-block { display: flex; flex-direction: column; }
 .tagline { font-size: 12px; color: var(--muted); }
 .topbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.public-demo-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--primary-soft);
+  font-size: 13px;
+}
 .switcher { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
 .data-mode { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .data-mode button { padding: 6px 9px; font-size: 12px; }

@@ -1,7 +1,8 @@
 import { initializeApp } from "@firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "@firebase/auth";
 
-export const firebaseAuthEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === "true";
+export const publicDemoMode = window.location.pathname === "/demo" || window.location.pathname.startsWith("/demo/");
+export const firebaseAuthEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === "true" && !publicDemoMode;
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,

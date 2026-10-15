@@ -1,5 +1,8 @@
 // All calls to the backend go through here. The shapes are listed at <backend>/docs.
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const IS_PUBLIC_DEMO = window.location.pathname === "/demo" || window.location.pathname.startsWith("/demo/");
+const BASE = IS_PUBLIC_DEMO
+  ? import.meta.env.VITE_DEMO_API_URL || "http://localhost:8000"
+  : import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const OFFLINE = "We can't reach the server right now. Please check your connection and try again.";
 
