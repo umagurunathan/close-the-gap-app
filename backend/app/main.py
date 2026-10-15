@@ -48,8 +48,8 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     calendar = GoogleCalendarIntegration(svc.store)
     svc.google_calendar = calendar
     app = FastAPI(title="Close the Gap API", version="0.2")
-    app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
     install_firebase_auth(app, lambda: svc.store)
+    app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
 
     def me(request: Request, x_person_id: Optional[str] = Header(default=None)) -> str:
         """Resolve the verified Firebase identity, or the local demo persona when auth is disabled."""

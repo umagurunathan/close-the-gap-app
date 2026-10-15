@@ -66,6 +66,16 @@ def test_firebase_auth_protects_routes_but_keeps_health_public(monkeypatch):
     assert client.get("/people").status_code == 401
 
 
+def test_firebase_auth_errors_include_cors_headers(monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", "https://close-the-gap-2026.web.app")
+    client = _client(monkeypatch, {"email": _arjun_email(), "email_verified": True})
+
+    response = client.get("/data-mode", headers={"Origin": "https://close-the-gap-2026.web.app"})
+
+    assert response.status_code == 401
+    assert response.headers["access-control-allow-origin"] == "https://close-the-gap-2026.web.app"
+
+
 def test_firebase_auth_disables_demo_only_endpoints(monkeypatch):
     client = _client(monkeypatch, {
         "email": _arjun_email(),
