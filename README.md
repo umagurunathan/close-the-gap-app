@@ -19,7 +19,7 @@ When someone goes on leave they usually tell only their manager and reports. Col
 - **Reschedules safely:** same time of day, a day when every required person is free and none is on leave.
 - **Both sides can act:** the person who is out and the organizer. Urgency is highlighted for everyone: amber within 3 days, red within 24 hours.
 - **One card per meeting for the organizer,** naming everyone who is out, with one recommendation and one-click actions for the whole meeting. Large events (sent to a list, or more than 35 required people) only involve the organizer and the hosts, plus anyone the event names, whom the AI checks.
-- **Settled meetings get out of the way:** once a meeting is rescheduled or canceled it moves to "No action needed" (or "Done" for the organizer), showing the old time struck through and the new one.
+- **Three groups in every tab, the same for the person who is out and the organizer:** "Needs action", "Settled" (a person decided: a proxy accepted, go on without them, rescheduled or canceled, with the old time struck through) and, for the person who is out, "No action needed" (handled automatically). A list of meetings on the left, the chosen one in full on the right; on a phone the list opens each meeting in place.
 
 ## How the AI works
 - **A meeting advisor agent built with Google's Agent Development Kit (ADK)** runs on Gemini on Vertex AI. It gets the meeting details and three tools, all bound to one meeting and one viewer: the summaries this viewer may open, the people who could cover (never anyone out that day), and "is this person out that day?". Gemini decides which to use and when to stop (a stand-up needs only the summaries; a proxy needs the candidate list) and returns a structured answer: the action, a one-line reason, a confidence level and, when useful, a suggested proxy. Privacy is enforced by the tools, so the agent cannot see more than the person it advises.
@@ -79,7 +79,7 @@ npm install      # once
 npm run dev
 ```
 
-Use the "View as" menu in the judges' demo controls to switch person: Priya (planned leave), Arjun (leave where the AI visibly beats simple rules), Kiran (sudden absence), Sam (organizer), Meena (proxy), Neha (unrelated). "Reset sample data" restores the demo data and lets the AI analyze everything again. The "Schedule a meeting" and "Report an absence" buttons let you try both directions. A link can open the app as someone, on a tab: `?as=p_sam&tab=organizer`.
+Use the person buttons in the judges' demo bar to switch person: Priya (on leave), Meena (proxy), Sam (organizer), Arjun (where the AI visibly beats simple rules), Kiran (out suddenly), Lena (a week's vacation with a full calendar); "More…" lists everyone else, for example Neha (unrelated). "Reset data" restores the demo data and lets the AI analyze everything again. The "Schedule a meeting" and "Report an absence" buttons let you try both directions. A link can open the app as someone, on a tab: `?as=p_sam&tab=organizer`.
 
 ## Deploy
 - **Backend → Cloud Run** (from `backend/`): `gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated --min-instances 1 --max-instances 1 --no-cpu-throttling --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,CORS_ORIGINS=<web app URL>"`. One instance, because the prototype keeps its data in memory; CPU always allocated, because the AI analysis runs in the background. The service account needs the Vertex AI User role to call Gemini.
