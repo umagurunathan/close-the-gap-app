@@ -3,8 +3,8 @@ import { api } from "../api.js";
 
 // Schedule a meeting. Invitees: type a name, pick from the matches, and each person becomes a chip; click a chip's
 // role to switch Required / Optional, ✕ to remove. If a required invitee is already out that day, the organizer is
-// told straight away (the backend checks).
-export default function ScheduleMeeting({ people, me, today, onClose, onDone }) {
+// told straight away (the backend checks). If Google Calendar is connected, the event is created there too.
+export default function ScheduleMeeting({ people, me, today, calendarConnected, onClose, onDone }) {
   const [title, setTitle] = useState("");
   const [agenda, setAgenda] = useState("");   // the invite body: agenda, plan, notes (the AI reads it)
   const [date, setDate] = useState(today ? addDays(today, 10) : "2026-10-21");
@@ -95,7 +95,11 @@ export default function ScheduleMeeting({ people, me, today, onClose, onDone }) 
           <p className="reason" id="invite-help">Nobody invited yet. Type a name above and press Enter or click a match.</p>
         )}
 
-        <p className="reason">You are the organizer. If a required invitee is already out that day, you will be told straight away.</p>
+        <p className="reason">
+          {calendarConnected
+            ? "You are the organizer. This creates a Google Calendar invitation from your connected account. If a required invitee is already out that day, you will be told straight away."
+            : "You are the organizer. Google Calendar is not connected, so this meeting will be added to the demo calendar only. If a required invitee is already out, you will be told straight away."}
+        </p>
         {error && <div className="note warn">{error}</div>}
         <div className="actions">
           <button className="primary" type="submit" disabled={busy}>{busy ? "Scheduling…" : "Schedule"}</button>

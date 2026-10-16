@@ -14,11 +14,12 @@ from agents.fallback.candidate_order import rank_proxies
 
 from . import config, notify
 from .calendar import SimCalendar
+from .google_calendar import GoogleCalendarIntegration, calendar_event
 from .models import (
     AiResult, Absence, AbsenceSource, AbsenceType, Action, AttendeeItems, CalEvent, Counts, DirectoryEntry,
     EventAttendee, EventRef,
-    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, Projection, ProjectionRow, NoteDraft, NoteDraftAvailable, OrganizerMeeting, Person,
-    ProposedTime, ProxyCandidate,
+    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, Projection, ProjectionRow, NoteDraft, NoteDraftAvailable,
+    OrganizerMeeting, Person, Note, NoteCreate, ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
 from .roles import is_invited_as_optional, required_ids
@@ -61,9 +62,11 @@ _OUTCOME_WORDS = {"proxy_accepted": "covered by a proxy", "proceeding_without": 
 
 
 class Service:
-    def __init__(self, store: Store, calendar: SimCalendar):
+    def __init__(self, store: Store, calendar: SimCalendar,
+                 google_calendar: Optional[GoogleCalendarIntegration] = None):
         self.store = store
         self.calendar = calendar
+        self.google_calendar = google_calendar
         # Recommendations are built from what each viewer can open. The cache key is the item plus the
         # fingerprint of the summaries visible to the viewer, so two viewers who can open the same documents share
         # one result, and a changed or newly shared summary triggers a fresh analysis.
@@ -283,7 +286,8 @@ class Service:
 
     # ---------- a meeting is scheduled (or changed) while a key person is already out ----------
     def schedule_meeting(self, organizer_id: str, title: str, description: str, start: datetime, end: datetime,
-                         attendees: list[EventAttendee]) -> tuple[CalEvent, list[MeetingItem]]:
+                         attendees: list[EventAttendee], google_event_id: Optional[str] = None
+                         ) -> tuple[CalEvent, list[MeetingItem]]:
         """The organizer schedules a meeting. If a key person (the organizer or a required attendee) is already out
         on that day, the same flow starts right away: cards are created and the organizer gets one email."""
         self.person(organizer_id)
@@ -292,10 +296,65 @@ class Service:
         for a in attendees:
             self.person(a.personId)
         event = CalEvent(id=self.store.next_id("evt"), title=title.strip() or "Untitled meeting", description=description,
-                         start=start, end=end, organizerId=organizer_id, attendees=attendees)
+                         start=start, end=end, organizerId=organizer_id, attendees=attendees,
+                         googleEventId=google_event_id,
+                         googleCalendarOwnerId=organizer_id if google_event_id else None)
         self.calendar.add_event(event)
         self._log("-", organizer_id, "meeting_scheduled", event.title, f"{self._first(organizer_id)} scheduled the meeting.")
         return event, self._scan_event(event)
+
+    def sync_google_events(self, owner_id: str, event_data: list[dict]) -> dict:
+        owner = self.person(owner_id)
+        by_email = {person.email.casefold(): person for person in self.store.people()}
+        added = updated = skipped = 0
+        affected = []
+        for raw in event_data:
+            if raw.get("status") == "cancelled":
+                existing = next((
+                    event for event in self.calendar.all_events()
+                    if event.googleEventId == raw.get("id") and event.googleCalendarOwnerId == owner_id
+                ), None)
+                if existing is None:
+                    skipped += 1
+                    continue
+                existing.cancelled = True
+                self.calendar.save_event(existing)
+                for item in self.store.items():
+                    if item.event.calendarEventId != existing.id or item.status in TERMINAL:
+                        continue
+                    self._withdraw_requests(item, tell_accepted=False)
+                    item.status, item.chosenAction, item.decidedBy = ItemStatus.cancelled, Action.cancel, "system"
+                    item.updatedAt = self.now()
+                    self.store.save_item(item)
+                    self._log(item.id, "system", "calendar_event_cancelled", "Cancelled in Google Calendar")
+                updated += 1
+                continue
+            event = calendar_event(raw, owner, by_email)
+            if event is None:
+                skipped += 1
+                continue
+            existing = self.calendar.get(event.id)
+            if existing:
+                event.notes = existing.notes
+                event.meetUrl = existing.meetUrl
+                if existing.googleCalendarOwnerId == existing.organizerId:
+                    event.googleEventId = existing.googleEventId
+                    event.googleCalendarOwnerId = existing.googleCalendarOwnerId
+                self.calendar.save_event(event)
+                for item in self.store.items():
+                    if item.event.calendarEventId == event.id:
+                        item.event.title = event.title
+                        item.event.instanceStart = event.start
+                        item.event.start, item.event.end = event.start, event.end
+                        item.event.organizerId = event.organizerId
+                        item.event.attendees = list(event.attendees)
+                        self.store.save_item(item)
+                updated += 1
+            else:
+                self.calendar.add_event(event)
+                added += 1
+            affected.extend(self._scan_event(event))
+        return {"added": added, "updated": updated, "skipped": skipped, "affectedItems": len(affected)}
 
     def add_attendee(self, event_id: str, caller: str, person_id: str, optional: bool = False) -> list[MeetingItem]:
         e = self.calendar.get(event_id)
@@ -306,7 +365,14 @@ class Service:
         self.person(person_id)
         if person_id == e.organizerId or any(a.personId == person_id for a in e.attendees):
             raise ValueError("That person is already invited to this meeting.")
+        if e.googleEventId:
+            if e.googleCalendarOwnerId != e.organizerId:
+                raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
+            if self.google_calendar is None:
+                raise ValueError("Google Calendar is not available for this event")
+            self.google_calendar.add_attendee(e, person_id, optional)
         e.attendees.append(EventAttendee(personId=person_id, optional=optional))
+        self.calendar.save_event(e)
         return self._scan_event(e, only=[person_id])
 
     def _scan_event(self, e: CalEvent, only: Optional[list[str]] = None) -> list[MeetingItem]:
@@ -589,6 +655,34 @@ class Service:
                                   organizer=self.store.get_person(e.organizerId))
         return NoteDraft(draft=text, engine=engine, model=S.ai.model if engine == "gemini" else None)
 
+    def meeting_notes(self, item_id: str, caller: str) -> list[Note]:
+        item = self.store.get_item(item_id)
+        if not item:
+            raise LookupError("item not found")
+        e = self.calendar.get(item.event.calendarEventId)
+        if caller not in self._invitee_ids(item):
+            raise PermissionError("only meeting invitees can read notes")
+        return self.calendar.visible_notes(e, caller)
+
+    def add_meeting_note(self, item_id: str, caller: str, text: str, shared_with: list[str]) -> Note:
+        item = self.store.get_item(item_id)
+        if not item:
+            raise LookupError("item not found")
+        e = self.calendar.get(item.event.calendarEventId)
+        if caller != e.organizerId:
+            raise PermissionError("only the organizer can add meeting notes")
+        text = text.strip()
+        if not text:
+            raise ValueError("note text cannot be empty")
+        invitees = self._invitee_ids(item)
+        readers = list(dict.fromkeys(shared_with))
+        if not set(readers) <= invitees:
+            raise ValueError("notes can only be shared with meeting invitees")
+        note = Note(docId=self.store.next_id("n"), modifiedAt=self.now(), text=text, sharedWith=readers)
+        e.notes.append(note)
+        self.calendar.save_event(e)
+        return note
+
     def apply_action(self, item_id: str, caller: str, action: Action, proxy_id: Optional[str] = None,
                      note: Optional[str] = None, note_from_ai: bool = False) -> MeetingItem:
         item = self.store.get_item(item_id)
@@ -640,6 +734,12 @@ class Service:
                 _, shared, reason = self._draft_notes(item, caller, proxy_id)
                 if not shared:   # the note started as an AI draft from a summary this proxy may not read
                     raise ValueError(f"This note started as an AI draft. {reason}")
+            if not invited and e.googleEventId:
+                if e.googleCalendarOwnerId != e.organizerId:
+                    raise ValueError("The organizer must sync their Google Calendar before adding a proxy")
+                if self.google_calendar is None:
+                    raise ValueError("Google Calendar is not available for this event")
+                self.google_calendar.add_attendee(e, proxy_id)
             self._withdraw_requests(item, tell_accepted=True)   # a new proxy replaces the earlier one(s)
             note = (note or "").strip() or None
             req = ProxyRequest(id=self.store.next_id("pr"), itemId=item.id, proxyId=proxy_id, requestedBy=caller,
@@ -670,6 +770,12 @@ class Service:
                                   f"{self.person(item.absentPersonId).name} suggests you {action.value} '{item.event.title}'",
                                   "Open Organizer Mode to do it in one click.", now)
             elif action == Action.cancel:
+                if e.googleEventId:
+                    if e.googleCalendarOwnerId != e.organizerId:
+                        raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
+                    if self.google_calendar is None:
+                        raise ValueError("Google Calendar is not available for this event")
+                    self.google_calendar.delete_event(e.googleCalendarOwnerId, e.googleEventId)
                 self.calendar.cancel_event(e.id)
                 item.status, item.chosenAction = ItemStatus.cancelled, action
             else:
@@ -678,6 +784,16 @@ class Service:
                 if slot.none:
                     item.status = ItemStatus.no_slot_found
                 else:
+                    if e.googleEventId:
+                        if e.googleCalendarOwnerId != e.organizerId:
+                            raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
+                        if self.google_calendar is None:
+                            raise ValueError("Google Calendar is not available for this event")
+                        updated = e.model_copy(deep=True)
+                        duration = e.end - e.start
+                        updated.start = slot.proposedStart
+                        updated.end = slot.proposedStart + duration
+                        self.google_calendar.update_event(updated)
                     self.calendar.move_event(e.id, slot.proposedStart)
                     item.originalStart = item.originalStart or item.event.start
                     item.event.start, item.event.end = e.start, e.end
@@ -716,10 +832,12 @@ class Service:
                                   f"You no longer need to cover '{item.event.title}'",
                                   "Someone else will cover it, or the plan changed.", now)
 
-    def proposed_time(self, item_id: str) -> ProposedTime:
+    def proposed_time(self, item_id: str, caller: Optional[str] = None) -> ProposedTime:
         item = self.store.get_item(item_id)
         if not item:
             raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
+        if caller is not None and caller not in ({item.absentPersonId} | self._organizer_side(item)):
+            raise PermissionError("only the absent person or the organizer can do this")
         e = self.calendar.get(item.event.calendarEventId)
         return find_slot(e, self.calendar, self.store.absences(), self.now(), people=self.people_map())
 
@@ -764,6 +882,8 @@ class Service:
         item = self.store.get_item(item_id)
         if not item:
             raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
+        if caller not in ({item.absentPersonId} | self._organizer_side(item)):
+            raise PermissionError("only the absent person or the organizer can do this")
         e = self.calendar.get(item.event.calendarEventId)
         notes = self.calendar.visible_notes(e, caller)
         ranked = rank_proxies(e, self.person(item.absentPersonId), self.people_map(), notes)

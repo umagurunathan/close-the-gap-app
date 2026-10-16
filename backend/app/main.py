@@ -1,36 +1,65 @@
 """The API. Every endpoint is listed, with its shapes, at /docs when the server runs. Run: uvicorn app.main:app --reload"""
 from __future__ import annotations
 
-from datetime import date
+import ipaddress
+from datetime import date, timedelta
 from typing import Optional, Union
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from . import config, notify
+from .google_meet import GoogleMeetIntegration, MeetIntegrationError
+from .google_calendar import CalendarIntegrationError, GoogleCalendarIntegration
+from .firebase_auth import install_firebase_auth
 from .models import (
-    Absence, AbsenceCreate, AbsenceReport, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DirectoryEntry, EventCreate, HistoryEvent,
+    Absence, AbsenceCreate, AbsenceReport, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DataModeRequest, DirectoryEntry, EventCreate, HistoryEvent,
     MeetingActionRequest, OrganizerMeeting,
     LeaveSystemRequest, ScheduleResult,
-    MeetingItem, MeResponse, Metrics, Projection, ProjectionRow, NoteDraft, NoteDraftAvailable, ProposedTime, ProxyCandidate,
+    MeetingItem, MeetLinkUpdate, MeetStatus, MeResponse, Metrics, Note, NoteCreate, NoteDraft, NoteDraftAvailable,
+    Projection, ProjectionRow, ProposedTime, ProxyCandidate, TranscriptImportRequest,
     ProxyRequest, ProxyRequestView, RespondRequest,
 )
 from .seed import build_service
 from .service import Service
 from .settings import settings as S
+from .store import FirestoreStore
 
 
 def create_app(service: Optional[Service] = None) -> FastAPI:
-    svc = service or build_service()
+    mode_registry = None
+    if config.data_mode_switch_enabled():
+        if not config.firebase_auth_enabled():
+            raise RuntimeError("DATA_MODE_SWITCH_ENABLED requires FIREBASE_AUTH_ENABLED=true.")
+        if not config.data_mode_admin_emails():
+            raise RuntimeError("Set DATA_MODE_ADMIN_EMAILS when DATA_MODE_SWITCH_ENABLED=true.")
+        from .data_mode import FirestoreDataMode
+        mode_registry = FirestoreDataMode()
+        initial_mode = mode_registry.get()
+    else:
+        initial_mode = None
+    svc = service or build_service(mode=initial_mode)
     if service is None and S.ai.enabled and S.ai.warm_up_on_start:
         import threading
         from agents.recommender_ai import warm_up
         threading.Thread(target=warm_up, name="ai-warm-up", daemon=True).start()   # never delays the start
+    meet = GoogleMeetIntegration(svc.store, svc.calendar)
+    calendar = GoogleCalendarIntegration(svc.store)
+    svc.google_calendar = calendar
     app = FastAPI(title="Close the Gap API", version="0.2")
+    install_firebase_auth(app, lambda: svc.store)
     app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
 
-    def me(x_person_id: Optional[str] = Header(default=None)) -> str:
-        """Simulated sign-in: the persona switcher sends the signed-in person's id in this header."""
+    def me(request: Request, x_person_id: Optional[str] = Header(default=None)) -> str:
+        """Resolve the verified Firebase identity, or the local demo persona when auth is disabled."""
+        if config.firebase_auth_enabled():
+            person_id = getattr(request.state, "person_id", None)
+            if not person_id:
+                raise HTTPException(401, "Sign in with Google to continue.")
+            if x_person_id and x_person_id != person_id:
+                raise HTTPException(403, "You can only act as the person linked to your Google account.")
+            return person_id
         if not x_person_id or not svc.store.get_person(x_person_id):
             raise HTTPException(401, "Please choose who you are signed in as.")
         return x_person_id
@@ -44,6 +73,21 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
             raise HTTPException(403, str(e))
         except ValueError as e:
             raise HTTPException(400, str(e))
+        except MeetIntegrationError as e:
+            raise HTTPException(503, str(e))
+        except CalendarIntegrationError as e:
+            raise HTTPException(503, str(e))
+
+    def require_calendar_request(request: Request) -> None:
+        if calendar.hosted_enabled():
+            return
+        host = request.client.host if request.client else ""
+        try:
+            is_local = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            is_local = False
+        if not is_local:
+            raise HTTPException(403, "Google Calendar demo access is limited to local requests.")
 
     @app.get("/", include_in_schema=False)
     def root():
@@ -54,15 +98,38 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return {"ok": True}
 
     @app.post("/events", response_model=ScheduleResult)
-    def post_event(body: EventCreate, who: str = Depends(me)):
+    def post_event(body: EventCreate, request: Request, who: str = Depends(me)):
         """The signed-in person schedules a meeting. If a key person is already out, the same flow starts at once."""
         def run():
-            event, created = svc.schedule_meeting(who, body.title, body.description, body.start, body.end, body.attendees)
-            return ScheduleResult(eventId=event.id, affected=[svc._view(i, who) for i in created])
+            if body.end <= body.start:
+                raise ValueError("the meeting must end after it starts")
+            for attendee in body.attendees:
+                svc.person(attendee.personId)
+            google_event_id = None
+            if calendar.status(who)["connected"]:
+                require_calendar_request(request)
+                google_event_id = calendar.create_event(
+                    who, body.title.strip() or "Untitled meeting", body.description,
+                    body.start, body.end, body.attendees,
+                )
+            try:
+                event, created = svc.schedule_meeting(
+                    who, body.title, body.description, body.start, body.end, body.attendees, google_event_id,
+                )
+            except (LookupError, ValueError, PermissionError):
+                if google_event_id:
+                    calendar.delete_event(who, google_event_id)
+                raise
+            return ScheduleResult(eventId=event.id,
+                                  calendarProvider="google" if event.googleEventId else "demo",
+                                  affected=[svc._view(i, who) for i in created])
         return guard(run)
 
     @app.post("/events/{event_id}/attendees", response_model=list[MeetingItem])
-    def post_attendee(event_id: str, body: AttendeeAdd, who: str = Depends(me)):
+    def post_attendee(event_id: str, body: AttendeeAdd, request: Request, who: str = Depends(me)):
+        event = svc.calendar.get(event_id)
+        if event and event.googleEventId:
+            require_calendar_request(request)
         return guard(lambda: [svc._view(i, who) for i in svc.add_attendee(event_id, who, body.personId, body.optional)])
 
     @app.get("/settings/public")
@@ -83,6 +150,34 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     def active_people():
         """The ids of people who have something to see (for the "Signed in as" list). No AI call."""
         return svc.active_people()
+
+    @app.get("/data-mode")
+    def get_data_mode(request: Request):
+        mode = "firestore" if isinstance(svc.store, FirestoreStore) else "memory"
+        admin_email = getattr(request.state, "email", "").casefold()
+        return {
+            "enabled": mode_registry is not None,
+            "mode": mode,
+            "canSwitch": mode_registry is not None and admin_email in config.data_mode_admin_emails(),
+        }
+
+    @app.post("/data-mode")
+    def set_data_mode(body: DataModeRequest, request: Request):
+        nonlocal svc, meet, calendar
+        if mode_registry is None:
+            raise HTTPException(404, "The data mode selector is disabled.")
+        email = getattr(request.state, "email", "").casefold()
+        if email not in config.data_mode_admin_emails():
+            raise HTTPException(403, "Only an authorized demo presenter can change the app-wide data mode.")
+        current_mode = "firestore" if isinstance(svc.store, FirestoreStore) else "memory"
+        if body.mode != current_mode:
+            next_service = build_service(mode=body.mode)
+            mode_registry.set(body.mode)
+            svc = next_service
+            meet = GoogleMeetIntegration(svc.store, svc.calendar)
+            calendar = GoogleCalendarIntegration(svc.store)
+            svc.google_calendar = calendar
+        return {"enabled": True, "mode": body.mode, "canSwitch": True}
 
     @app.get("/people")
     def people():
@@ -129,8 +224,86 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return guard(lambda: svc.apply_meeting_action(event_id, who, body.action))
 
     @app.post("/items/{item_id}/action", response_model=MeetingItem)
-    def post_action(item_id: str, body: ActionRequest, who: str = Depends(me)):
+    def post_action(item_id: str, body: ActionRequest, request: Request, who: str = Depends(me)):
+        item = svc.store.get_item(item_id)
+        if item:
+            event = svc.calendar.get(item.event.calendarEventId)
+            if event and event.googleEventId:
+                require_calendar_request(request)
         return guard(lambda: svc.apply_action(item_id, who, body.action, body.proxyId, body.note, body.noteFromAi))
+
+    @app.get("/items/{item_id}/notes", response_model=list[Note])
+    def get_meeting_notes(item_id: str, who: str = Depends(me)):
+        return guard(lambda: svc.meeting_notes(item_id, who))
+
+    @app.post("/items/{item_id}/notes", response_model=Note)
+    def post_meeting_note(item_id: str, body: NoteCreate, who: str = Depends(me)):
+        return guard(lambda: svc.add_meeting_note(item_id, who, body.text, body.sharedWith))
+
+    @app.get("/integrations/google-meet/status")
+    def get_google_meet_status(who: str = Depends(me)):
+        return meet.status(who)
+
+    @app.get("/integrations/google-meet/authorize")
+    def authorize_google_meet(who: str = Depends(me)):
+        return guard(lambda: {"authorizationUrl": meet.authorization_url(who)})
+
+    @app.get("/integrations/google-meet/callback", include_in_schema=False)
+    def google_meet_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+        destination = f"{config.web_app_url()}?meet="
+        if error or not code or not state:
+            return RedirectResponse(destination + "error", status_code=303)
+        try:
+            meet.finish_authorization(code, state)
+        except MeetIntegrationError:
+            return RedirectResponse(destination + "error", status_code=303)
+        return RedirectResponse(destination + "connected", status_code=303)
+
+    @app.get("/integrations/google-calendar/status")
+    def get_google_calendar_status(who: str = Depends(me)):
+        return calendar.status(who)
+
+    @app.get("/integrations/google-calendar/authorize")
+    def authorize_google_calendar(request: Request, who: str = Depends(me)):
+        require_calendar_request(request)
+        return guard(lambda: {"authorizationUrl": calendar.authorization_url(who)})
+
+    @app.get("/integrations/google-calendar/callback", include_in_schema=False)
+    def google_calendar_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None,
+                                error: Optional[str] = None):
+        destination = f"{config.web_app_url()}?calendar="
+        if error or not code or not state:
+            return RedirectResponse(destination + "error", status_code=303)
+        try:
+            require_calendar_request(request)
+            calendar.finish_authorization(code, state)
+        except (CalendarIntegrationError, HTTPException):
+            return RedirectResponse(destination + "error", status_code=303)
+        return RedirectResponse(destination + "connected", status_code=303)
+
+    @app.post("/integrations/google-calendar/sync")
+    def sync_google_calendar(request: Request, who: str = Depends(me)):
+        require_calendar_request(request)
+        def run():
+            now = svc.now()
+            events = calendar.list_events(who, now - timedelta(days=30), now + timedelta(days=365))
+            return svc.sync_google_events(who, events)
+        return guard(run)
+
+    @app.get("/items/{item_id}/meet", response_model=MeetStatus)
+    def get_meeting_meet_status(item_id: str, who: str = Depends(me)):
+        return guard(lambda: meet.meeting_status(item_id, who))
+
+    @app.put("/items/{item_id}/meet", response_model=MeetStatus)
+    def put_meeting_meet_link(item_id: str, body: MeetLinkUpdate, who: str = Depends(me)):
+        return guard(lambda: (
+            meet.link_meeting(item_id, who, body.meetUrl),
+            meet.meeting_status(item_id, who),
+        )[1])
+
+    @app.post("/items/{item_id}/meet/import", response_model=Note)
+    def import_meet_transcript(item_id: str, body: TranscriptImportRequest, who: str = Depends(me)):
+        return guard(lambda: meet.import_transcript(item_id, who, body.sharedWith))
 
     @app.get("/items/{item_id}/note-draft/available", response_model=NoteDraftAvailable)
     def get_note_draft_available(item_id: str, proxyId: Optional[str] = None, who: str = Depends(me)):
@@ -146,11 +319,16 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.get("/items/{item_id}/proposed-time", response_model=ProposedTime)
     def get_proposed(item_id: str, who: str = Depends(me)):
-        return guard(lambda: svc.proposed_time(item_id))
+        return guard(lambda: svc.proposed_time(item_id, who))
 
     @app.post("/items/{item_id}/reschedule", response_model=MeetingItem)
-    def post_reschedule(item_id: str, who: str = Depends(me)):
+    def post_reschedule(item_id: str, request: Request, who: str = Depends(me)):
         from .models import Action
+        item = svc.store.get_item(item_id)
+        if item:
+            event = svc.calendar.get(item.event.calendarEventId)
+            if event and event.googleEventId:
+                require_calendar_request(request)
         return guard(lambda: svc.apply_action(item_id, who, Action.reschedule))
 
     @app.get("/proxy-requests", response_model=list[ProxyRequestView])
@@ -173,16 +351,24 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     # ---- demo / ops helpers (not for production) ----
     @app.post("/dev/simulate-leave-system", response_model=Absence)
     def simulate_leave_system(body: LeaveSystemRequest):
+        if config.firebase_auth_enabled():
+            raise HTTPException(404, "This demo-only endpoint is disabled.")
         return guard(lambda: svc.create_absence(body.personId, body.start, body.end,
                                                 AbsenceSource.leave_system, body.personId))
 
     @app.get("/dev/outbox")
     def outbox():
+        if config.firebase_auth_enabled():
+            raise HTTPException(404, "This demo-only endpoint is disabled.")
         return notify.OUTBOX
 
     @app.post("/dev/reset-demo")
     def reset_demo():
         """Back to the demo data, with an empty AI cache, so every card is analysed again (the "Reset demo" button)."""
+        if config.firebase_auth_enabled():
+            raise HTTPException(404, "This demo-only endpoint is disabled.")
+        if isinstance(svc.store, FirestoreStore):
+            raise HTTPException(404, "Reset is disabled for the persistent Firestore demo.")
         from .seed import build_service
         build_service(into=svc)
         return {"ok": True}

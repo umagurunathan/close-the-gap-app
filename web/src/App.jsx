@@ -7,6 +7,8 @@ import ProxyCard from "./components/ProxyCard.jsx";
 import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
 import SettledCard from "./components/SettledCard.jsx";
 import MessageBar from "./components/MessageBar.jsx";
+import { useAuth } from "./AuthGate.jsx";
+import { publicDemoMode } from "./firebase.js";
 import DemoGuide from "./components/DemoGuide.jsx";
 import Logo from "./components/Logo.jsx";
 import ImpactBand from "./components/ImpactBand.jsx";
@@ -34,8 +36,11 @@ function naturalTab(c = {}) {
 }
 
 export default function App() {
+  const { enabled: firebaseAuthEnabled, user: firebaseUser, signOut } = useAuth();
   const [people, setPeople] = useState({});
-  const [personId, setPersonId] = useState(PARAMS.get("as") || recall("personId") || DEFAULT_PERSON);
+  const [personId, setPersonId] = useState(firebaseAuthEnabled
+    ? ""
+    : PARAMS.get("as") || recall("personId") || DEFAULT_PERSON);
   const [me, setMe] = useState(null);
   const [absences, setAbsences] = useState([]);
   const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { teamCheckins: [], orgEvents: [], rescheduledOrCancelled: [] } });
@@ -47,12 +52,17 @@ export default function App() {
   const [metrics, setMetrics] = useState(null);
   const [outbox, setOutbox] = useState([]);
   const [tab, setTab] = useState(TABS.includes(PARAMS.get("tab")) ? PARAMS.get("tab") : "attendee");
+  const [calendarStatus, setCalendarStatus] = useState({ configured: false, connected: false });
   const [showEmails, setShowEmails] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [notice, setNotice] = useState("");
   const [noticeAction, setNoticeAction] = useState(null); // optional button in the confirmation, e.g. "Open Sam's view"
   const [settings, setSettings] = useState(null); // from GET /settings/public
+  const [dataMode, setDataMode] = useState(null);
+  const dataModeRef = useRef(null);
+  const autoSyncedCalendarFor = useRef(null);
+  const [switchingDataMode, setSwitchingDataMode] = useState(false);
   const [activeIds, setActiveIds] = useState(null); // people with something to see; null = not loaded yet
   const [showGuide, setShowGuide] = useState(false);
   // Each working tab has groups ("Needs action", "Settled", …) and a chosen meeting shown in full on the right.
@@ -65,6 +75,29 @@ export default function App() {
   const pickTabFor = useRef(TABS.includes(PARAMS.get("tab")) ? null : personId);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    const meetResult = url.searchParams.get("meet");
+    const calendarResult = url.searchParams.get("calendar");
+    if (meetResult) {
+      setNotice(meetResult === "connected"
+        ? "Google Meet connected. Link a Meet to a meeting to import its transcript after the call."
+        : "Google Meet connection failed. Check OAuth setup and try again.");
+      url.searchParams.delete("meet");
+      window.history.replaceState({}, "", url);
+    }
+    if (calendarResult) {
+      if (calendarResult === "connected") {
+        setNotice("Google Calendar connected. Importing your meetings now.");
+      } else {
+        setNotice("Google Calendar connection failed. Check OAuth setup and try again.");
+      }
+      url.searchParams.delete("calendar");
+      window.history.replaceState({}, "", url);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (firebaseAuthEnabled && !firebaseUser) return;
     api("/people")
       .then((list) => setPeople(Object.fromEntries(list.map((p) => [p.id, p]))))
       .catch((e) => setError(e.message));
@@ -72,26 +105,51 @@ export default function App() {
     // the colour theme: ?theme=… in the address (to try one), otherwise the config's [ui] theme
     api("/settings/public").then((s) => { setSettings(s); applyTheme(PARAMS.get("theme") || s.theme); })
       .catch(() => applyTheme(PARAMS.get("theme")));
-  }, []);
+  }, [firebaseAuthEnabled, firebaseUser]);
+
+  useEffect(() => {
+    if (firebaseAuthEnabled && !firebaseUser) return undefined;
+    let active = true;
+    const loadMode = () => api("/data-mode").then((mode) => {
+      if (!active) return;
+      if (dataModeRef.current && dataModeRef.current !== mode.mode) {
+        window.location.reload();
+        return;
+      }
+      dataModeRef.current = mode.mode;
+      setDataMode(mode);
+    }).catch((e) => {
+      if (active) setError(e.message);
+    });
+    loadMode();
+    const timer = window.setInterval(loadMode, 15000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [firebaseAuthEnabled, firebaseUser]);
 
   const refresh = useCallback(async () => {
     try {
       setError("");
-      const [m, a, att, org, pr, pi, pp, h, met, ob, act] = await Promise.all([
-        api("/me", { person: personId }),
-        api("/absences", { person: personId }),
-        api("/items?mode=attendee", { person: personId }),
-        api("/organizer/meetings", { person: personId }),   // one card per meeting
-        api("/proxy-requests", { person: personId }),
-        api("/items?mode=past", { person: personId }),
-        api("/proxy-requests?past=true", { person: personId }),
-        api("/history", { person: personId }),
+      const m = await api("/me", { person: firebaseAuthEnabled ? undefined : personId });
+      const activePersonId = firebaseAuthEnabled ? m.person.id : personId;
+      if (firebaseAuthEnabled) setPersonId(activePersonId);
+      const [a, att, org, pr, pi, pp, h, met, ob, cal, act] = await Promise.all([
+        api("/absences", { person: activePersonId }),
+        api("/items?mode=attendee", { person: activePersonId }),
+        api("/organizer/meetings", { person: activePersonId }),   // one card per meeting
+        api("/proxy-requests", { person: activePersonId }),
+        api("/items?mode=past", { person: activePersonId }),
+        api("/proxy-requests?past=true", { person: activePersonId }),
+        api("/history", { person: activePersonId }),
         api("/metrics"),
-        api("/dev/outbox"),
+        firebaseAuthEnabled ? Promise.resolve([]) : api("/dev/outbox"),
+        api("/integrations/google-calendar/status", { person: activePersonId }),
         api("/people/active"),   // who has something to see (for the "Signed in as" list)
       ]);
       setMe(m); setAbsences(a); setAttendee(att); setOrganizer(org); setProxyReqs(pr); setPastItems(pi); setPastProxy(pp);
-      setHistory(h); setMetrics(met); setOutbox(ob); setActiveIds(act);
+      setHistory(h); setMetrics(met); setOutbox(ob); setCalendarStatus(cal); setActiveIds(act);
       if (pickTabFor.current === personId) {
         pickTabFor.current = null;
         setTab(naturalTab(m?.counts));
@@ -99,9 +157,22 @@ export default function App() {
     } catch (e) {
       setError(e.message);
     }
-  }, [personId]);
+  }, [personId, firebaseAuthEnabled]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (!firebaseAuthEnabled || !firebaseUser || !personId || !calendarStatus.connected
+        || autoSyncedCalendarFor.current === personId) return;
+    autoSyncedCalendarFor.current = personId;
+    api("/integrations/google-calendar/sync", { method: "POST" }).then(async (result) => {
+      setNotice(`Google Calendar synced: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`);
+      await refresh();
+    }).catch((e) => {
+      autoSyncedCalendarFor.current = null;
+      setError(e.message);
+    });
+  }, [firebaseAuthEnabled, firebaseUser, personId, calendarStatus.connected, refresh]);
 
   // While Gemini is still analysing any card on screen, check again every few seconds; stop once all have answered.
   const analysing = [
@@ -134,6 +205,25 @@ export default function App() {
     }
   }
 
+  async function switchDataMode(mode) {
+    const label = mode === "firestore" ? "Calendar + Firestore" : "Seed file";
+    if (!window.confirm(`Switch the entire demo to ${label}? This changes the data source for everyone using the app.`)) return;
+    setSwitchingDataMode(true);
+    try {
+      const result = await api("/data-mode", { method: "POST", body: { mode } });
+      dataModeRef.current = result.mode;
+      setDataMode(result);
+      setNotice(mode === "firestore"
+        ? "Connected demo selected. Seed JSON initializes missing Firestore data; existing data is preserved."
+        : "Seed demo selected. The in-memory demo was reloaded from the seed JSON.");
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSwitchingDataMode(false);
+    }
+  }
+
   // Returns when done, so the card can lock its buttons meanwhile (no double answers).
   async function respond(reqId, response) {
     try {
@@ -144,6 +234,26 @@ export default function App() {
       setError(e.message);
     }
   }
+
+  async function connectCalendar() {
+    try {
+      const { authorizationUrl } = await api("/integrations/google-calendar/authorize", { person: personId });
+      window.location.assign(authorizationUrl);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function syncCalendar() {
+    try {
+      const result = await api("/integrations/google-calendar/sync", { method: "POST", person: personId });
+      setNotice(`Calendar synced: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`);
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   const clearError = useCallback(() => setError(""), []);
   const clearNotice = useCallback(() => { setNotice(""); setNoticeAction(null); }, []);
   const closeGuide = useCallback(() => setShowGuide(false), []);
@@ -183,20 +293,25 @@ export default function App() {
   return (
     <>
       {/* Judges' demo controls: an add-on on top of the prototype (not part of the product), so a judge can switch
-          people, see the emails the app sends, read the guide and restore the sample data. */}
+          people, see the emails the app sends, read the guide and restore the sample data. Someone really signed in
+          with Google sees only their own meetings, so the person buttons are off for them. */}
       <div className="demo-toolbar" role="region" aria-label="Demo controls for judges">
         <div className="demo-toolbar-inner">
           <span className="demo-label"><span className="demo-label-long">Judges' demo</span><span className="demo-label-short">Demo</span></span>
           <div className="demo-view-as" role="group" aria-label="View as">
-            <span className="demo-view-label">View as</span>
+            <span className="demo-view-label">{firebaseAuthEnabled ? "Signed in: you see your own meetings" : "View as"}</span>
             {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
               <button key={id} className="persona" aria-pressed={personId === id} onClick={() => switchPerson(id)}
-                title={`View the app as ${people[id].name} (${role})`}>
+                disabled={firebaseAuthEnabled}
+                title={firebaseAuthEnabled ? "You're signed in with Google, so you see your own meetings."
+                  : `View the app as ${people[id].name} (${role})`}>
                 <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
               </button>
             ))}
             {/* everyone else with something to see (and whoever is viewed now), so nobody lands on an empty screen */}
             <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
+              disabled={firebaseAuthEnabled}
+              title={firebaseAuthEnabled ? "You're signed in with Google, so you see your own meetings." : undefined}
               onChange={(e) => e.target.value && switchPerson(e.target.value)}>
               <option value="">More…</option>
               {Object.values(people)
@@ -209,10 +324,11 @@ export default function App() {
           <button onClick={openGuide} className={guideSeen ? "" : "guide-new"}>
             Demo guide{!guideSeen && <span className="start-here">Start here</span>}
           </button>
-          <button onClick={resetDemo}
+          {/* not in the shared guest demo: one visitor must not wipe what others are trying */}
+          {!publicDemoMode && <button onClick={resetDemo}
             title="Restores the sample people and meetings and clears the cache, so the AI analyzes every card again.">
             Reset data
-          </button>
+          </button>}
           <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
             title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
         </div>
@@ -228,10 +344,40 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-right">
+          {publicDemoMode && <a className="ghost" href="/">Sign in with Google</a>}
+          {dataMode?.canSwitch && <div className="data-mode" aria-label="Global demo data source">
+            <span>Data source</span>
+            <button className={dataMode.mode === "memory" ? "mode-active" : ""}
+              aria-pressed={dataMode.mode === "memory"} disabled={switchingDataMode || dataMode.mode === "memory"}
+              onClick={() => switchDataMode("memory")}>
+              Seed file
+            </button>
+            <button className={dataMode.mode === "firestore" ? "mode-active" : ""}
+              aria-pressed={dataMode.mode === "firestore"} disabled={switchingDataMode || dataMode.mode === "firestore"}
+              onClick={() => switchDataMode("firestore")}>
+              Calendar + Firestore
+            </button>
+          </div>}
           <button className="primary" onClick={() => setShowSchedule(true)}>Schedule a meeting</button>
           <button onClick={() => setShowAdd(true)}>Report an absence</button>
+          {!publicDemoMode && (calendarStatus.connected ? (
+            <button className="ghost" onClick={syncCalendar}>Sync Google Calendar</button>
+          ) : (
+            <button className="ghost" onClick={connectCalendar} disabled={!calendarStatus.configured}
+              title={calendarStatus.configured ? undefined : "Google Calendar isn't set up on this server yet."}>
+              Connect Google Calendar
+            </button>
+          ))}
+          {firebaseAuthEnabled && <div className="signed-in">
+            <span>{firebaseUser?.email}</span>
+            <button className="ghost" onClick={signOut}>Sign out</button>
+          </div>}
         </div>
       </header>
+
+      {publicDemoMode && <div className="public-demo-banner">
+        Guest demo · changes are saved in the guest workspace and shared with other visitors. Use fictional data only; Google Calendar is available after signing in.
+      </div>}
 
       {showGuide && <DemoGuide onClose={closeGuide} />}
 
@@ -374,15 +520,19 @@ export default function App() {
           today={settings?.today}
           people={people}
           me={personId}
+          calendarConnected={calendarStatus.connected}
           onClose={() => setShowSchedule(false)}
           onDone={async (result, when) => {
             setShowSchedule(false);
             const out = result.affected.map((i) => people[i.absentPersonId]?.name.split(" ")[0]).filter(Boolean);
             const who = out.length === 1 ? `${out[0]} is` : `${out.slice(0, -1).join(", ")} and ${out.at(-1)} are`;
             setNoticeAction(null);
+            const scheduledWhere = result.calendarProvider === "google"
+              ? "Google Calendar updated"
+              : "Meeting scheduled";
             setNotice(out.length === 0
-              ? `Meeting scheduled for ${fmtWhen(when)}. Nobody required is out at that time.`
-              : `Meeting scheduled for ${fmtWhen(when)}, but ${who} out that day. It's in your Organizer Mode, ready for a decision.`);
+              ? `${scheduledWhere} for ${fmtWhen(when)}. Nobody required is out at that time.`
+              : `${scheduledWhere} for ${fmtWhen(when)}, but ${who} out that day. It's in your Organizer Mode, ready for a decision.`);
             if (out.length > 0) {
               setTab("organizer");
               setGroup((g) => ({ ...g, organizer: "needs" }));
