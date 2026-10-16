@@ -26,6 +26,10 @@ def load(path: str | os.PathLike | None = None) -> SimpleNamespace:
     flag = os.getenv("AI_ENABLED")
     if flag is not None and hasattr(s, "ai"):
         s.ai.enabled = flag.strip().lower() in ("1", "true", "yes", "on")
+    # AI_MODEL switches the Gemini model without editing the file (e.g. to compare models during testing).
+    model = os.getenv("AI_MODEL")
+    if model and hasattr(s, "ai"):
+        s.ai.model = model.strip()
     return s
 
 

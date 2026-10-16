@@ -1,18 +1,20 @@
-"""Recommender specialist.
+"""FALLBACK ONLY: the rule-based recommender, used when the AI is off or Gemini is unavailable.
 
-STUB: rule-based so the app runs with no AI key. Replace `recommend` with an ADK/Gemini agent that
-returns the same `AiResult` plus an ItemKind. Keep the signature.
+The product's recommendation comes from Gemini (agents/adk_advisor.py, agents/recommender_ai.py). These keyword rules
+keep the app working without it, give each card a first answer while the AI works, and are shown on the card as
+"what simple rules would have said" when the AI's answer differs. Same signature and result as the AI recommender.
 
-What it does:
-- Reads only what the viewer may see (summaries shared with them), never more.
-- Marks a meeting a "team_checkin" or an "org_event" ONLY when highly confident:
+What the rules do:
+- Read only what the viewer may see (summaries shared with them), never more.
+- Mark a meeting a "team_checkin" or an "org_event" ONLY when confident:
     team_checkin = title says stand-up/status/sync AND visible summaries show status updates only
     org_event    = a large event (sent to a list, or more required invitees than the threshold in settings),
                    AND the absent person is neither its organizer nor in a hosting role (host, committee, speaker,
-                   keynote or key guest). Decisions 48 and 55.
-  Recurrence is deliberately NOT used. Attendee count is used only to recognise a large event (Decision 55).
-- Everything else is a "key_meeting": a person decides.
-- Otherwise it recommends proxy / reschedule, with an honest confidence and the sources it used.
+                   keynote or key guest).
+  Recurrence is deliberately NOT used. Attendee count is used only to recognise a large event.
+- Everything else is a "key_meeting": a person decides; proxy / reschedule with an honest confidence and sources.
+They cannot read meaning: "no decisions" vs "decision", a "sync" that is really a sign-off, a customer who insists on
+one person, a handover FROM vs TO someone. That is what the AI is for.
 """
 from __future__ import annotations
 
@@ -20,10 +22,10 @@ import logging
 
 from app import config
 from app.models import AiResult, Action, CalEvent, Confidence, ItemKind, Note, Person
-from app.roles import has_hosting_role, is_large_meeting
+from app.roles import has_hosting_role, is_large_meeting, organizer_is_counterpart
 from app.settings import settings as S
-from .proxy_ranker import rank_proxies
-from .vertex_proxy_ranker import suggest_proxy
+from .candidate_order import rank_proxies
+from ..vertex_proxy_ranker import suggest_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ def recommend(
     title = event.title.lower()
     fingerprint = [{"docId": n.docId, "modifiedAt": n.modifiedAt.isoformat()} for n in notes]
     text = " ".join(n.text.lower() for n in notes)
-    sources = ["invite title", "invite description"]
+    sources = ["invite title"] + (["invite agenda"] if (event.description or "").strip() else [])
     if notes:
         sources.insert(0, f"previous summaries ({len(notes)})")
     else:
@@ -62,13 +64,13 @@ def recommend(
         return ItemKind.key_meeting, AiResult(
             recommendation=Action.proxy,
             reason=f"{absent.name} organizes or hosts this org-wide event, so someone may need to take over. Please check.",
-            confidence=Confidence.medium, sources=["invite organizer", "invite description"] + (["previous summaries"] if notes else []),
+            confidence=Confidence.medium, sources=["invite organizer", "invite agenda"] + (["previous summaries"] if notes else []),
             summariesAvailable=bool(notes), suggestedProxyId=top["personId"] if top else None,
             needsHumanChoice=top is None, fingerprint=fingerprint)
     if large:
         return ItemKind.org_event, AiResult(
             recommendation=Action.proceed_without,
-            reason="Org-wide event; one person's absence doesn't affect it. Join if you want the learning.",
+            reason="Org-wide event; one person's absence doesn't affect it. Join if you'd like to.",
             confidence=Confidence.high, sources=["invite goes to a group list", "invite title"],
             summariesAvailable=bool(notes), fingerprint=fingerprint)
 
@@ -90,6 +92,8 @@ def recommend(
 
     # 3) Normal meetings: does the absent person own a decision?
     ranked = rank_proxies(event, absent, people, notes)
+    if organizer_is_counterpart(event, absent.id):   # small meeting: the organizer is the other side, never suggested
+        ranked = [r for r in ranked if r["personId"] != event.organizerId]
     # second choice for a proxy recommendation: the next-ranked person, only if they have some supporting link
     backup = ranked[1]["personId"] if len(ranked) > 1 and ranked[1]["score"] > 0 else None
     if notes and ranked and config.llm_provider() == "vertex":
@@ -135,7 +139,7 @@ def recommend(
     if top and top["score"] > 0:
         return ItemKind.key_meeting, AiResult(
             recommendation=Action.proxy,
-            reason=f"No summaries available to you. Suggested from the reporting line: {people[top['personId']].name} ({top['reason'].lower()}).",
+            reason=f"No summaries available to you. Suggested from the reporting line: {people[top['personId']].name} ({top['reason']}).",
             confidence=Confidence.low, sources=sources, summariesAvailable=False,
             suggestedProxyId=top["personId"], backupProxyId=backup)
     return ItemKind.key_meeting, AiResult(

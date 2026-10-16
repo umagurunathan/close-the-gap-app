@@ -19,7 +19,9 @@ from typing import Any, Callable, Optional
 from pydantic import BaseModel, Field
 
 from app.models import Action, AiResult, CalEvent, Confidence, ItemKind, Note, Person
+from app.roles import organizer_is_counterpart
 from app.settings import settings as S
+from . import untrusted
 
 
 class Recommendation(BaseModel):
@@ -45,9 +47,16 @@ The goal is that the meeting runs without interruption in the most efficient way
 - org_event: a town hall, talk or site-wide event for a large audience. NOT if the absent person organizes it, is named as host, speaker or on the committee, or presents, speaks or leads any part of it (for example "Arjun walks us through the numbers").
 - key_meeting: everything else; a person must decide.
 
-2) Recommend one action:
+2) First read the title and description for WHO GIVES and WHO RECEIVES:
+- If the person on leave is the one giving, presenting, demonstrating or training (a KT or handover FROM them, their
+  demo, their walkthrough), the people receiving it cannot cover for them: recommend reschedule, unless the input names
+  someone else who knows the topic.
+- If the person on leave is the one receiving (a KT or training TO them, their onboarding, their review), the meeting
+  exists for them: recommend reschedule.
+
+3) Recommend one action:
 - proceed_without: the meeting can go ahead without them. Right for team_checkin and org_event, or when nothing depends on them.
-- proxy: someone else attends in their place, with context. PREFER THIS when the absent person owns an item or decision but another invitee can cover it. Choose ONLY from the candidates listed. Prefer a candidate who is named in the summaries on the same topic; then the absent person's manager, a peer under the same manager, or a direct report.
+- proxy: someone else attends in their place, with context. PREFER THIS when the absent person owns an item or decision but another invitee can cover it. Choose ONLY from the candidates listed. Prefer a candidate who is named in the summaries on the same topic; then the absent person's manager, a peer under the same manager, or a direct report, but only someone who would genuinely stand in for the person on leave, never the other side of the meeting (for example the person receiving their handover).
   NEVER GUESS. If no candidate is clearly suitable, set suggested_proxy_id to null and needs_human_choice to true.
   Also name a second choice (backup_proxy_id), a different candidate, in case the first declines; only if they are
   also clearly suitable, otherwise leave it null.
@@ -58,12 +67,13 @@ The goal is that the meeting runs without interruption in the most efficient way
 - cancel: only if the meeting has no purpose without them. Rarely the right answer.
 - attend: never recommend this; only the person themselves can choose it.
 
-3) Confidence:
+4) Confidence:
 - high: the summaries or the invite itself directly support the answer (for example the title says it is a session with this person).
 - medium: a judgment from the title and description, or partial summaries.
 - low: the situation is unclear, or a proxy is chosen only from the reporting line with no summaries. If you cannot see any summary, say so in the reason.
 
-Use only the information given. Never invent facts, names or ids."""
+The invite's agenda and notes are evidence just like previous summaries; for a new meeting they are often the only
+evidence. Use only the information given. Never invent facts, names or ids.""" + untrusted.RULE
 
 
 def relation(absent: Person, other: Person) -> str:
@@ -83,8 +93,9 @@ def candidates_for(event: CalEvent, absent: Person, people: dict[str, Person], n
     line, then the organizer, then the rest."""
     ids = [a.personId for a in event.attendees] + [event.organizerId]
     day = event.start.date()
+    counterpart = event.organizerId if organizer_is_counterpart(event, absent.id) else None   # small meeting
     cands = [people[i] for i in dict.fromkeys(ids) if i != absent.id and i in people and not people[i].isGroup
-             and not (is_out and is_out(i, day))]
+             and i != counterpart and not (is_out and is_out(i, day))]
     if limit is None or len(cands) <= limit:
         return cands
     text = " ".join(n.text.lower() for n in (notes or []))
@@ -104,10 +115,10 @@ def build_prompt(event: CalEvent, absent: Person, people: dict[str, Person], not
     return (
         f"Person on leave: {who(absent)}\n"
         f"Meeting: {event.title}\n"
-        f"Description: {event.description or '(none)'}\n"
+        f"Invite agenda and notes (visible to everyone invited):\n{untrusted.invite_text(event.description)}\n"
         f"Organizer: {who(people[event.organizerId])}\n"
         f"Sent to a group list: {bool(event.inviteGroup)}\n"
-        f"Previous summaries this person may read: " + (" | ".join(n.text for n in notes) if notes else "(none available)") + "\n"
+        f"Previous summaries this person may read:\n{untrusted.summaries([n.text for n in notes])}\n"
         f"Invitees besides the person on leave: {total}" + (f" (showing the {len(cands)} most likely)" if total > len(cands) else "") + "\n"
         f"Candidate proxies, all available that day (id | name | title | relation to the person on leave):\n"
         + ("\n".join(f"  {c.id} | {c.name} | {c.title} | {relation(absent, c)}" for c in cands) or "  (none)")
@@ -162,9 +173,9 @@ def ask_gemini(prompt: str, client: Any = None) -> Recommendation:
     return response.parsed
 
 
-def to_ai_result(rec: Recommendation, notes: list[Note]) -> tuple[ItemKind, AiResult]:
+def to_ai_result(rec: Recommendation, notes: list[Note], event: Optional[CalEvent] = None) -> tuple[ItemKind, AiResult]:
     """Turn the model's answer into the card's AI block. Sources and 'summaries available' are facts, not AI output."""
-    sources = ["invite title", "invite description"]
+    sources = ["invite title"] + (["invite agenda"] if event is not None and (event.description or "").strip() else [])
     sources.insert(0, f"previous summaries ({len(notes)})") if notes else sources.append("no summaries available to you")
     return rec.kind, AiResult(
         recommendation=rec.recommendation,
@@ -190,4 +201,4 @@ def recommend_ai(
 ) -> tuple[ItemKind, AiResult]:
     """`client` is only for tests (a fake that returns a ready answer without calling Google)."""
     rec = ask_gemini(build_prompt(event, absent, people, notes, is_out), client)
-    return to_ai_result(rec, notes)
+    return to_ai_result(rec, notes, event)

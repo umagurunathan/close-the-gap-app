@@ -14,7 +14,7 @@ from .google_meet import GoogleMeetIntegration, MeetIntegrationError
 from .google_calendar import CalendarIntegrationError, GoogleCalendarIntegration
 from .firebase_auth import install_firebase_auth
 from .models import (
-    Absence, AbsenceCreate, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DataModeRequest, DirectoryEntry, EventCreate, HistoryEvent,
+    Absence, AbsenceCreate, AbsenceReport, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DataModeRequest, DirectoryEntry, EventCreate, HistoryEvent,
     MeetingActionRequest, OrganizerMeeting,
     LeaveSystemRequest, ScheduleResult,
     MeetingItem, MeetLinkUpdate, MeetStatus, MeResponse, Metrics, Note, NoteCreate, NoteDraft, NoteDraftAvailable,
@@ -137,7 +137,13 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         """The few settings the web app shows or uses, so the screen never disagrees with config/settings.toml."""
         return {"pastDays": S.visibility.past_days, "suddenNoticeHours": S.absence.sudden_notice_hours,
                 "refreshWhileAnalysingSeconds": S.ai.refresh_while_analysing_seconds,
-                "messageHideSeconds": S.ui.message_hide_seconds}
+                "messageHideSeconds": S.ui.message_hide_seconds,
+                "today": svc.now().date().isoformat()}   # the demo's "today" (fixed by NOW), for form defaults
+
+    @app.get("/people/active")
+    def active_people():
+        """The ids of people who have something to see (for the "Signed in as" list). No AI call."""
+        return svc.active_people()
 
     @app.get("/data-mode")
     def get_data_mode(request: Request):
@@ -185,9 +191,14 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     def get_absences(mine: bool = True, who: str = Depends(me)):
         return svc.absences_for(who)
 
-    @app.post("/absences", response_model=Absence)
+    @app.post("/absences", response_model=AbsenceReport)
     def post_absence(body: AbsenceCreate, who: str = Depends(me)):
-        return guard(lambda: svc.create_absence(body.personId, body.start, body.end, AbsenceSource.manual, who))
+        """Saves the absence; the reply says how many meetings it affects (for the confirmation message)."""
+        def run():
+            absence, created = svc.report_absence(body.personId, body.start, body.end, AbsenceSource.manual, who)
+            return AbsenceReport(absence=absence, affected=len(created),
+                                 needDecision=sum(1 for i in created if i.status.value == "pending_decision"))
+        return guard(run)
 
     @app.get("/items", response_model=None)
     def get_items(mode: str = Query(pattern="^(attendee|organizer|past)$"), who: str = Depends(me)
@@ -198,7 +209,7 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.get("/organizer/meetings", response_model=list[OrganizerMeeting])
     def get_organizer_meetings(who: str = Depends(me)):
-        """Organizer Mode: one card per meeting, naming everyone who is out (Decision 55)."""
+        """Organizer Mode: one card per meeting, naming everyone who is out."""
         return svc.organizer_meetings(who)
 
     @app.post("/meetings/{event_id}/action", response_model=Optional[OrganizerMeeting])
@@ -327,8 +338,9 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return svc.history_for(who)
 
     @app.get("/metrics", response_model=Metrics)
-    def get_metrics():
-        return svc.metrics()
+    def get_metrics(start: Optional[date] = None, end: Optional[date] = None):
+        """The impact band; with start/end (YYYY-MM-DD), only that window (e.g. last week, this week)."""
+        return svc.metrics(start, end)
 
     # ---- demo / ops helpers (not for production) ----
     @app.post("/dev/simulate-leave-system", response_model=Absence)
