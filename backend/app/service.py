@@ -333,7 +333,13 @@ class Service:
             if event is None:
                 skipped += 1
                 continue
-            existing = self.calendar.get(event.id)
+            # A meeting scheduled in this app already holds its Google event id under the app's own id: update that
+            # meeting instead of importing the same Google event a second time.
+            existing = self.calendar.get(event.id) or next(
+                (e for e in self.calendar.all_events() if e.googleEventId and e.googleEventId == event.googleEventId),
+                None)
+            if existing:
+                event.id = existing.id
             if existing:
                 event.notes = existing.notes
                 event.meetUrl = existing.meetUrl

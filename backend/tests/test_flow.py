@@ -471,6 +471,57 @@ def test_google_calendar_oauth_and_sync_store_only_directory_people(svc, monkeyp
     assert next(item for item in svc.store.items() if item.event.calendarEventId == event.id).status.value == "cancelled"
 
 
+def test_a_meeting_scheduled_in_the_app_is_not_imported_twice_by_the_calendar_sync(svc):
+    """The app creates the Google event and keeps its id; the next sync updates that meeting instead of adding it again."""
+    from datetime import datetime, timezone
+    from app.models import EventAttendee
+    start = datetime(2026, 10, 21, 10, 0, tzinfo=timezone.utc)
+    event, _ = svc.schedule_meeting("p_sam", "Release decision", "", start, start.replace(hour=11),
+                                    [EventAttendee(personId="p_priya")], google_event_id="google-evt-7")
+    google_copy = {"id": "google-evt-7", "iCalUID": "google-evt-7@google.com", "summary": "Release decision",
+                   "start": {"dateTime": "2026-10-21T10:00:00Z"}, "end": {"dateTime": "2026-10-21T11:00:00Z"},
+                   "organizer": {"email": "sam@example.com"}, "attendees": [{"email": "priya@example.com"}]}
+
+    result = svc.sync_google_events("p_sam", [google_copy])
+
+    assert result["added"] == 0 and result["updated"] == 1
+    same = [e for e in svc.calendar.all_events() if e.googleEventId == "google-evt-7"]
+    assert [e.id for e in same] == [event.id]
+
+
+def test_reset_demo_data_refuses_any_area_but_the_demo():
+    from unittest.mock import Mock
+    from app.calendar import FirestoreCalendar
+    from app.seed import reset_demo
+    from app.service import Service
+    from app.store import FirestoreStore
+    client = Mock()
+    company = Service(FirestoreStore(client, "company"), FirestoreCalendar(client, "company"))
+    with pytest.raises(PermissionError, match="only in the demo area"):
+        reset_demo(company)
+    assert not client.batch.called and not client.collection.return_value.document.return_value.set.called
+
+
+def test_starting_the_backend_on_firestore_writes_nothing(monkeypatch):
+    """Only "Reset demo data" loads the demo; starting the backend just connects."""
+    from unittest.mock import Mock
+    from app import seed
+    client = Mock()
+    monkeypatch.setattr(seed, "new_client", lambda *args: client)
+    monkeypatch.setenv("FIRESTORE_PROJECT_ID", "test-project")
+    monkeypatch.setenv("FIRESTORE_DATABASE", "test-db")
+    seed.build_service(mode="firestore")
+    writes = [c for c in client.mock_calls if any(w in str(c) for w in (".set(", ".update(", ".delete(", ".batch(", ".commit("))]
+    assert writes == []
+
+
+def test_the_backend_refuses_to_start_when_the_two_areas_share_a_name(svc, monkeypatch):
+    monkeypatch.setenv("FIRESTORE_WORKSPACE_ID", "guest")
+    monkeypatch.setenv("FIRESTORE_DEMO_WORKSPACE_ID", "guest")
+    with pytest.raises(ValueError, match="different areas"):
+        create_app(svc)
+
+
 def test_google_calendar_write_failure_does_not_resolve_local_item(svc):
     from app.google_calendar import CalendarIntegrationError
     from app.models import Action

@@ -120,6 +120,11 @@ class FirestoreStore(Store):
         self._client = client
         self._workspace_id = workspace_id
 
+    @property
+    def workspace_id(self) -> str:
+        """The area this store reads and writes (every document carries it)."""
+        return self._workspace_id
+
     def _collection(self, name: str):
         return self._client.collection(name)
 

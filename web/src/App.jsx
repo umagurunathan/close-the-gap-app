@@ -127,6 +127,7 @@ export default function App() {
     setGroup({ attendee: "needs", organizer: "needs", proxy: "waiting" });
     setChosen({});
     setError("");
+    setShowEmails(false);   // the open emails belonged to the other view
     pickTabFor.current = signedIn ? SIGNED_IN : guestId;
     if (!signedIn) setMyId("");
   }, [authReady, signedIn, guestId]);

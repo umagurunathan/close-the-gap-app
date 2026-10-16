@@ -44,6 +44,9 @@ _AREA: contextvars.ContextVar[str] = contextvars.ContextVar("close_the_gap_area"
 
 def create_app(service: Optional[Service] = None) -> FastAPI:
     # Tests pass one service, used for both areas; the running app builds the two areas.
+    if config.demo_workspace_id() == config.firestore_workspace_id():
+        raise ValueError("FIRESTORE_DEMO_WORKSPACE_ID and FIRESTORE_WORKSPACE_ID must name different areas, so the "
+                         "demo and the company never share data.")
     demo_svc = service or build_service()
     company_svc = service or build_company_service()
     svc = _AreaRouter({"demo": demo_svc, "company": company_svc})

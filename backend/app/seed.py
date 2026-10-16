@@ -37,31 +37,11 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
             svc.create_absence(absence_data["personId"], _d(absence_data["start"]), _d(absence_data["end"]),
                                AbsenceSource(absence_data["source"]), absence_data["enteredBy"])
     elif kind == "firestore":
-        # the demo area: the seed's people have made-up @example.com addresses
+        # The demo area, as it is in the database. Starting the backend writes nothing: the demo data is loaded only
+        # by "Reset demo data" (reset_demo below), so no other code path can put data into the database.
         client = new_client(config.firestore_project(), config.firestore_database())
         workspace_id = config.demo_workspace_id()
-        store = FirestoreStore(client, workspace_id)
-        calendar = FirestoreCalendar(client, workspace_id)
-        new_events = []
-        for person in people:
-            store.add_person_if_missing(person)
-        for event in events:
-            if calendar.add_event_if_missing(event):
-                new_events.append(event)
-        svc = Service(store, calendar)
-        for absence_data in data["absences"]:
-            start, end = _d(absence_data["start"]), _d(absence_data["end"])
-            source = AbsenceSource(absence_data["source"])
-            existing = next((absence for absence in store.absences()
-                             if absence.personId == absence_data["personId"] and absence.start == start
-                             and absence.end == end and absence.source == source), None)
-            if existing is None:
-                svc.create_absence(absence_data["personId"], start, end, source, absence_data["enteredBy"])
-            elif any(start <= event.start.date() <= end and
-                     (event.organizerId == existing.personId or
-                      any(attendee.personId == existing.personId for attendee in event.attendees))
-                     for event in new_events):
-                svc._scan(existing)
+        svc = Service(FirestoreStore(client, workspace_id), FirestoreCalendar(client, workspace_id))
     else:
         raise ValueError(f"Unsupported STORE={kind!r}; expected 'memory' or 'firestore'")
     notify.clear()  # don't show the seeding emails as if they were live
@@ -96,6 +76,9 @@ def reset_demo(svc: Service) -> Service:
         build_service(into=svc, mode="memory")
         svc.google_calendar = google_calendar
         return svc
+    if getattr(svc.store, "workspace_id", None) != config.demo_workspace_id():
+        # the seed belongs to the demo area only; never load it anywhere else
+        raise PermissionError("Reset demo data works only in the demo area.")
     data = _load_seed()
     demo = {p["id"] for p in data["people"]}
     seed_events = {e["id"] for e in data["events"]}

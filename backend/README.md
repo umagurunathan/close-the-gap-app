@@ -59,8 +59,10 @@ FIRESTORE_DATABASE=your-database-id
 FIRESTORE_WORKSPACE_ID=company
 ```
 For local development, authenticate with Application Default Credentials using `gcloud auth application-default login`.
-On Cloud Run, grant the service account the Firestore User role instead of using a local key file. The backend seeds
-missing demo people, events, and absences on startup; it does not overwrite existing documents.
+On Cloud Run, grant the service account the Firestore User role instead of using a local key file. Starting the
+backend writes nothing to Firestore: the demo data is loaded into the demo area only by **Reset demo data**, and the
+company area holds only the people in the company directory and what they do in the app (including their synced
+Google Calendar meetings). The backend refuses to start if the two areas have the same name.
 If Firestore is in a different project from Cloud Run, set `FIRESTORE_PROJECT_ID` to that project and grant the Cloud
 Run service account `roles/datastore.user` there. `GOOGLE_CLOUD_PROJECT` continues to identify the Cloud Run project.
 
@@ -171,10 +173,8 @@ not available until transcription was enabled and Google has generated the artif
    ```
    Store the encryption key and OAuth client secret in Secret Manager in hosted deployments. OAuth refresh tokens
    are encrypted before storage; keep the encryption key stable so saved connections can be decrypted.
-   Google account verification must match the organizer's email in the app. For demo personas, replace the
-   organizer's placeholder `example.com` address with the Google Workspace email you will use. With Firestore,
-   update the existing document in the `people` collection too: startup only creates missing people; it does not
-   overwrite existing records from the seed file.
+   Google account verification must match the organizer's email in the app: sign in with Google as a person in the
+   company directory (demo people cannot connect Google services).
 4. Restart the backend. As the meeting organizer, open the card's **Meeting notes → Google Meet capture**, save the
    meeting's `https://meet.google.com/...` link, and select **Connect Google Meet**. Sign in with the Google account
    that owns/organized the Meet. The app requests the read-only `meetings.space.readonly` scope.
