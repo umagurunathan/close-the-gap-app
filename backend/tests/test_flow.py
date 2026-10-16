@@ -249,7 +249,9 @@ def test_meeting_notes_can_be_added_and_are_only_visible_to_selected_invitees(cl
                          headers=H("p_meena"))
     assert shared.status_code == 200
     assert any(n["text"] == "Shared handover" for n in client.get(path, headers=H("p_priya")).json())
-    assert client.get(f"/items/{item.id}/note-draft/available", headers=H("p_priya")).json() == {"available": True}
+    # a draft is offered once a proxy is chosen who can open the shared note (Dev can)
+    assert client.get(f"/items/{item.id}/note-draft/available", params={"proxyId": "p_dev"},
+                      headers=H("p_priya")).json()["available"] is True
 
 
 def test_google_meet_oauth_imports_and_updates_transcript_note(client, svc, monkeypatch):
@@ -262,6 +264,13 @@ def test_google_meet_oauth_imports_and_updates_transcript_note(client, svc, monk
     monkeypatch.setenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/integrations/google-meet/callback")
     monkeypatch.setenv("GOOGLE_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
     item = next(i for i in svc.store.items() if i.event.title == "Design Review")
+    # the fake Meet call happens at the meeting's own time, so the test follows the demo data
+    from datetime import datetime, timedelta, timezone
+    start = item.event.start
+    if isinstance(start, str):
+        start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+    start = start.astimezone(timezone.utc)
+    at = lambda minutes: (start + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     class FakeResponse:
         status_code = 200
@@ -297,18 +306,18 @@ def test_google_meet_oauth_imports_and_updates_transcript_note(client, svc, monk
             if url.endswith("/conferenceRecords"):
                 return FakeResponse({"conferenceRecords": [{
                     "name": "conferenceRecords/record-1",
-                    "startTime": "2026-10-22T18:00:00Z",
+                    "startTime": at(0),
                 }]})
             if url.endswith("/transcripts"):
                 return FakeResponse({"transcripts": [{
                     "name": "conferenceRecords/record-1/transcripts/transcript-1",
                     "state": "FILE_GENERATED",
-                    "startTime": "2026-10-22T19:00:00Z",
+                    "startTime": at(60),
                 }]})
             if url.endswith("/entries"):
                 return FakeResponse({"transcriptEntries": [
-                    {"startTime": "2026-10-22T18:01:00Z", "text": "Decision: approve the new design."},
-                    {"startTime": "2026-10-22T18:02:00Z", "text": "Dev owns the follow-up."},
+                    {"startTime": at(1), "text": "Decision: approve the new design."},
+                    {"startTime": at(2), "text": "Dev owns the follow-up."},
                 ]})
             raise AssertionError(f"Unexpected Google API URL: {url}")
 
