@@ -17,7 +17,7 @@ from .calendar import SimCalendar
 from .models import (
     AiResult, Absence, AbsenceSource, AbsenceType, Action, AttendeeItems, CalEvent, Counts, DirectoryEntry,
     EventAttendee, EventRef,
-    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, NoteDraft, NoteDraftAvailable, OrganizerMeeting, Person,
+    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, Projection, ProjectionRow, NoteDraft, NoteDraftAvailable, OrganizerMeeting, Person,
     ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
@@ -43,6 +43,21 @@ PAST_DAYS = S.visibility.past_days            # how long a finished meeting stay
 URGENT_HOURS = S.urgency.urgent_hours          # red chip
 SOON_HOURS = S.urgency.soon_hours              # amber chip
 SUDDEN_NOTICE_HOURS = S.absence.sudden_notice_hours  # less notice than this = a "sudden" absence
+
+
+def _either(words: list[str]) -> str:
+    """["a", "b", "c"] -> "a, b or c"."""
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} or {words[-1]}"
+
+
+def _people(item: MeetingItem) -> int:
+    """Everyone in the meeting: the organizer and the invitees."""
+    return len({item.event.organizerId} | {a.personId for a in item.event.attendees})
+
+
+# How each outcome reads in the impact note (the config keys are status names).
+_OUTCOME_WORDS = {"proxy_accepted": "covered by a proxy", "proceeding_without": "going on without them",
+                  "rescheduled": "rescheduled in time", "cancelled": "canceled in time", "auto_handled": "handled automatically"}
 
 
 class Service:
@@ -898,11 +913,13 @@ class Service:
         planned = [i for i in items if i.status.value in S.metrics.plan_statuses]
         leads = [max((i.event.instanceStart - i.updatedAt).total_seconds() / 86400, 0) for i in planned]
         per_person = S.metrics.minutes_saved_per_invitee
-        minutes = sum(len(i.event.attendees) * getattr(per_person, i.status.value, 0) for i in planned)
+        saving = [i for i in planned if getattr(per_person, i.status.value, 0)]
+        minutes = sum(_people(i) * getattr(per_person, i.status.value, 0) for i in saving)
         # still at risk: upcoming key meetings without a plan yet (people x the minutes lost if nobody acts)
         unplanned = [i for i in items if i.status.value not in S.metrics.plan_statuses
                      and i.kind == ItemKind.key_meeting and not self._is_past(i)]
-        at_risk = sum(len(i.event.attendees) * S.metrics.at_risk_minutes_per_invitee for i in unplanned)
+        at_risk = sum(_people(i) * S.metrics.at_risk_minutes_per_invitee for i in unplanned)
+        ahead = self._went_ahead(items)
         decided = [i for i in items if i.decidedBy and i.recommendedWhenDecided and i.chosenAction]
         followed = [i for i in decided if i.chosenAction == i.recommendedWhenDecided]
         absences = [a for a in self.store.absences() if self._overlaps(a.start, a.end, start, end)]
@@ -914,7 +931,56 @@ class Service:
             teamHoursSaved=round(minutes / 60, 1),
             recommendationsFollowedPct=round(100 * len(followed) / len(decided)) if decided else None,
             decisionsCounted=len(decided),
-            estimateNote="Estimate. For each meeting with a plan: people in the meeting × minutes saved per person — "
-                         + ", ".join(f"{k.replace('_', ' ')} {v} min" for k, v in vars(per_person).items() if v)
-                         + ". Baseline: without a plan, people join, wait and give up, and a covered decision needs a "
-                           "follow-up meeting.")
+            decisionsOnSchedule=len(ahead), daysWaitingAvoided=sum(days for _, days in ahead),
+            peopleSpared=sum(_people(i) for i in saving),
+            estimateNote="Estimate. For each meeting " + _either(
+                [_OUTCOME_WORDS.get(k, k.replace("_", " ")) for k, v in vars(per_person).items() if v])
+                         + f": people in the meeting × {max(vars(per_person).values())} min, the start everyone would "
+                           "otherwise waste joining, waiting and giving up. Meetings that go ahead anyway count 0.")
+
+    def _went_ahead(self, items: list[MeetingItem]) -> list[tuple[MeetingItem, int]]:
+        """Key meetings that went ahead (a proxy covered, or they went on without the person) instead of waiting for
+        the person to come back, each with the days of waiting avoided: from the meeting to the first working day the
+        person is back."""
+        absences = {a.id: a for a in self.store.absences()}
+        out = []
+        for i in items:
+            a = absences.get(i.absenceId)
+            if i.kind == ItemKind.key_meeting and i.status in (ItemStatus.proxy_accepted, ItemStatus.proceeding_without) and a:
+                back = a.end + timedelta(days=1)
+                while back.weekday() >= 5:      # Saturday or Sunday: back on Monday
+                    back += timedelta(days=1)
+                out.append((i, max((back - i.event.instanceStart.date()).days, 0)))
+        return out
+
+    def projection(self) -> Projection:
+        """"At company scale": rates measured from the meetings this app has handled (or the config's fallbacks when
+        there are too few), times a company's size and the leave assumptions in [metrics.projection]."""
+        P = S.metrics.projection
+        per_person = S.metrics.minutes_saved_per_invitee
+        minutes = max(vars(per_person).values())
+        key = [i for i in self.store.items() if i.kind == ItemKind.key_meeting]
+        decided = [i for i in key if i.status.value in S.metrics.plan_statuses]
+        measured = len(decided) >= P.min_meetings_measured
+        if measured:
+            closed = sum(1 for i in decided if getattr(per_person, i.status.value, 0)) / len(decided)
+            ahead = self._went_ahead(decided)
+            went = len(ahead) / len(decided)
+            people = sum(_people(i) for i in key) / len(key)
+            days = sum(d for _, d in ahead) / len(ahead) if ahead else P.fallback_days_waiting_avoided
+        else:
+            closed, went = P.fallback_share_closed_early, P.fallback_share_went_ahead
+            people, days = P.fallback_people_per_meeting, P.fallback_days_waiting_avoided
+        rows = []
+        for n in P.company_sizes:
+            affected = n * P.leave_days_per_year * P.key_meetings_per_leave_day
+            hours = affected * closed * people * minutes / 60
+            on_time = affected * went
+            rows.append(ProjectionRow(employees=n, affectedMeetings=round(affected), hoursSaved=round(hours),
+                                      value=round(hours * P.hourly_cost), decisionsOnSchedule=round(on_time),
+                                      daysWaitingAvoided=round(on_time * days)))
+        return Projection(rows=rows, measured=measured, meetingsMeasured=len(decided),
+                          shareClosedEarly=round(closed, 2), shareWentAhead=round(went, 2),
+                          peoplePerMeeting=round(people, 1), daysWaitingAvoided=round(days, 1),
+                          leaveDaysPerYear=P.leave_days_per_year, keyMeetingsPerLeaveDay=P.key_meetings_per_leave_day,
+                          minutesSavedPerPerson=minutes, hourlyCost=P.hourly_cost, currency=P.currency)

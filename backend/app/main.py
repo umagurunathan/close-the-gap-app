@@ -12,7 +12,7 @@ from .models import (
     Absence, AbsenceCreate, AbsenceReport, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DirectoryEntry, EventCreate, HistoryEvent,
     MeetingActionRequest, OrganizerMeeting,
     LeaveSystemRequest, ScheduleResult,
-    MeetingItem, MeResponse, Metrics, NoteDraft, NoteDraftAvailable, ProposedTime, ProxyCandidate,
+    MeetingItem, MeResponse, Metrics, Projection, ProjectionRow, NoteDraft, NoteDraftAvailable, ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestView, RespondRequest,
 )
 from .seed import build_service
@@ -71,7 +71,13 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return {"pastDays": S.visibility.past_days, "suddenNoticeHours": S.absence.sudden_notice_hours,
                 "refreshWhileAnalysingSeconds": S.ai.refresh_while_analysing_seconds,
                 "messageHideSeconds": S.ui.message_hide_seconds,
+                "theme": getattr(S.ui, "theme", "purple"),
                 "today": svc.now().date().isoformat()}   # the demo's "today" (fixed by NOW), for form defaults
+
+    @app.get("/metrics/projection", response_model=Projection)
+    def get_projection():
+        """"At company scale": the measured rates times a company's size (an estimate)."""
+        return svc.projection()
 
     @app.get("/people/active")
     def active_people():

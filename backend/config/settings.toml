@@ -56,6 +56,9 @@ history_days = 30    # activity log entries shown to a person
 # A confirmation message ("Thanks, you're covering this meeting.") closes by itself after this many seconds (twice as
 # long for a long message). Error messages stay until closed, so nobody misses one.
 message_hide_seconds = 6
+# Colour theme of the web app: "purple" (today's look), "blue", "clear" or "google" (lighter blues). The themes are in
+# web/src/themes.js. To try one without changing this, add ?theme=google to the web app's address.
+theme = "purple"
 
 
 # ---------------------------------------------------------------- Reschedule search (WIRED; plain code, no AI)
@@ -79,18 +82,35 @@ max_results = 20
 # Card statuses that count as "the meeting has a plan" (and feed "days of notice").
 plan_statuses = ["auto_handled", "proceeding_without", "attending", "proxy_accepted", "rescheduled", "cancelled"]
 # "Still at risk": an upcoming key meeting with no plan yet costs each person this many minutes if nobody acts
-# (a failed start plus a follow-up meeting). Labelled as an estimate on screen.
-at_risk_minutes_per_invitee = 36
-# Team hours saved = per settled card, (people in the meeting) x (minutes saved per person for that outcome) / 60.
-# Baseline without the app: everyone joins, waits and gives up (failed start, about 6 min), and a covered decision
-# would otherwise need a follow-up meeting (about 30 min). Based on the team's own experience; illustrative.
+# (the same wasted start as below). Labelled as an estimate on screen.
+at_risk_minutes_per_invitee = 5
+# Team hours saved = per settled card, (people in the meeting, organizer included) x (minutes saved per person) / 60.
+# Deliberately conservative (decided 2026-10-16): only a wasted start is counted, i.e. everyone joining, waiting for the
+# person and giving up. Only a proxy covering it, or moving or canceling it in time, prevents that.
 [metrics.minutes_saved_per_invitee]
-proxy_accepted = 36       # the meeting goes ahead with a briefed proxy: no failed start, no follow-up meeting
-proceeding_without = 6    # the meeting goes ahead on time: nobody waits for the absent person
-rescheduled = 6           # moved early: nobody joins a meeting that cannot happen
-cancelled = 6             # cancelled early: same
+proxy_accepted = 5        # a briefed proxy covers it: nobody waits for the absent person
+rescheduled = 5           # moved in time: nobody joins a meeting that cannot happen
+cancelled = 5             # canceled in time: same
+proceeding_without = 0    # the meeting would have gone ahead anyway
 attending = 0             # nothing would have gone wrong
 auto_handled = 0          # team check-ins and org-wide events: nothing would have gone wrong
+
+# WIRED: "At company scale" (the table behind the impact band). An estimate, labelled as such on screen:
+# affected key meetings a year = employees x leave days a year x key meetings per day of leave. The rates (share
+# covered, rescheduled or canceled; share that went ahead; people per meeting; days of waiting avoided) are measured
+# from the meetings this app has handled; until there are at least `min_meetings_measured` of them, the fallbacks
+# below are used instead. Hours saved use the minutes above.
+[metrics.projection]
+company_sizes = [500, 5000, 50000]
+leave_days_per_year = 25
+key_meetings_per_leave_day = 2
+hourly_cost = 50
+currency = "$"
+min_meetings_measured = 5
+fallback_share_closed_early = 0.6
+fallback_share_went_ahead = 0.4
+fallback_people_per_meeting = 6
+fallback_days_waiting_avoided = 2
 
 
 # ---------------------------------------------------------------- Recommender word lists (WIRED; stand-in rules, the

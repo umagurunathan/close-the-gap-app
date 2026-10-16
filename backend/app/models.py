@@ -345,7 +345,35 @@ class Metrics(BaseModel):
     teamHoursSaved: float            # estimated, from the minutes per invitee in [metrics]
     recommendationsFollowedPct: Optional[int] = None   # of the decisions people made, how many followed the recommendation
     decisionsCounted: int = 0        # how many decisions that percentage is based on
+    decisionsOnSchedule: int = 0     # key meetings that went ahead (a proxy covered, or without them) instead of waiting
+    daysWaitingAvoided: int = 0      # for those: days from the meeting until the absent person was back, added up
+    peopleSpared: int = 0            # people in meetings covered, rescheduled or canceled in time (no wasted start)
     estimateNote: str = ""           # how "team time saved" is estimated, in words, built from the config values
+
+
+class ProjectionRow(BaseModel):
+    employees: int
+    affectedMeetings: int            # key meetings a year that someone on leave would have missed
+    hoursSaved: int                  # team time saved a year (estimate)
+    value: int                       # hoursSaved x hourly cost
+    decisionsOnSchedule: int         # meetings a year that go ahead instead of waiting
+    daysWaitingAvoided: int
+
+
+class Projection(BaseModel):
+    """"At company scale": the measured rates times a company's size. An estimate, labelled as such."""
+    rows: list[ProjectionRow]
+    measured: bool                   # true = the rates come from the meetings this app handled; false = config fallbacks
+    meetingsMeasured: int
+    shareClosedEarly: float
+    shareWentAhead: float
+    peoplePerMeeting: float
+    daysWaitingAvoided: float
+    leaveDaysPerYear: int
+    keyMeetingsPerLeaveDay: float
+    minutesSavedPerPerson: int
+    hourlyCost: float
+    currency: str
 
 
 OrganizerMeeting.model_rebuild()

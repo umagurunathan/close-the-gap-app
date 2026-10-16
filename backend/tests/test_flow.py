@@ -1007,7 +1007,7 @@ def test_impact_tiles_start_from_the_handled_past_week(client, svc):
     assert m["meetingsWithPlan"] >= 4 and m["meetingsAffected"] > m["meetingsWithPlan"]
     assert m["teamHoursSaved"] > 0 and m["avgNoticeDays"] > 0
     assert m["decisionsCounted"] >= 4 and m["recommendationsFollowedPct"] is not None
-    assert "proxy accepted 36 min" in m["estimateNote"]                      # the formula comes from the config
+    assert "covered by a proxy, rescheduled in time or canceled in time: people in the meeting × 5 min" in m["estimateNote"]
     # the past week does not show as an upcoming absence
     assert client.get("/absences", headers=H("p_dev")).json() == []
 
@@ -1275,3 +1275,28 @@ def test_adk_reschedule_without_checking_who_could_cover_is_flagged(monkeypatch,
     # the agent is told to check before rescheduling
     from agents.adk_advisor import TOOL_GUIDE
     assert "ALWAYS before you recommend proxy, reschedule or cancel" in TOOL_GUIDE
+
+def test_time_saved_counts_only_a_wasted_start_and_decisions_kept_on_schedule(client, svc):
+    # decided 2026-10-16: 5 min per person, only when a proxy covers it or it is moved or canceled in time
+    from app.models import ItemStatus
+    from app.service import _people
+    m = client.get("/metrics").json()
+    items = svc.store.items()
+    saving = [i for i in items if i.status in (ItemStatus.proxy_accepted, ItemStatus.rescheduled, ItemStatus.cancelled)]
+    assert m["teamHoursSaved"] == round(sum(_people(i) * 5 for i in saving) / 60, 1)
+    assert m["peopleSpared"] == sum(_people(i) for i in saving)
+    # the past week: covered or gone ahead without them, instead of waiting for the person to come back
+    assert m["decisionsOnSchedule"] >= 4 and m["daysWaitingAvoided"] >= m["decisionsOnSchedule"]
+
+
+def test_company_scale_projection_uses_the_measured_rates_and_the_config(client):
+    from app.settings import settings as S
+    p = client.get("/metrics/projection").json()
+    P = S.metrics.projection
+    assert [r["employees"] for r in p["rows"]] == list(P.company_sizes) and p["leaveDaysPerYear"] == 25
+    row = p["rows"][1]
+    assert row["affectedMeetings"] == 5000 * 25 * P.key_meetings_per_leave_day
+    hours = row["affectedMeetings"] * p["shareClosedEarly"] * p["peoplePerMeeting"] * 5 / 60
+    assert abs(row["hoursSaved"] - hours) <= hours * 0.02 + 1          # the shown rates are rounded
+    assert row["value"] == round(row["hoursSaved"] * P.hourly_cost, -0) or abs(row["value"] - row["hoursSaved"] * P.hourly_cost) <= P.hourly_cost
+    assert p["measured"] is True and 5 <= p["peoplePerMeeting"] <= 8        # the demo meetings have 5-8 people
