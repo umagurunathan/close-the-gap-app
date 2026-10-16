@@ -84,7 +84,8 @@ def test_firebase_auth_disables_demo_only_endpoints(monkeypatch):
     headers = {"Authorization": "Bearer valid-token"}
 
     assert client.get("/dev/outbox", headers=headers).status_code == 404
-    assert client.post("/dev/reset-demo", headers=headers).status_code == 404
+    # Reset only touches the demo people (everyone in seed.json), so it stays available with sign-in on
+    assert client.post("/dev/reset-demo", headers=headers).status_code == 200
 
 
 def test_global_data_mode_switch_is_limited_to_allowlisted_presenters(monkeypatch):

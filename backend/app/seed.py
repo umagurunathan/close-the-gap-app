@@ -19,10 +19,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 def build_service(into: Optional[Service] = None, mode: Optional[str] = None) -> Service:
     """A fresh demo world. With `into`, the existing service is reset in place (the "Reset demo" button): same object,
     so the running app keeps using it, but new data and an empty AI cache, so the AI analyses everything again."""
-    path = Path(config.seed_path())
-    if not path.is_absolute():
-        path = BACKEND_DIR / path
-    data = json.loads(path.read_text(encoding="utf-8-sig"))  # utf-8-sig also accepts a leading BOM from Windows editors
+    data = _load_seed()
     people = [Person(**p) for p in data["people"]]
     events = [CalEvent(**e) for e in data["events"]]
     kind = (mode or config.store_kind()).strip().lower()
@@ -72,6 +69,52 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
         raise ValueError(f"Unsupported STORE={kind!r}; expected 'memory' or 'firestore'")
     notify.clear()  # don't show the seeding emails as if they were live
     return svc
+
+
+def reset_demo(svc: Service) -> Service:
+    """The "Reset demo data" button. The demo people are everyone in seed.json; they and their meetings go back to
+    the seed (including the replayed past week), with an empty AI cache. Anyone else (real people who signed in with
+    their own account) and their meetings are not touched."""
+    google_calendar = svc.google_calendar
+    if not isinstance(svc.store, FirestoreStore):
+        build_service(into=svc, mode="memory")
+        svc.google_calendar = google_calendar
+        return svc
+    data = _load_seed()
+    demo = {p["id"] for p in data["people"]}
+    seed_events = {e["id"] for e in data["events"]}
+    store, calendar = svc.store, svc.calendar
+    svc.wait_for_analysis(cancel=True)
+    # 1. Everything linked to a demo person: their meetings (from the seed, created in the app, or imported from a
+    #    Google Calendar), cards, absences, proxy requests, history and calendar connections.
+    events = set(store.delete_where("events", lambda rid, d: rid in seed_events or d.get("organizerId") in demo
+                                    or d.get("googleCalendarOwnerId") in demo))
+    items = set(store.delete_where("items", lambda rid, d: d.get("absentPersonId") in demo
+                                   or (d.get("event") or {}).get("calendarEventId") in events))
+    store.delete_where("absences", lambda rid, d: d.get("personId") in demo)
+    store.delete_where("proxy_requests", lambda rid, d: d.get("itemId") in items or d.get("proxyId") in demo
+                       or d.get("requestedBy") in demo)
+    store.delete_where("history", lambda rid, d: d.get("itemId") in items or d.get("actorId") in demo)
+    for collection in ("calendar_connections", "meet_connections"):
+        store.delete_where(collection, lambda rid, d: rid in demo)
+    # 2. The seed again: people (with their demo emails), meetings, the past week, then today's absences.
+    for p in data["people"]:
+        store.save_person(Person(**p))
+    for e in data["events"]:
+        calendar.save_event(CalEvent(**e))
+    svc.__init__(store, calendar, google_calendar)
+    _replay_past_week(svc, data.get("pastWeek"))
+    for a in data["absences"]:
+        svc.create_absence(a["personId"], _d(a["start"]), _d(a["end"]), AbsenceSource(a["source"]), a["enteredBy"])
+    notify.clear()
+    return svc
+
+
+def _load_seed() -> dict:
+    path = Path(config.seed_path())
+    if not path.is_absolute():
+        path = BACKEND_DIR / path
+    return json.loads(path.read_text(encoding="utf-8-sig"))  # utf-8-sig also accepts a leading BOM from Windows editors
 
 
 def _replay_past_week(svc: Service, past: Optional[dict]) -> None:

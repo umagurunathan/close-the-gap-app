@@ -249,6 +249,9 @@ def test_meeting_notes_can_be_added_and_are_only_visible_to_selected_invitees(cl
                          headers=H("p_meena"))
     assert shared.status_code == 200
     assert any(n["text"] == "Shared handover" for n in client.get(path, headers=H("p_priya")).json())
+    # the agenda (the invite's description) follows the same rule: invitees only
+    assert "agenda" in client.get(f"/items/{item.id}/agenda", headers=H("p_priya")).json()
+    assert client.get(f"/items/{item.id}/agenda", headers=H("p_neha")).status_code == 403
     # a draft is offered once a proxy is chosen who can open the shared note (Dev can)
     assert client.get(f"/items/{item.id}/note-draft/available", params={"proxyId": "p_dev"},
                       headers=H("p_priya")).json()["available"] is True
@@ -1371,14 +1374,13 @@ def test_reset_demo_restores_the_data_and_empties_the_ai_cache(client, svc):
     assert again.status.value == "pending_decision" and ("x",) not in svc._analysis_cache
 
 
-def test_reset_demo_is_disabled_for_firestore_backed_data(svc):
-    from app.store import FirestoreStore
-
-    svc.store = FirestoreStore(None)
-    client = TestClient(create_app(svc))
-    response = client.post("/dev/reset-demo")
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Reset is disabled for the persistent Firestore demo."
+def test_reset_demo_restores_the_demo_people(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_meena"}, headers=H("p_priya"))
+    assert svc.store.proxy_requests()
+    assert client.post("/dev/reset-demo").status_code == 200
+    again = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    assert again.chosenAction is None and not [r for r in svc.store.proxy_requests() if r.itemId == again.id]
 
 
 def test_routine_kind_with_an_action_becomes_a_key_meeting(svc):

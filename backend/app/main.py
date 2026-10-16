@@ -236,6 +236,10 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     def get_meeting_notes(item_id: str, who: str = Depends(me)):
         return guard(lambda: svc.meeting_notes(item_id, who))
 
+    @app.get("/items/{item_id}/agenda")
+    def get_meeting_agenda(item_id: str, who: str = Depends(me)):
+        return guard(lambda: {"agenda": svc.meeting_agenda(item_id, who)})
+
     @app.post("/items/{item_id}/notes", response_model=Note)
     def post_meeting_note(item_id: str, body: NoteCreate, who: str = Depends(me)):
         return guard(lambda: svc.add_meeting_note(item_id, who, body.text, body.sharedWith))
@@ -364,13 +368,11 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.post("/dev/reset-demo")
     def reset_demo():
-        """Back to the demo data, with an empty AI cache, so every card is analysed again (the "Reset demo" button)."""
-        if config.firebase_auth_enabled():
-            raise HTTPException(404, "This demo-only endpoint is disabled.")
-        if isinstance(svc.store, FirestoreStore):
-            raise HTTPException(404, "Reset is disabled for the persistent Firestore demo.")
-        from .seed import build_service
-        build_service(into=svc)
+        """The "Reset demo data" button: the demo people (everyone in seed.json) and their meetings go back to the
+        seed, with an empty AI cache, so every card is analysed again. Real people's data is not touched, so this is
+        allowed with sign-in on and with Firestore."""
+        from .seed import reset_demo as reset
+        reset(svc)
         return {"ok": True}
 
     @app.post("/jobs/run-reminders")

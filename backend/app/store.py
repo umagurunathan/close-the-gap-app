@@ -172,6 +172,26 @@ class FirestoreStore(Store):
         if (snapshot.to_dict() or {}).get("email") != person.email:
             reference.update({"email": person.email})
 
+    def save_person(self, person: Person) -> None:
+        self._document("people", person.id).set(self._encode(person))
+
+    def delete_where(self, collection: str, should_delete) -> list[str]:
+        """Deletes this workspace's records in one collection for which should_delete(record_id, data) is true.
+        Returns the deleted record ids (without the workspace prefix)."""
+        prefix = f"{self._workspace_id}__"
+        deleted, batch = [], self._client.batch()
+        for doc in self._collection(collection).where(
+                filter=FieldFilter("workspaceId", "==", self._workspace_id)).stream():
+            record_id = doc.id[len(prefix):] if doc.id.startswith(prefix) else doc.id
+            if should_delete(record_id, doc.to_dict() or {}):
+                batch.delete(doc.reference)
+                deleted.append(record_id)
+                if len(deleted) % 400 == 0:   # Firestore takes at most 500 writes per batch
+                    batch.commit()
+                    batch = self._client.batch()
+        batch.commit()
+        return deleted
+
     def add_absence(self, absence: Absence) -> None:
         self._document("absences", absence.id).set(self._encode(absence))
 

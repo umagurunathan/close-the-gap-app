@@ -44,7 +44,7 @@
    "id": "p_sam",
    "name": "Sam Wilson",
    "email": "sam@example.com",
-   "title": "Procurement Lead",
+   "title": "Project Manager",
    "department": "Procurement",
    "managerId": "p_vera"
   },
@@ -707,8 +707,11 @@
    "description": "Quarterly all-hands for everyone on site. Arjun walks us through the H2 numbers, then open Q&A.",
    "start": "2026-10-27T09:30:00Z",
    "end": "2026-10-27T10:30:00Z",
-   "organizerId": "p_vera",
+   "organizerId": "p_sam",
    "attendees": [
+    {
+     "personId": "p_vera"
+    },
     {
      "personId": "p_arjun"
     },
@@ -725,9 +728,6 @@
      "personId": "p_kiran"
     },
     {
-     "personId": "p_sam"
-    },
-    {
      "personId": "p_neha"
     },
     {
@@ -742,13 +742,13 @@
    "description": "Acme's CFO asked for this call to agree the renewal terms.",
    "start": "2026-10-28T08:30:00Z",
    "end": "2026-10-28T09:30:00Z",
-   "organizerId": "p_vera",
+   "organizerId": "p_sam",
    "attendees": [
     {
-     "personId": "p_arjun"
+     "personId": "p_vera"
     },
     {
-     "personId": "p_sam"
+     "personId": "p_arjun"
     },
     {
      "personId": "p_ben"
@@ -1215,8 +1215,11 @@
    "description": "Root cause, customer impact and follow-ups for the 14 Oct payments outage.",
    "start": "2026-10-26T08:30:00Z",
    "end": "2026-10-26T09:30:00Z",
-   "organizerId": "p_omar",
+   "organizerId": "p_sam",
    "attendees": [
+    {
+     "personId": "p_omar"
+    },
     {
      "personId": "p_lena"
     },
@@ -1293,8 +1296,11 @@
    "description": "Final panel for the Senior SRE role. Lena is the hiring manager and makes the final call.",
    "start": "2026-10-28T09:30:00Z",
    "end": "2026-10-28T10:30:00Z",
-   "organizerId": "p_omar",
+   "organizerId": "p_sam",
    "attendees": [
+    {
+     "personId": "p_omar"
+    },
     {
      "personId": "p_lena"
     },
@@ -1316,8 +1322,11 @@
    "description": "Monthly review. Lena presents the data platform migration plan; Maya reviews the security design.",
    "start": "2026-10-29T04:30:00Z",
    "end": "2026-10-29T05:30:00Z",
-   "organizerId": "p_maya",
+   "organizerId": "p_sam",
    "attendees": [
+    {
+     "personId": "p_maya"
+    },
     {
      "personId": "p_lena"
     },
@@ -1360,8 +1369,11 @@
    "description": "Residual risk sign-off for the new cloud storage vendor.",
    "start": "2026-10-29T10:30:00Z",
    "end": "2026-10-29T11:15:00Z",
-   "organizerId": "p_raj",
+   "organizerId": "p_sam",
    "attendees": [
+    {
+     "personId": "p_raj"
+    },
     {
      "personId": "p_lena"
     },
@@ -1396,8 +1408,11 @@
    "description": "Team demos and the sprint retrospective.",
    "start": "2026-10-30T09:30:00Z",
    "end": "2026-10-30T10:30:00Z",
-   "organizerId": "p_omar",
+   "organizerId": "p_sam",
    "attendees": [
+    {
+     "personId": "p_omar"
+    },
     {
      "personId": "p_lena"
     },
@@ -1452,13 +1467,6 @@
    "end": "2026-10-28",
    "source": "calendar_ooo",
    "enteredBy": "p_arjun"
-  },
-  {
-   "personId": "p_tara",
-   "start": "2026-10-27",
-   "end": "2026-10-27",
-   "source": "manual",
-   "enteredBy": "p_tara"
   },
   {
    "personId": "p_rohan",

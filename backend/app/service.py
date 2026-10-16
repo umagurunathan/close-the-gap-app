@@ -664,6 +664,15 @@ class Service:
             raise PermissionError("only meeting invitees can read notes")
         return self.calendar.visible_notes(e, caller)
 
+    def meeting_agenda(self, item_id: str, caller: str) -> str:
+        """The invite's agenda (its description), for the "Summaries & agenda" pop-up. Invitees only, like notes."""
+        item = self.store.get_item(item_id)
+        if not item:
+            raise LookupError("item not found")
+        if caller not in self._invitee_ids(item):
+            raise PermissionError("only meeting invitees can read the agenda")
+        return self.calendar.get(item.event.calendarEventId).description or ""
+
     def add_meeting_note(self, item_id: str, caller: str, text: str, shared_with: list[str]) -> Note:
         item = self.store.get_item(item_id)
         if not item:
@@ -894,19 +903,19 @@ class Service:
                                choice=choice.get(r["personId"]), declined=r["personId"] in declined) for r in ranked]
 
     def active_people(self) -> list[str]:
-        """Who has something to see right now: out (Attendee Mode), organizing an affected meeting (Organizer Mode),
-        asked to cover (Proxy Requests), or a recent meeting in Past. Read from the stored data only (no AI call).
-        The "Signed in as" list shows just these, so nobody picks a person with an empty screen."""
+        """Who has something to do right now: a card of theirs needs action (Attendee Mode), they organize a meeting
+        that needs action (Organizer Mode), or a proxy request is waiting for their answer (Proxy Requests). Read
+        from the stored data only (no AI call). The judges' "More…" list shows just these."""
         ids: set[str] = set()
         for i in self.store.items():
-            if self._is_past(i) and not self._recent_past(i):
+            if i.status not in ATTENTION or self._is_past(i):
                 continue
             ids.add(i.absentPersonId)
             if i.kind == ItemKind.key_meeting:
                 ids |= self._organizer_side(i)
         for r in self.store.proxy_requests():
             item = self.store.get_item(r.itemId)
-            if item and (not self._is_past(item) or self._recent_past(item)):
+            if r.status == ProxyRequestStatus.pending and item and not self._is_past(item):
                 ids.add(r.proxyId)
         people = self.people_map()
         return sorted((pid for pid in ids if pid in people and not people[pid].isGroup), key=lambda pid: people[pid].name)
