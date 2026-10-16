@@ -45,20 +45,33 @@ export default function Workspace({ groups, group, onGroup, selected, onSelect, 
   }, [groups, current, chosenKey, keyOf, titleOf]);
   useEffect(() => { setMoved(null); }, [group]);
 
-  // On a wide screen the list scrolls on its own, sized to end at the bottom of the window, so the page itself
-  // doesn't grow with every meeting (at least room for about three tiles).
+  // On a wide screen the list sits in a framed box that ends level with the open card on the right (Uma: the page ends
+  // where the card and the list end), and scrolls inside it, so the page doesn't grow with every meeting. Re-measured
+  // whenever the card changes size; at least room for about two tiles. When more tiles are below, the box's bottom
+  // edge fades so it's clear the list goes on.
+  const frameRef = useRef(null);
   const listRef = useRef(null);
-  useLayoutEffect(() => {
+  const [moreBelow, setMoreBelow] = useState(false);
+  const checkMore = () => {
     const list = listRef.current;
-    if (!wide || !list) return undefined;
+    setMoreBelow(!!list && list.scrollTop + list.clientHeight < list.scrollHeight - 2);
+  };
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!wide || !frame) return undefined;
+    const detail = frame.closest(".ws-body")?.querySelector(".ws-detail");
     const fit = () => {
-      const top = list.getBoundingClientRect().top + window.scrollY;
-      list.style.maxHeight = `${Math.max(300, window.innerHeight - top - 16)}px`;
+      const top = frame.getBoundingClientRect().top;
+      const bottom = detail ? detail.getBoundingClientRect().bottom : window.innerHeight - 16;
+      frame.style.height = `${Math.max(190, Math.round(bottom - top))}px`;
+      checkMore();
     };
     fit();
+    const watch = detail && typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    watch?.observe(detail);
     window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [wide, group, current.items.length]);
+    return () => { watch?.disconnect(); window.removeEventListener("resize", fit); };
+  }, [wide, group, current.items.length, chosenKey]);
 
   function choose(item) {
     onSelect(keyOf(item));
@@ -103,7 +116,9 @@ export default function Workspace({ groups, group, onGroup, selected, onSelect, 
         <EmptyState title={current.empty.title}>{current.empty.text}</EmptyState>
       ) : wide ? (
         <div className="ws-body">
-          <ul className="tile-list scrolls" ref={listRef}>{current.items.map(tile)}</ul>
+          <div className={`tile-frame ${moreBelow ? "more-below" : ""}`} ref={frameRef}>
+            <ul className="tile-list scrolls" ref={listRef} onScroll={checkMore}>{current.items.map(tile)}</ul>
+          </div>
           <div className="ws-detail">{chosen && <div key={chosenKey}>{renderDetail(chosen)}</div>}</div>
         </div>
       ) : (

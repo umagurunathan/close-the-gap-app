@@ -1,82 +1,41 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "@firebase/auth";
 import { setAuthTokenProvider } from "./api.js";
-import {
-  firebaseAuth,
-  firebaseAuthEnabled,
-  firebaseConfigError,
-  signInWithGoogle,
-  signOutGoogle,
-} from "./firebase.js";
+import { firebaseAuth, firebaseAuthEnabled, firebaseConfigError, signInWithGoogle, signOutGoogle } from "./firebase.js";
 
-const AuthContext = createContext({ enabled: false, user: null, signOut: async () => {} });
+// One app for everyone: without signing in you are a guest in the demo; "Sign in with Google" (in the
+// Demo controls) turns you into yourself, and the backend then shows only your own work. This wrapper never blocks
+// the app: it only tells it who is signed in, and adds the sign-in token to every request.
+const AuthContext = createContext({ enabled: false, ready: true, user: null, signIn: async () => {}, signOut: async () => {} });
 
 export function useAuth() {
   return useContext(AuthContext);
 }
 
 export default function AuthGate({ children }) {
+  const enabled = firebaseAuthEnabled && !firebaseConfigError;
   const [user, setUser] = useState(null);
-  const [ready, setReady] = useState(!firebaseAuthEnabled);
-  const [error, setError] = useState("");
+  const [ready, setReady] = useState(!enabled);   // until Firebase answers, we don't know if someone is signed in
 
   useEffect(() => {
-    if (!firebaseAuth) return undefined;
-    return onAuthStateChanged(firebaseAuth, (nextUser) => {
-      setUser(nextUser);
-      setAuthTokenProvider(nextUser ? () => nextUser.getIdToken() : null);
+    if (!enabled) return undefined;
+    return onAuthStateChanged(firebaseAuth, (next) => {
+      setAuthTokenProvider(next ? () => next.getIdToken() : null);
+      setUser(next);
       setReady(true);
     }, () => {
-      setUser(null);
       setAuthTokenProvider(null);
-      setError("Could not verify your sign-in. Please reload and try again.");
+      setUser(null);
       setReady(true);
     });
-  }, []);
+  }, [enabled]);
 
-  async function signIn() {
-    setError("");
-    try {
-      await signInWithGoogle();
-    } catch (err) {
-      setError(err.message || "Google sign-in did not complete.");
-    }
-  }
-
-  async function signOut() {
-    setError("");
-    try {
-      await signOutGoogle();
-    } catch (err) {
-      setError(err.message || "Could not sign out.");
-    }
-  }
-
-  if (firebaseAuthEnabled && firebaseConfigError) {
-    return <div className="auth-page"><section className="auth-card"><h1>Sign-in setup needed</h1><p>{firebaseConfigError}</p></section></div>;
-  }
-  if (firebaseAuthEnabled && !ready) {
-    return <div className="auth-page"><section className="auth-card"><p>Checking your sign-in…</p></section></div>;
-  }
-  if (firebaseAuthEnabled && !user) {
-    return (
-      <div className="auth-page">
-        <section className="auth-card">
-          <div className="brand">Close the Gap</div>
-          <p>Sign in with the Google account linked to your company directory to view your meetings and absence actions.</p>
-          {error && <div className="note warn" role="alert">{error}</div>}
-          <button className="primary" type="button" onClick={signIn}>Continue with Google</button>
-          <p className="auth-help">After signing in, connect Google Calendar to import your meetings into the company workspace.</p>
-          <a className="public-demo-link" href="/demo">Continue as guest with fictional demo data</a>
-        </section>
-      </div>
-    );
-  }
+  const signIn = useCallback(async () => { await signInWithGoogle(); }, []);
+  const signOut = useCallback(async () => { await signOutGoogle(); }, []);
 
   return (
-    <AuthContext.Provider value={{ enabled: firebaseAuthEnabled, user, signOut }}>
+    <AuthContext.Provider value={{ enabled, ready, user, signIn, signOut }}>
       {children}
-      {error && <div className="auth-error" role="alert">{error}</div>}
     </AuthContext.Provider>
   );
 }

@@ -1,8 +1,9 @@
 import { initializeApp } from "@firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "@firebase/auth";
 
-export const publicDemoMode = window.location.pathname === "/demo" || window.location.pathname.startsWith("/demo/");
-export const firebaseAuthEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === "true" && !publicDemoMode;
+// Google sign-in (Firebase Authentication). Opt-in: VITE_FIREBASE_AUTH_ENABLED=true plus the Firebase web app's four
+// public settings (not secrets; the backend verifies every sign-in token).
+export const firebaseAuthEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === "true";
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -21,7 +22,7 @@ export const firebaseAuth = firebaseAuthEnabled && !firebaseConfigError
   : null;
 
 export async function signInWithGoogle() {
-  if (!firebaseAuth) throw new Error(firebaseConfigError || "Firebase sign-in is not configured.");
+  if (!firebaseAuth) throw new Error(firebaseConfigError || "Google sign-in isn't set up here.");
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
   await signInWithPopup(firebaseAuth, provider);

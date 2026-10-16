@@ -119,7 +119,7 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
         <p className="reason">{ai.reason}</p>
         {ai.engine === "analysing" && <div className="skeleton" aria-hidden="true" />}
         <AgentTrail ai={ai} name={name} />
-        <RecommendationDetails ai={ai} onSummaries={openSummaries} />
+        <RecommendationDetails ai={ai} />
       </section>
 
       <div className="absentees" aria-label="People who are out">

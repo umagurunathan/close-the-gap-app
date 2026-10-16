@@ -4,8 +4,14 @@ import { api } from "../api.js";
 import { fmtWhen } from "../format.js";
 
 // "Summaries & agenda": what the invite says, and the summaries of earlier meetings this person may open (the same
-// summaries the AI reads). The organizer can add a summary and choose who reads it, or import one from Google Meet.
+// summaries the AI reads). The organizer can add a summary and choose who reads it (or import one from Google Meet,
+// hidden for now, see below).
 // A small link on the card opens it, so the card itself stays short. Rendered at the page's top level (a portal).
+
+// Google Meet import is hidden for now: Meet records transcripts only on paid Google Workspace accounts, so with
+// personal Gmail accounts there is never a transcript to import. The code stays; set to true to show it again.
+const SHOW_MEET_IMPORT = false;
+
 export function SummariesLink({ onOpen }) {
   return <button type="button" className="link summaries-link" onClick={onOpen}>Summaries &amp; agenda</button>;
 }
@@ -27,7 +33,7 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
     Promise.all([
       api(`/items/${itemId}/agenda`, { person: me }),
       api(`/items/${itemId}/notes`, { person: me }),
-      iAmOrganizer && !readOnly ? api(`/items/${itemId}/meet`, { person: me }) : Promise.resolve(null),
+      SHOW_MEET_IMPORT && iAmOrganizer && !readOnly ? api(`/items/${itemId}/meet`, { person: me }) : Promise.resolve(null),
     ]).then(([a, n, m]) => {
       setAgenda(a.agenda);
       setSummaries(n);
@@ -140,7 +146,7 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
                   </div>
                 </form>
 
-                <details className="meet-capture">
+                {SHOW_MEET_IMPORT && <details className="meet-capture">
                   <summary>Import a summary from Google Meet</summary>
                   {!meet?.configured ? (
                     <p className="reason">Google Meet isn't set up for this demo.</p>
@@ -171,7 +177,7 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
                       )}
                     </>
                   )}
-                </details>
+                </details>}
               </>
             )}
           </>

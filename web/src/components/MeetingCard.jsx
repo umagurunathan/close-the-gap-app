@@ -132,7 +132,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         {ai.engine === "analysing" && <div className="skeleton" aria-hidden="true" />}
         <ProxySuggestions ai={ai} declined={declined} name={name} />
         <AgentTrail ai={ai} name={name} />
-        <RecommendationDetails ai={ai} onSummaries={openSummaries} />
+        <RecommendationDetails ai={ai} />
       </section>
 
       {((item.chosenProxyId && !afterDecline) || item.decidedBy) && (

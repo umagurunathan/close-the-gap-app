@@ -8,7 +8,6 @@ import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
 import SettledCard from "./components/SettledCard.jsx";
 import MessageBar from "./components/MessageBar.jsx";
 import { useAuth } from "./AuthGate.jsx";
-import { publicDemoMode } from "./firebase.js";
 import DemoGuide from "./components/DemoGuide.jsx";
 import Logo from "./components/Logo.jsx";
 import ImpactBand from "./components/ImpactBand.jsx";
@@ -36,12 +35,19 @@ function naturalTab(c = {}) {
   return "attendee";
 }
 
+// One app for everyone: a guest acts as one of the demo people; after "Sign in with Google" the same
+// screens show only that person's own work (the backend picks the area from the sign-in).
+const SIGNED_IN = "signed-in";   // pickTabFor marker: choose the tab once the signed-in person's /me arrives
+
 export default function App() {
-  const { enabled: firebaseAuthEnabled, user: firebaseUser, signOut } = useAuth();
+  const { enabled: signInAvailable, ready: authReady, user: firebaseUser, signIn, signOut } = useAuth();
+  const signedIn = Boolean(firebaseUser);
   const [people, setPeople] = useState({});
-  const [personId, setPersonId] = useState(firebaseAuthEnabled
-    ? ""
-    : PARAMS.get("as") || recall("personId") || DEFAULT_PERSON);
+  // Two separate "who": the demo person a guest acts as, and the signed-in person. Kept apart so that signing in or
+  // out switches at once, with no request ever sent as the wrong one.
+  const [guestId, setGuestId] = useState(PARAMS.get("as") || recall("personId") || DEFAULT_PERSON);
+  const [myId, setMyId] = useState("");
+  const personId = signedIn ? myId : guestId;
   const [me, setMe] = useState(null);
   const [absences, setAbsences] = useState([]);
   const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { teamCheckins: [], orgEvents: [], rescheduledOrCancelled: [] } });
@@ -60,17 +66,16 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [noticeAction, setNoticeAction] = useState(null); // optional button in the confirmation, e.g. "Open Sam's view"
   const [settings, setSettings] = useState(null); // from GET /settings/public
-  const [dataMode, setDataMode] = useState(null);
-  const dataModeRef = useRef(null);
   const autoSyncedCalendarFor = useRef(null);
-  const [switchingDataMode, setSwitchingDataMode] = useState(false);
   const [activeIds, setActiveIds] = useState(null); // people with something to see; null = not loaded yet
   const [showGuide, setShowGuide] = useState(false);
   const [resetting, setResetting] = useState(false);
   // Each working tab has groups ("Needs action", "Settled", …) and a chosen meeting shown in full on the right.
   const [group, setGroup] = useState({ attendee: "needs", organizer: "needs", proxy: "waiting" });
   const [chosen, setChosen] = useState({});
-  const [guideSeen, setGuideSeen] = useState(() => recall("guideSeen") === "1");   // "Start here" until opened once
+  // Whose view is on screen: "me" (signed in) or a demo person's id. Until it matches the view asked for, the old
+  // cards are faded behind a spinner, so a click on a person, Sign in or Sign out shows at once that it's working.
+  const [loadedFor, setLoadedFor] = useState(null);
   const [error, setError] = useState("");
   // After switching person, open the tab where they have something to do (set here, applied once /me arrives).
   // On the first load too, unless the address names a tab.
@@ -98,45 +103,44 @@ export default function App() {
     }
   }, []);
 
+  // the colour theme: ?theme=… in the address (to try one), otherwise the config's [ui] theme
   useEffect(() => {
-    if (firebaseAuthEnabled && !firebaseUser) return;
+    api("/settings/public").then((s) => { setSettings(s); applyTheme(PARAMS.get("theme") || s.theme); })
+      .catch(() => applyTheme(PARAMS.get("theme")));
+  }, []);
+
+  // The people of the area you are in: the demo's for a guest, the company's when signed in.
+  useEffect(() => {
+    if (!authReady) return;
     api("/people")
       .then((list) => setPeople(Object.fromEntries(list.map((p) => [p.id, p]))))
       .catch((e) => setError(e.message));
-    // the few settings the screen shows, from the backend's config file, so the two never disagree
-    // the colour theme: ?theme=… in the address (to try one), otherwise the config's [ui] theme
-    api("/settings/public").then((s) => { setSettings(s); applyTheme(PARAMS.get("theme") || s.theme); })
-      .catch(() => applyTheme(PARAMS.get("theme")));
-  }, [firebaseAuthEnabled, firebaseUser]);
+  }, [authReady, signedIn]);
 
+  // Signing in: show your own work and open the tab where you have something to do. Signing out: back to the demo.
+  const wasSignedIn = useRef(false);
+  const authEpoch = useRef(0);   // bumped on sign-in and sign-out: answers to older requests are ignored
   useEffect(() => {
-    if (firebaseAuthEnabled && !firebaseUser) return undefined;
-    let active = true;
-    const loadMode = () => api("/data-mode").then((mode) => {
-      if (!active) return;
-      if (dataModeRef.current && dataModeRef.current !== mode.mode) {
-        window.location.reload();
-        return;
-      }
-      dataModeRef.current = mode.mode;
-      setDataMode(mode);
-    }).catch((e) => {
-      if (active) setError(e.message);
-    });
-    loadMode();
-    const timer = window.setInterval(loadMode, 15000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [firebaseAuthEnabled, firebaseUser]);
+    if (!authReady || signedIn === wasSignedIn.current) return;
+    wasSignedIn.current = signedIn;
+    authEpoch.current += 1;
+    setGroup({ attendee: "needs", organizer: "needs", proxy: "waiting" });
+    setChosen({});
+    setError("");
+    pickTabFor.current = signedIn ? SIGNED_IN : guestId;
+    if (!signedIn) setMyId("");
+  }, [authReady, signedIn, guestId]);
 
   const refresh = useCallback(async () => {
+    if (!authReady) return;   // until Firebase says whether someone is signed in
+    const epoch = authEpoch.current;
+    const current = () => epoch === authEpoch.current;
     try {
       setError("");
-      const m = await api("/me", { person: firebaseAuthEnabled ? undefined : personId });
-      const activePersonId = firebaseAuthEnabled ? m.person.id : personId;
-      if (firebaseAuthEnabled) setPersonId(activePersonId);
+      const m = await api("/me", { person: guestId });   // signed in: the token decides who you are
+      if (!current()) return;
+      const activePersonId = signedIn ? m.person.id : guestId;
+      if (signedIn) setMyId(m.person.id);
       const [a, att, org, pr, pi, pp, h, met, ob, cal, act] = await Promise.all([
         api("/absences", { person: activePersonId }),
         api("/items?mode=attendee", { person: activePersonId }),
@@ -146,26 +150,34 @@ export default function App() {
         api("/proxy-requests?past=true", { person: activePersonId }),
         api("/history", { person: activePersonId }),
         api("/metrics"),
-        firebaseAuthEnabled ? Promise.resolve([]) : api("/dev/outbox"),
+        api("/dev/outbox"),   // the backend sends only the emails for your area (signed in: only yours)
         api("/integrations/google-calendar/status", { person: activePersonId }),
         api("/people/active"),   // who has something to do (for the "More…" list)
       ]);
+      if (!current()) return;   // signed in or out meanwhile: these answers belong to the old view
       setMe(m); setAbsences(a); setAttendee(att); setOrganizer(org); setProxyReqs(pr); setPastItems(pi); setPastProxy(pp);
       setHistory(h); setMetrics(met); setOutbox(ob); setCalendarStatus(cal); setActiveIds(act);
-      if (pickTabFor.current === personId) {
+      setLoadedFor(signedIn ? "me" : guestId);
+      if (pickTabFor.current === (signedIn ? SIGNED_IN : guestId)) {
         pickTabFor.current = null;
         setTab(naturalTab(m?.counts));
       }
     } catch (e) {
+      if (!current()) return;
+      setLoadedFor(signedIn ? "me" : guestId);   // stop the spinner; the message says what went wrong
+      if (e.code === "not_in_directory") {
+        await signOut();   // back to the demo, with the reason shown
+        setError(e.message);
+        return;
+      }
       setError(e.message);
     }
-  }, [personId, firebaseAuthEnabled]);
+  }, [authReady, guestId, signedIn, signOut]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
-    if (!firebaseAuthEnabled || !firebaseUser || !personId || !calendarStatus.connected
-        || autoSyncedCalendarFor.current === personId) return;
+    if (!signedIn || !personId || !calendarStatus.connected || autoSyncedCalendarFor.current === personId) return;
     autoSyncedCalendarFor.current = personId;
     api("/integrations/google-calendar/sync", { method: "POST" }).then(async (result) => {
       setNotice(`Google Calendar synced: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`);
@@ -174,7 +186,7 @@ export default function App() {
       autoSyncedCalendarFor.current = null;
       setError(e.message);
     });
-  }, [firebaseAuthEnabled, firebaseUser, personId, calendarStatus.connected, refresh]);
+  }, [signedIn, personId, calendarStatus.connected, refresh]);
 
   // While Gemini is still analysing any card on screen, check again every few seconds; stop once all have answered.
   const analysing = [
@@ -190,7 +202,7 @@ export default function App() {
   function switchPerson(id) {
     remember("personId", id);
     pickTabFor.current = id;
-    setPersonId(id);
+    setGuestId(id);
     setGroup({ attendee: "needs", organizer: "needs", proxy: "waiting" });
     setChosen({});
   }
@@ -214,23 +226,19 @@ export default function App() {
     }
   }
 
-  async function switchDataMode(mode) {
-    const label = mode === "firestore" ? "Calendar + Firestore" : "Seed file";
-    if (!window.confirm(`Switch the entire demo to ${label}? This changes the data source for everyone using the app.`)) return;
-    setSwitchingDataMode(true);
+  async function onSignIn() {
+    setError("");
     try {
-      const result = await api("/data-mode", { method: "POST", body: { mode } });
-      dataModeRef.current = result.mode;
-      setDataMode(result);
-      setNotice(mode === "firestore"
-        ? "Connected demo selected. Seed JSON initializes missing Firestore data; existing data is preserved."
-        : "Seed demo selected. The in-memory demo was reloaded from the seed JSON.");
-      await refresh();
+      await signIn();
     } catch (e) {
-      setError(e.message);
-    } finally {
-      setSwitchingDataMode(false);
+      // closing the Google window is not an error worth showing
+      if (!/popup-closed|cancelled-popup/.test(e.code || "")) setError("Google sign-in didn't complete. Please try again.");
     }
+  }
+
+  async function onSignOut() {
+    await signOut();
+    setNotice("Signed out. You're back in the demo.");
   }
 
   // Returns when done, so the card can lock its buttons meanwhile (no double answers).
@@ -268,8 +276,6 @@ export default function App() {
   const closeGuide = useCallback(() => setShowGuide(false), []);
   function openGuide() {
     setShowGuide(true);
-    setGuideSeen(true);
-    remember("guideSeen", "1");
   }
   const pick = (t) => ({ group: group[t], onGroup: (g) => setGroup((x) => ({ ...x, [t]: g })),
     selected: chosen[t], onSelect: (k) => setChosen((x) => ({ ...x, [t]: k })) });
@@ -303,52 +309,71 @@ export default function App() {
     .filter((p) => !p.isGroup && !PERSONAS.some(([id]) => id === p.id)
       && ((activeIds || []).includes(p.id) || p.id === personId))
     .sort((a, b) => a.name.localeCompare(b.name));
+  const switching = loadedFor !== (signedIn ? "me" : guestId);
+  // the person whose data is on screen (while the next one loads, the faded cards still read as the previous person)
+  const shownId = switching && loadedFor ? (loadedFor === "me" ? myId || personId : loadedFor) : personId;
+  const guestFirst = (people[guestId]?.name || "").split(" ")[0];
+  const loadingText = signedIn ? "Loading your meetings…"
+    : loadedFor === "me" || !guestFirst ? "Loading the demo…" : `Loading ${guestFirst}'s meetings…`;
 
   return (
     <>
-      {/* Demo controls: an add-on on top of the prototype (not part of the product), so a visitor can switch people,
-          see the emails the app sends, read the guide and reset the demo data. Two rows: the demo's own buttons, then
-          the people. Someone really signed in with Google sees only their own meetings, so the person buttons are off. */}
-      <div className="demo-toolbar" role="region" aria-label="Demo controls">
-        <div className="demo-toolbar-inner">
-          <div className="demo-row">
-            <span className="demo-label">Demo controls</span>
-            <div className="demo-tools">
-              <button onClick={openGuide} className={guideSeen ? "" : "guide-new"}>
-                Demo guide{!guideSeen && <span className="start-here">Start here</span>}
-              </button>
-              {/* not in the shared guest demo: one visitor must not wipe what others are trying */}
-              {!publicDemoMode && <button onClick={resetDemo} disabled={resetting}
-                title={resetting ? "Resetting the demo data. This takes about a minute."
-                  : "Puts the demo people's meetings back to the start, so the AI analyzes every card again. Real users' data is not touched."}>
-                {resetting ? "Resetting…" : "Reset demo data"}
-              </button>}
-              <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
-                title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
+      {/* The strip above the product. A guest gets the Demo controls: the guide, Reset demo data, the emails, and the
+          demo people to act as. Someone signed in with Google gets only who they are, their emails and Sign out. */}
+      {signedIn ? (
+        <div className="demo-toolbar" role="region" aria-label="Your account">
+          <div className="demo-toolbar-inner">
+            <div className="demo-row">
+              <span className="signed-in-as">Signed in as <b>{people[personId]?.name || firebaseUser.email}</b></span>
+              <div className="demo-tools">
+                <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
+                  title="The emails the app would have sent you (shown here instead of your inbox)">Emails ({outbox.length})</button>
+                <button onClick={onSignOut} title="Sign out and go back to the demo">Sign out</button>
+              </div>
             </div>
           </div>
-          <div className="demo-view-as" role="group" aria-label="View as">
-            <span className="demo-view-label">{firebaseAuthEnabled ? "Signed in: you see your own meetings" : "View as"}</span>
-            {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
-              <button key={id} className="persona" aria-pressed={personId === id} onClick={() => switchPerson(id)}
-                disabled={firebaseAuthEnabled}
-                title={firebaseAuthEnabled ? "You're signed in with Google, so you see your own meetings."
-                  : `View the app as ${people[id].name} (${role})`}>
-                <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
-              </button>
-            ))}
-            {/* anyone else only while they have something to do (and whoever is viewed now) */}
-            <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
-              disabled={firebaseAuthEnabled || morePeople.length === 0}
-              title={firebaseAuthEnabled ? "You're signed in with Google, so you see your own meetings."
-                : morePeople.length === 0 ? "Nobody else has something to do right now." : undefined}
-              onChange={(e) => e.target.value && switchPerson(e.target.value)}>
-              <option value="">More…</option>
-              {morePeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+        </div>
+      ) : (
+        <div className="demo-toolbar" role="region" aria-label="Demo controls">
+          <div className="demo-toolbar-inner">
+            <div className="demo-row">
+              <span className="demo-label">Demo controls</span>
+              <div className="demo-tools">
+                {/* always highlighted (Uma): a visitor may have refreshed or missed it the first time */}
+                <button onClick={openGuide} className="guide-new">
+                  <Icon name="spark" size={14} className="guide-sparkle" />
+                  Demo guide<span className="start-here">Start here</span>
+                </button>
+                <button onClick={resetDemo} disabled={resetting}
+                  title={resetting ? "Resetting the demo data. This takes about a minute."
+                    : "Puts the demo people's meetings back to the start, so the AI analyzes every card again. Real users' data is not touched."}>
+                  {resetting ? "Resetting…" : "Reset demo data"}
+                </button>
+                <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
+                  title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
+              </div>
+            </div>
+            <div className="demo-view-as" role="group" aria-label="View as">
+              <span className="demo-view-label">View as</span>
+              {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
+                <button key={id} className="persona" aria-pressed={personId === id} onClick={() => switchPerson(id)}
+                  title={`View the app as ${people[id].name} (${role})`}>
+                  {switching && personId === id && <span className="spinner small" aria-hidden="true" />}
+                  <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
+                </button>
+              ))}
+              {/* anyone else only while they have something to do (and whoever is viewed now) */}
+              <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
+                disabled={morePeople.length === 0}
+                title={morePeople.length === 0 ? "Nobody else has something to do right now." : undefined}
+                onChange={(e) => e.target.value && switchPerson(e.target.value)}>
+                <option value="">More…</option>
+                {morePeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
     <div className="app">
       <header className="topbar">
@@ -360,40 +385,26 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-right">
-          {publicDemoMode && <a className="ghost" href="/">Sign in with Google</a>}
-          {dataMode?.canSwitch && <div className="data-mode" aria-label="Global demo data source">
-            <span>Data source</span>
-            <button className={dataMode.mode === "memory" ? "mode-active" : ""}
-              aria-pressed={dataMode.mode === "memory"} disabled={switchingDataMode || dataMode.mode === "memory"}
-              onClick={() => switchDataMode("memory")}>
-              Seed file
-            </button>
-            <button className={dataMode.mode === "firestore" ? "mode-active" : ""}
-              aria-pressed={dataMode.mode === "firestore"} disabled={switchingDataMode || dataMode.mode === "firestore"}
-              onClick={() => switchDataMode("firestore")}>
-              Calendar + Firestore
-            </button>
-          </div>}
           <button className="primary" onClick={() => setShowSchedule(true)}>Schedule a meeting</button>
           <button onClick={() => setShowAdd(true)}>Report an absence</button>
-          {!publicDemoMode && (calendarStatus.connected ? (
+          {calendarStatus.connected ? (
             <button className="ghost" onClick={syncCalendar}>Sync Google Calendar</button>
           ) : (
             <button className="ghost" onClick={connectCalendar} disabled={!calendarStatus.configured}
-              title={calendarStatus.configured ? undefined : "Google Calendar isn't set up for this demo."}>
+              title={calendarStatus.configured ? undefined : signedIn ? "Google Calendar isn't set up yet."
+                : "Sign in with Google to connect your own calendar. The demo uses sample meetings."}>
               Connect Google Calendar
             </button>
-          ))}
-          {firebaseAuthEnabled && <div className="signed-in">
-            <span>{firebaseUser?.email}</span>
-            <button className="ghost" onClick={signOut}>Sign out</button>
-          </div>}
+          )}
+          {/* real people sign in here; the demo stays open to everyone */}
+          {signInAvailable && !signedIn && (
+            <button className="sign-in" onClick={onSignIn} disabled={!authReady}
+              title={authReady ? "Sign in to see only your own meetings" : "Checking whether you're signed in…"}>
+              Sign in with Google
+            </button>
+          )}
         </div>
       </header>
-
-      {publicDemoMode && <div className="public-demo-banner">
-        Guest demo · changes are saved in the guest workspace and shared with other visitors. Use fictional data only; Google Calendar is available after signing in.
-      </div>}
 
       {showGuide && <DemoGuide onClose={closeGuide} />}
 
@@ -401,10 +412,14 @@ export default function App() {
       <MessageBar kind="success" text={notice} onClose={clearNotice} hideAfter={settings?.messageHideSeconds ?? 6}
         action={noticeAction} />
 
+      <div className={`view ${switching ? "switching" : ""}`} aria-busy={switching}>
+      {switching && (
+        <div className="view-loading" role="status"><span className="spinner" aria-hidden="true" />{loadingText}</div>
+      )}
       {/* The signed-in person's situation and next step, in two lines: the first thing a visitor reads. */}
       {upcomingAbsence && (() => {
         const open = counts.attendeeOpen;
-        const firstName = (people[personId]?.name || "").split(" ")[0];
+        const firstName = (people[shownId]?.name || "").split(" ")[0];
         const days = upcomingAbsence.start === upcomingAbsence.end
           ? <b>{fmtDay(upcomingAbsence.start)}</b>
           : <b>{fmtRange(upcomingAbsence.start, upcomingAbsence.end)}</b>;
@@ -455,11 +470,11 @@ export default function App() {
               { id: "none", label: "No action needed", items: attNone,
                 empty: { title: "Nothing handled automatically", text: "Team check-ins and org-wide events that can go on without you appear here." } },
             ]}
-            renderTile={(i) => <AttendeeTile item={i} people={people} me={personId} />}
+            renderTile={(i) => <AttendeeTile item={i} people={people} me={shownId} />}
             renderDetail={(i) => (i.status === "rescheduled" || i.status === "cancelled"
               ? <SettledCard title={i.event.title} start={i.event.start} originalStart={i.originalStart} status={i.status}
                   decidedBy={i.decidedBy} people={people} />
-              : <MeetingCard item={i} people={people} me={personId} role="attendee" refresh={refresh}
+              : <MeetingCard item={i} people={people} me={shownId} role="attendee" refresh={refresh}
                   quiet={i.status === "auto_handled"} />)}
           />
         ))}
@@ -478,7 +493,7 @@ export default function App() {
             renderDetail={(m) => (m.done
               ? <SettledCard title={m.event.title} start={m.event.start} originalStart={m.absentees[0]?.originalStart}
                   status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} people={people} />
-              : <OrganizerCard meeting={m} people={people} me={personId} refresh={refresh} />)}
+              : <OrganizerCard meeting={m} people={people} me={shownId} refresh={refresh} />)}
           />
         ))}
 
@@ -504,8 +519,8 @@ export default function App() {
             {pastItems.length > 0 && <h4 className="group-title">Your meetings</h4>}
             {pastItems.map((i) => (
               <MeetingCard
-                key={i.id} item={i} people={people} me={personId}
-                role={i.absentPersonId === personId ? "attendee" : "organizer"}
+                key={i.id} item={i} people={people} me={shownId}
+                role={i.absentPersonId === shownId ? "attendee" : "organizer"}
                 refresh={refresh} readOnly activity={activityFor(i.id)}
               />
             ))}
@@ -516,10 +531,14 @@ export default function App() {
           </div>
         )}
       </main>
+      </div>
 
       {showEmails && (
-        <aside className="drawer">
-          <h4>Emails the app sent (demo: shown here instead of real inboxes)</h4>
+        <aside className="drawer" aria-label="Emails">
+          <header className="guide-head drawer-head">
+            <h4>Emails the app sent (demo: shown here instead of real inboxes)</h4>
+            <button className="message-close" onClick={() => setShowEmails(false)} aria-label="Close the emails" title="Close">✕</button>
+          </header>
           {outbox.length === 0 && <p className="reason">None yet.</p>}
           {[...outbox].reverse().map((m, idx) => (
             <div key={idx} className="mail">
