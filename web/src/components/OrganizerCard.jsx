@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "../api.js";
 import { statusLabel, urgencyLabel, fmtWhen } from "../format.js";
 import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
+import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 // Organizer Mode: ONE card per meeting, naming everyone who is out.
 // Meeting-level actions (reschedule, go on without them, cancel) apply to everyone on the card; a proxy is chosen per
@@ -23,6 +24,9 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
   const [proposal, setProposal] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showSummaries, setShowSummaries] = useState(false);
+  const openSummaries = useCallback(() => setShowSummaries(true), []);
+  const closeSummaries = useCallback(() => setShowSummaries(false), []);
 
   const ev = meeting.event;
   const ai = meeting.ai;
@@ -99,7 +103,11 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
         </div>
       </header>
 
-      <Invitees event={ev} absentIds={people_.map((a) => a.absentPersonId)} people={people} />
+      <Invitees event={ev} absentIds={people_.map((a) => a.absentPersonId)} people={people}
+        extra={<SummariesLink onOpen={openSummaries} />} />
+      {/* the summaries belong to the meeting, so any of its cards gives access to them */}
+      {showSummaries && <SummariesDialog itemId={people_[0].id} event={ev} people={people} me={me}
+        readOnly={terminal} refresh={refresh} onClose={closeSummaries} />}
 
       <section className="ai">
         <div className="ai-row">

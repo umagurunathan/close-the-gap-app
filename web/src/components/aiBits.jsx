@@ -171,7 +171,8 @@ export function AgentTrail({ ai, name = (id) => id }) {
   );
 }
 
-// The collapsed "Recommendation details" panel.
+// The collapsed "Recommendation details" panel. The summaries and agenda themselves open from the card's
+// "Summaries & agenda" link (one way in, Uma).
 export function RecommendationDetails({ ai }) {
   return (
     <details className="rec-details">

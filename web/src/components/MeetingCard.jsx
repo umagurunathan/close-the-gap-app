@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "../api.js";
 import { actionLabel, statusLabel, urgencyLabel, fmtWhen } from "../format.js";
 import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
+import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 // One card per (meeting, absent person). Used in Attendee Mode and Past. The organizer sees OrganizerCard instead.
 export default function MeetingCard({ item, people, me, role, refresh, quiet = false, readOnly = false, activity = [] }) {
@@ -13,9 +14,14 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const [showActions, setShowActions] = useState(!quiet);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showSummaries, setShowSummaries] = useState(false);
+  const closeSummaries = useCallback(() => setShowSummaries(false), []);
 
   const ev = item.event;
   const name = (id) => people[id]?.name ?? id;
+  // Summaries and the agenda are for the meeting's invitees (and its organizer) only
+  const canSeeSummaries = ev.organizerId === me || ev.attendees.some((a) => a.personId === me);
+  const openSummaries = canSeeSummaries ? () => setShowSummaries(true) : null;
   const iAmOrganizer = ev.organizerId === me;
   const terminal = item.status === "rescheduled" || item.status === "cancelled";
   // Both sides can act: the absent person sees the organizer can too, and vice versa (said on that person's chip).
@@ -29,11 +35,15 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const label = (a) => actionLabel(a, mine, who);
   const urgency = urgencyLabel(item.urgency, item.hoursToStart); // amber within 3 days, red within 24 hours
 
-  async function act(action) {
+  async function act(action, proxyId, extra = {}) {
     setBusy(true);
     setError("");
     try {
-      await api(`/items/${item.id}/action`, { method: "POST", person: me, body: { action } });
+      await api(`/items/${item.id}/action`, {
+        method: "POST",
+        person: me,
+        body: { action, proxyId, ...extra },
+      });
       setMode("idle");
       await refresh();
     } catch (e) {
@@ -106,7 +116,10 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         </div>
       </header>
 
-      <Invitees event={ev} absentId={item.absentPersonId} people={people} alsoActsId={alsoActsId} />
+      <Invitees event={ev} absentId={item.absentPersonId} people={people} alsoActsId={alsoActsId}
+        extra={openSummaries && <SummariesLink onOpen={openSummaries} />} />
+      {showSummaries && <SummariesDialog itemId={item.id} event={ev} people={people} me={me} readOnly={readOnly}
+        refresh={refresh} onClose={closeSummaries} />}
 
       <section className="ai">
         <div className="ai-row">

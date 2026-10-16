@@ -2,7 +2,8 @@
 // else is behind a small expander, so a big meeting doesn't take over the card.
 // `absentIds` (several people out, on the organizer's card) or `absentId` (one person's card).
 // `alsoActsId`: the person on the other side who can also act on this meeting; their chip says so.
-export default function Invitees({ event, absentId, absentIds, people, alsoActsId = null }) {
+// `extra`: a small link at the end of the first row (the "Summaries & agenda" link), so it takes no extra height.
+export default function Invitees({ event, absentId, absentIds, people, alsoActsId = null, extra = null }) {
   const out = new Set(absentIds ?? [absentId]);
   const name = (id) => people[id]?.name ?? id;
   const optional = new Set(event.attendees.filter((a) => a.optional).map((a) => a.personId));
@@ -25,7 +26,7 @@ export default function Invitees({ event, absentId, absentIds, people, alsoActsI
 
   return (
     <div className="invitees">
-      <div className="people">{key.map(chip)}</div>
+      <div className="people">{key.map(chip)}{extra}</div>
       {all.length > key.length && (
         <details className="invitee-list">
           <summary>All invitees ({all.length})</summary>

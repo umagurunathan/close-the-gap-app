@@ -6,6 +6,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from google.api_core.exceptions import AlreadyExists
+from google.cloud import firestore
+from google.cloud.firestore_v1 import FieldFilter
+
+from .firestore import encode_model
 from .models import CalEvent, Note
 
 
@@ -16,6 +21,9 @@ class SimCalendar:
     # ---- reads ----
     def get(self, event_id: str) -> Optional[CalEvent]:
         return self._events.get(event_id)
+
+    def all_events(self) -> list[CalEvent]:
+        return list(self._events.values())
 
     def involving(self, person_id: str) -> list[CalEvent]:
         """Events where the person is the organizer or an attendee (not cancelled)."""
@@ -45,6 +53,13 @@ class SimCalendar:
         self._events[event.id] = event
         return event
 
+    def remove_event(self, event_id: str) -> None:
+        self._events.pop(event_id, None)
+
+    def save_event(self, event: CalEvent) -> CalEvent:
+        self._events[event.id] = event
+        return event
+
     def move_event(self, event_id: str, new_start: datetime) -> CalEvent:
         e = self._events[event_id]
         duration = e.end - e.start
@@ -56,6 +71,88 @@ class SimCalendar:
         e = self._events[event_id]
         e.cancelled = True
         return e
+
+
+class FirestoreCalendar:
+    """Firestore-backed calendar records, including their shared meeting notes."""
+
+    def __init__(self, client: firestore.Client, workspace_id: str = "company"):
+        self._events = client.collection("events")
+        self._workspace_id = workspace_id
+
+    def _document(self, event_id: str):
+        return self._events.document(f"{self._workspace_id}__{event_id}")
+
+    def get(self, event_id: str) -> Optional[CalEvent]:
+        snapshot = self._document(event_id).get()
+        if not snapshot.exists:
+            return None
+        data = snapshot.to_dict()
+        data.pop("workspaceId", None)
+        return CalEvent.model_validate(data)
+
+    def all_events(self) -> list[CalEvent]:
+        return [
+            CalEvent.model_validate({key: value for key, value in doc.to_dict().items()
+                                     if key != "workspaceId"})
+            for doc in self._events.where(
+                filter=FieldFilter("workspaceId", "==", self._workspace_id)
+            ).stream()
+        ]
+
+    def add_event(self, event: CalEvent) -> CalEvent:
+        self.save_event(event)
+        return event
+
+    def remove_event(self, event_id: str) -> None:
+        self._document(event_id).delete()
+
+    def add_event_if_missing(self, event: CalEvent) -> bool:
+        reference = self._document(event.id)
+        try:
+            reference.create({**encode_model(event), "workspaceId": self._workspace_id})
+        except AlreadyExists:
+            return False
+        return True
+
+    def save_event(self, event: CalEvent) -> CalEvent:
+        self._document(event.id).set({**encode_model(event), "workspaceId": self._workspace_id})
+        return event
+
+    def involving(self, person_id: str) -> list[CalEvent]:
+        return sorted(
+            [event for event in self.all_events()
+             if not event.cancelled and (event.organizerId == person_id
+                                         or any(a.personId == person_id for a in event.attendees))],
+            key=lambda event: event.start,
+        )
+
+    def events_in_window(self, person_id: str, start: date, end: date) -> list[CalEvent]:
+        return [event for event in self.involving(person_id) if start <= event.start.date() <= end]
+
+    def busy(self, person_id: str, ignore_event_id: Optional[str] = None) -> list[tuple[datetime, datetime]]:
+        return [(event.start, event.end) for event in self.involving(person_id) if event.id != ignore_event_id]
+
+    def visible_notes(self, event: CalEvent, viewer_id: str) -> list[Note]:
+        if viewer_id == event.organizerId:
+            return list(event.notes)
+        return [note for note in event.notes if viewer_id in note.sharedWith]
+
+    def move_event(self, event_id: str, new_start: datetime) -> CalEvent:
+        event = self.get(event_id)
+        if event is None:
+            raise KeyError(event_id)
+        duration = event.end - event.start
+        event.start = new_start
+        event.end = new_start + duration
+        return self.save_event(event)
+
+    def cancel_event(self, event_id: str) -> CalEvent:
+        event = self.get(event_id)
+        if event is None:
+            raise KeyError(event_id)
+        event.cancelled = True
+        return self.save_event(event)
 
 
 def utc(dt: datetime) -> datetime:

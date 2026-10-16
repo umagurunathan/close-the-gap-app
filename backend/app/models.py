@@ -207,6 +207,27 @@ class Note(BaseModel):
     modifiedAt: datetime
     text: str
     sharedWith: list[str] = Field(default_factory=list)
+    source: Optional[str] = None
+    sourceId: Optional[str] = None
+
+
+class NoteCreate(BaseModel):
+    text: str
+    sharedWith: list[str] = Field(default_factory=list)
+
+
+class MeetLinkUpdate(BaseModel):
+    meetUrl: str
+
+
+class TranscriptImportRequest(BaseModel):
+    sharedWith: list[str] = Field(default_factory=list)
+
+
+class MeetStatus(BaseModel):
+    meetUrl: Optional[str] = None
+    configured: bool
+    connected: bool
 
 
 class CalEvent(BaseModel):
@@ -219,6 +240,9 @@ class CalEvent(BaseModel):
     organizerId: str
     attendees: list[EventAttendee]
     inviteGroup: Optional[str] = None  # set when the invite goes to a group / distribution list
+    meetUrl: Optional[str] = None
+    googleEventId: Optional[str] = None
+    googleCalendarOwnerId: Optional[str] = None
     notes: list[Note] = Field(default_factory=list)
     cancelled: bool = False
 
@@ -248,6 +272,7 @@ class AttendeeAdd(BaseModel):
 
 class ScheduleResult(BaseModel):
     eventId: str
+    calendarProvider: str = "demo"
     affected: list["MeetingItem"] = Field(default_factory=list)  # cards created because a key person is out
 
 

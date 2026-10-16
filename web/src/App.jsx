@@ -7,6 +7,7 @@ import ProxyCard from "./components/ProxyCard.jsx";
 import ScheduleMeeting from "./components/ScheduleMeeting.jsx";
 import SettledCard from "./components/SettledCard.jsx";
 import MessageBar from "./components/MessageBar.jsx";
+import { useAuth } from "./AuthGate.jsx";
 import DemoGuide from "./components/DemoGuide.jsx";
 import Logo from "./components/Logo.jsx";
 import ImpactBand from "./components/ImpactBand.jsx";
@@ -20,9 +21,10 @@ const DEFAULT_PERSON = "p_priya";
 // A link can open the app as someone, on a tab: ?as=p_sam&tab=organizer (handy for demos and the judges' guide).
 const PARAMS = new URLSearchParams(window.location.search);
 const TABS = ["attendee", "organizer", "proxy", "past"];
-// The demo's people, one click each in the judges' bar, with the part they play. Everyone else is under "More".
+// The demo's eight people, one click each in the judges' bar, with the part they play. Anyone else appears under
+// "More…" only while they have something to do (for example, a proxy request waiting for their answer).
 const PERSONAS = [["p_priya", "on leave"], ["p_meena", "proxy"], ["p_sam", "organizer"], ["p_arjun", "AI vs rules"],
-  ["p_kiran", "out suddenly"], ["p_lena", "on vacation"]];
+  ["p_kiran", "out suddenly"], ["p_lena", "on vacation"], ["p_dev", "declines"], ["p_ben", "audit organizer"]];
 
 // The tab a person lands on: the first with something in "Needs action" (Attendee, then Organizer, then
 // Proxy Requests); Attendee when nothing needs action.
@@ -33,9 +35,19 @@ function naturalTab(c = {}) {
   return "attendee";
 }
 
+// One app for everyone: a guest acts as one of the demo people; after "Sign in with Google" the same
+// screens show only that person's own work (the backend picks the area from the sign-in).
+const SIGNED_IN = "signed-in";   // pickTabFor marker: choose the tab once the signed-in person's /me arrives
+
 export default function App() {
+  const { enabled: signInAvailable, ready: authReady, user: firebaseUser, signIn, signOut } = useAuth();
+  const signedIn = Boolean(firebaseUser);
   const [people, setPeople] = useState({});
-  const [personId, setPersonId] = useState(PARAMS.get("as") || recall("personId") || DEFAULT_PERSON);
+  // Two separate "who": the demo person a guest acts as, and the signed-in person. Kept apart so that signing in or
+  // out switches at once, with no request ever sent as the wrong one.
+  const [guestId, setGuestId] = useState(PARAMS.get("as") || recall("personId") || DEFAULT_PERSON);
+  const [myId, setMyId] = useState("");
+  const personId = signedIn ? myId : guestId;
   const [me, setMe] = useState(null);
   const [absences, setAbsences] = useState([]);
   const [attendee, setAttendee] = useState({ needsAction: [], noActionNeeded: { teamCheckins: [], orgEvents: [], rescheduledOrCancelled: [] } });
@@ -47,61 +59,135 @@ export default function App() {
   const [metrics, setMetrics] = useState(null);
   const [outbox, setOutbox] = useState([]);
   const [tab, setTab] = useState(TABS.includes(PARAMS.get("tab")) ? PARAMS.get("tab") : "attendee");
+  const [calendarStatus, setCalendarStatus] = useState({ configured: false, connected: false });
   const [showEmails, setShowEmails] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [notice, setNotice] = useState("");
   const [noticeAction, setNoticeAction] = useState(null); // optional button in the confirmation, e.g. "Open Sam's view"
   const [settings, setSettings] = useState(null); // from GET /settings/public
+  const autoSyncedCalendarFor = useRef(null);
   const [activeIds, setActiveIds] = useState(null); // people with something to see; null = not loaded yet
   const [showGuide, setShowGuide] = useState(false);
+  const [resetting, setResetting] = useState(false);
   // Each working tab has groups ("Needs action", "Settled", …) and a chosen meeting shown in full on the right.
   const [group, setGroup] = useState({ attendee: "needs", organizer: "needs", proxy: "waiting" });
   const [chosen, setChosen] = useState({});
-  const [guideSeen, setGuideSeen] = useState(() => recall("guideSeen") === "1");   // "Start here" until opened once
+  // Whose view is on screen: "me" (signed in) or a demo person's id. Until it matches the view asked for, the old
+  // cards are faded behind a spinner, so a click on a person, Sign in or Sign out shows at once that it's working.
+  const [loadedFor, setLoadedFor] = useState(null);
   const [error, setError] = useState("");
   // After switching person, open the tab where they have something to do (set here, applied once /me arrives).
   // On the first load too, unless the address names a tab.
   const pickTabFor = useRef(TABS.includes(PARAMS.get("tab")) ? null : personId);
 
   useEffect(() => {
-    api("/people")
-      .then((list) => setPeople(Object.fromEntries(list.map((p) => [p.id, p]))))
-      .catch((e) => setError(e.message));
-    // the few settings the screen shows, from the backend's config file, so the two never disagree
-    // the colour theme: ?theme=… in the address (to try one), otherwise the config's [ui] theme
+    const url = new URL(window.location.href);
+    const meetResult = url.searchParams.get("meet");
+    const calendarResult = url.searchParams.get("calendar");
+    if (meetResult) {
+      setNotice(meetResult === "connected"
+        ? "Google Meet connected. Link a Meet to a meeting to import its transcript after the call."
+        : "Google Meet connection failed. Check OAuth setup and try again.");
+      url.searchParams.delete("meet");
+      window.history.replaceState({}, "", url);
+    }
+    if (calendarResult) {
+      if (calendarResult === "connected") {
+        setNotice("Google Calendar connected. Importing your meetings now.");
+      } else {
+        setNotice("Google Calendar connection failed. Check OAuth setup and try again.");
+      }
+      url.searchParams.delete("calendar");
+      window.history.replaceState({}, "", url);
+    }
+  }, []);
+
+  // the colour theme: ?theme=… in the address (to try one), otherwise the config's [ui] theme
+  useEffect(() => {
     api("/settings/public").then((s) => { setSettings(s); applyTheme(PARAMS.get("theme") || s.theme); })
       .catch(() => applyTheme(PARAMS.get("theme")));
   }, []);
 
+  // The people of the area you are in: the demo's for a guest, the company's when signed in.
+  useEffect(() => {
+    if (!authReady) return;
+    api("/people")
+      .then((list) => setPeople(Object.fromEntries(list.map((p) => [p.id, p]))))
+      .catch((e) => setError(e.message));
+  }, [authReady, signedIn]);
+
+  // Signing in: show your own work and open the tab where you have something to do. Signing out: back to the demo.
+  const wasSignedIn = useRef(false);
+  const authEpoch = useRef(0);   // bumped on sign-in and sign-out: answers to older requests are ignored
+  useEffect(() => {
+    if (!authReady || signedIn === wasSignedIn.current) return;
+    wasSignedIn.current = signedIn;
+    authEpoch.current += 1;
+    setGroup({ attendee: "needs", organizer: "needs", proxy: "waiting" });
+    setChosen({});
+    setError("");
+    setShowEmails(false);   // the open emails belonged to the other view
+    pickTabFor.current = signedIn ? SIGNED_IN : guestId;
+    if (!signedIn) setMyId("");
+  }, [authReady, signedIn, guestId]);
+
   const refresh = useCallback(async () => {
+    if (!authReady) return;   // until Firebase says whether someone is signed in
+    const epoch = authEpoch.current;
+    const current = () => epoch === authEpoch.current;
     try {
       setError("");
-      const [m, a, att, org, pr, pi, pp, h, met, ob, act] = await Promise.all([
-        api("/me", { person: personId }),
-        api("/absences", { person: personId }),
-        api("/items?mode=attendee", { person: personId }),
-        api("/organizer/meetings", { person: personId }),   // one card per meeting
-        api("/proxy-requests", { person: personId }),
-        api("/items?mode=past", { person: personId }),
-        api("/proxy-requests?past=true", { person: personId }),
-        api("/history", { person: personId }),
+      const m = await api("/me", { person: guestId });   // signed in: the token decides who you are
+      if (!current()) return;
+      const activePersonId = signedIn ? m.person.id : guestId;
+      if (signedIn) setMyId(m.person.id);
+      const [a, att, org, pr, pi, pp, h, met, ob, cal, act] = await Promise.all([
+        api("/absences", { person: activePersonId }),
+        api("/items?mode=attendee", { person: activePersonId }),
+        api("/organizer/meetings", { person: activePersonId }),   // one card per meeting
+        api("/proxy-requests", { person: activePersonId }),
+        api("/items?mode=past", { person: activePersonId }),
+        api("/proxy-requests?past=true", { person: activePersonId }),
+        api("/history", { person: activePersonId }),
         api("/metrics"),
-        api("/dev/outbox"),
-        api("/people/active"),   // who has something to see (for the "Signed in as" list)
+        api("/dev/outbox"),   // the backend sends only the emails for your area (signed in: only yours)
+        api("/integrations/google-calendar/status", { person: activePersonId }),
+        api("/people/active"),   // who has something to do (for the "More…" list)
       ]);
+      if (!current()) return;   // signed in or out meanwhile: these answers belong to the old view
       setMe(m); setAbsences(a); setAttendee(att); setOrganizer(org); setProxyReqs(pr); setPastItems(pi); setPastProxy(pp);
-      setHistory(h); setMetrics(met); setOutbox(ob); setActiveIds(act);
-      if (pickTabFor.current === personId) {
+      setHistory(h); setMetrics(met); setOutbox(ob); setCalendarStatus(cal); setActiveIds(act);
+      setLoadedFor(signedIn ? "me" : guestId);
+      if (pickTabFor.current === (signedIn ? SIGNED_IN : guestId)) {
         pickTabFor.current = null;
         setTab(naturalTab(m?.counts));
       }
     } catch (e) {
+      if (!current()) return;
+      setLoadedFor(signedIn ? "me" : guestId);   // stop the spinner; the message says what went wrong
+      if (e.code === "not_in_directory") {
+        await signOut();   // back to the demo, with the reason shown
+        setError(e.message);
+        return;
+      }
       setError(e.message);
     }
-  }, [personId]);
+  }, [authReady, guestId, signedIn, signOut]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (!signedIn || !personId || !calendarStatus.connected || autoSyncedCalendarFor.current === personId) return;
+    autoSyncedCalendarFor.current = personId;
+    api("/integrations/google-calendar/sync", { method: "POST" }).then(async (result) => {
+      setNotice(`Google Calendar synced: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`);
+      await refresh();
+    }).catch((e) => {
+      autoSyncedCalendarFor.current = null;
+      setError(e.message);
+    });
+  }, [signedIn, personId, calendarStatus.connected, refresh]);
 
   // While Gemini is still analysing any card on screen, check again every few seconds; stop once all have answered.
   const analysing = [
@@ -117,21 +203,43 @@ export default function App() {
   function switchPerson(id) {
     remember("personId", id);
     pickTabFor.current = id;
-    setPersonId(id);
+    setGuestId(id);
     setGroup({ attendee: "needs", organizer: "needs", proxy: "waiting" });
     setChosen({});
   }
 
-  // Demo only: reload the demo data and clear the AI's cache, so every card is analysed again.
+  // Demo only: the demo people (everyone in the sample data) and their meetings go back to the start, and the AI's
+  // cache is cleared, so every card is analysed again. Real people's data is not touched.
   async function resetDemo() {
-    if (!window.confirm("Restore the sample data? Everything done so far is undone, and the AI analyzes every card again.")) return;
+    if (!window.confirm("Reset the demo data? The demo people's meetings go back to the start and the AI analyzes "
+      + "every card again. Real users' data is not touched.")) return;
+    setResetting(true);
+    setNoticeAction(null);
+    setNotice("Resetting the demo data. This takes about a minute.");
     try {
       await api("/dev/reset-demo", { method: "POST", person: personId });
-      setNotice("Sample data restored. The AI is analyzing every card again.");
+      setNotice("Demo data reset. The AI is analyzing every card again.");
       await refresh();
     } catch (e) {
       setError(e.message);
+    } finally {
+      setResetting(false);
     }
+  }
+
+  async function onSignIn() {
+    setError("");
+    try {
+      await signIn();
+    } catch (e) {
+      // closing the Google window is not an error worth showing
+      if (!/popup-closed|cancelled-popup/.test(e.code || "")) setError("Google sign-in didn't complete. Please try again.");
+    }
+  }
+
+  async function onSignOut() {
+    await signOut();
+    setNotice("Signed out. You're back in the demo.");
   }
 
   // Returns when done, so the card can lock its buttons meanwhile (no double answers).
@@ -144,13 +252,31 @@ export default function App() {
       setError(e.message);
     }
   }
+
+  async function connectCalendar() {
+    try {
+      const { authorizationUrl } = await api("/integrations/google-calendar/authorize", { person: personId });
+      window.location.assign(authorizationUrl);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function syncCalendar() {
+    try {
+      const result = await api("/integrations/google-calendar/sync", { method: "POST", person: personId });
+      setNotice(`Calendar synced: ${result.added} added, ${result.updated} updated, ${result.skipped} skipped.`);
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   const clearError = useCallback(() => setError(""), []);
   const clearNotice = useCallback(() => { setNotice(""); setNoticeAction(null); }, []);
   const closeGuide = useCallback(() => setShowGuide(false), []);
   function openGuide() {
     setShowGuide(true);
-    setGuideSeen(true);
-    remember("guideSeen", "1");
   }
   const pick = (t) => ({ group: group[t], onGroup: (g) => setGroup((x) => ({ ...x, [t]: g })),
     selected: chosen[t], onSelect: (k) => setChosen((x) => ({ ...x, [t]: k })) });
@@ -179,44 +305,76 @@ export default function App() {
   const waitingReqs = proxyReqs.filter((v) => v.request.status === "pending");
   const answeredReqs = proxyReqs.filter((v) => v.request.status !== "pending");
   const upcomingAbsence = absences[0];
+  // The judges' "More…" list: people outside the eight pills who have something to do now (and whoever is viewed now)
+  const morePeople = Object.values(people)
+    .filter((p) => !p.isGroup && !PERSONAS.some(([id]) => id === p.id)
+      && ((activeIds || []).includes(p.id) || p.id === personId))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const switching = loadedFor !== (signedIn ? "me" : guestId);
+  // the person whose data is on screen (while the next one loads, the faded cards still read as the previous person)
+  const shownId = switching && loadedFor ? (loadedFor === "me" ? myId || personId : loadedFor) : personId;
+  const guestFirst = (people[guestId]?.name || "").split(" ")[0];
+  const loadingText = signedIn ? "Loading your meetings…"
+    : loadedFor === "me" || !guestFirst ? "Loading the demo…" : `Loading ${guestFirst}'s meetings…`;
 
   return (
     <>
-      {/* Judges' demo controls: an add-on on top of the prototype (not part of the product), so a judge can switch
-          people, see the emails the app sends, read the guide and restore the sample data. */}
-      <div className="demo-toolbar" role="region" aria-label="Demo controls for judges">
-        <div className="demo-toolbar-inner">
-          <span className="demo-label"><span className="demo-label-long">Judges' demo</span><span className="demo-label-short">Demo</span></span>
-          <div className="demo-view-as" role="group" aria-label="View as">
-            <span className="demo-view-label">View as</span>
-            {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
-              <button key={id} className="persona" aria-pressed={personId === id} onClick={() => switchPerson(id)}
-                title={`View the app as ${people[id].name} (${role})`}>
-                <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
-              </button>
-            ))}
-            {/* everyone else with something to see (and whoever is viewed now), so nobody lands on an empty screen */}
-            <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
-              onChange={(e) => e.target.value && switchPerson(e.target.value)}>
-              <option value="">More…</option>
-              {Object.values(people)
-                .filter((p) => !p.isGroup && !PERSONAS.some(([id]) => id === p.id)
-                  && (!activeIds || activeIds.includes(p.id) || p.id === personId))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+      {/* The strip above the product. A guest gets the Demo controls: the guide, Reset demo data, the emails, and the
+          demo people to act as. Someone signed in with Google gets only who they are, their emails and Sign out. */}
+      {signedIn ? (
+        <div className="demo-toolbar" role="region" aria-label="Your account">
+          <div className="demo-toolbar-inner">
+            <div className="demo-row">
+              <span className="signed-in-as">Signed in as <b>{people[personId]?.name || firebaseUser.email}</b></span>
+              <div className="demo-tools">
+                <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
+                  title="The emails the app would have sent you (shown here instead of your inbox)">Emails ({outbox.length})</button>
+                <button onClick={onSignOut} title="Sign out and go back to the demo">Sign out</button>
+              </div>
+            </div>
           </div>
-          <button onClick={openGuide} className={guideSeen ? "" : "guide-new"}>
-            Demo guide{!guideSeen && <span className="start-here">Start here</span>}
-          </button>
-          <button onClick={resetDemo}
-            title="Restores the sample people and meetings and clears the cache, so the AI analyzes every card again.">
-            Reset data
-          </button>
-          <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
-            title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
         </div>
-      </div>
+      ) : (
+        <div className="demo-toolbar" role="region" aria-label="Demo controls">
+          <div className="demo-toolbar-inner">
+            <div className="demo-row">
+              <span className="demo-label">Demo controls</span>
+              <div className="demo-tools">
+                {/* always highlighted (Uma): a visitor may have refreshed or missed it the first time */}
+                <button onClick={openGuide} className="guide-new">
+                  <Icon name="spark" size={14} className="guide-sparkle" />
+                  Demo guide<span className="start-here">Start here</span>
+                </button>
+                <button onClick={resetDemo} disabled={resetting}
+                  title={resetting ? "Resetting the demo data. This takes about a minute."
+                    : "Puts the demo people's meetings back to the start, so the AI analyzes every card again. Real users' data is not touched."}>
+                  {resetting ? "Resetting…" : "Reset demo data"}
+                </button>
+                <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
+                  title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
+              </div>
+            </div>
+            <div className="demo-view-as" role="group" aria-label="View as">
+              <span className="demo-view-label">View as</span>
+              {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
+                <button key={id} className="persona" aria-pressed={personId === id} onClick={() => switchPerson(id)}
+                  title={`View the app as ${people[id].name} (${role})`}>
+                  {switching && personId === id && <span className="spinner small" aria-hidden="true" />}
+                  <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
+                </button>
+              ))}
+              {/* anyone else only while they have something to do (and whoever is viewed now) */}
+              <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
+                disabled={morePeople.length === 0}
+                title={morePeople.length === 0 ? "Nobody else has something to do right now." : undefined}
+                onChange={(e) => e.target.value && switchPerson(e.target.value)}>
+                <option value="">More…</option>
+                {morePeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
     <div className="app">
       <header className="topbar">
@@ -230,6 +388,22 @@ export default function App() {
         <div className="topbar-right">
           <button className="primary" onClick={() => setShowSchedule(true)}>Schedule a meeting</button>
           <button onClick={() => setShowAdd(true)}>Report an absence</button>
+          {calendarStatus.connected ? (
+            <button className="ghost" onClick={syncCalendar}>Sync Google Calendar</button>
+          ) : (
+            <button className="ghost" onClick={connectCalendar} disabled={!calendarStatus.configured}
+              title={calendarStatus.configured ? undefined : signedIn ? "Google Calendar isn't set up yet."
+                : "Sign in with Google to connect your own calendar. The demo uses sample meetings."}>
+              Connect Google Calendar
+            </button>
+          )}
+          {/* real people sign in here; the demo stays open to everyone */}
+          {signInAvailable && !signedIn && (
+            <button className="sign-in" onClick={onSignIn} disabled={!authReady}
+              title={authReady ? "Sign in to see only your own meetings" : "Checking whether you're signed in…"}>
+              Sign in with Google
+            </button>
+          )}
         </div>
       </header>
 
@@ -239,10 +413,14 @@ export default function App() {
       <MessageBar kind="success" text={notice} onClose={clearNotice} hideAfter={settings?.messageHideSeconds ?? 6}
         action={noticeAction} />
 
+      <div className={`view ${switching ? "switching" : ""}`} aria-busy={switching}>
+      {switching && (
+        <div className="view-loading" role="status"><span className="spinner" aria-hidden="true" />{loadingText}</div>
+      )}
       {/* The signed-in person's situation and next step, in two lines: the first thing a visitor reads. */}
       {upcomingAbsence && (() => {
         const open = counts.attendeeOpen;
-        const firstName = (people[personId]?.name || "").split(" ")[0];
+        const firstName = (people[shownId]?.name || "").split(" ")[0];
         const days = upcomingAbsence.start === upcomingAbsence.end
           ? <b>{fmtDay(upcomingAbsence.start)}</b>
           : <b>{fmtRange(upcomingAbsence.start, upcomingAbsence.end)}</b>;
@@ -293,11 +471,11 @@ export default function App() {
               { id: "none", label: "No action needed", items: attNone,
                 empty: { title: "Nothing handled automatically", text: "Team check-ins and org-wide events that can go on without you appear here." } },
             ]}
-            renderTile={(i) => <AttendeeTile item={i} people={people} me={personId} />}
+            renderTile={(i) => <AttendeeTile item={i} people={people} me={shownId} />}
             renderDetail={(i) => (i.status === "rescheduled" || i.status === "cancelled"
               ? <SettledCard title={i.event.title} start={i.event.start} originalStart={i.originalStart} status={i.status}
                   decidedBy={i.decidedBy} people={people} />
-              : <MeetingCard item={i} people={people} me={personId} role="attendee" refresh={refresh}
+              : <MeetingCard item={i} people={people} me={shownId} role="attendee" refresh={refresh}
                   quiet={i.status === "auto_handled"} />)}
           />
         ))}
@@ -316,7 +494,7 @@ export default function App() {
             renderDetail={(m) => (m.done
               ? <SettledCard title={m.event.title} start={m.event.start} originalStart={m.absentees[0]?.originalStart}
                   status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} people={people} />
-              : <OrganizerCard meeting={m} people={people} me={personId} refresh={refresh} />)}
+              : <OrganizerCard meeting={m} people={people} me={shownId} refresh={refresh} />)}
           />
         ))}
 
@@ -342,8 +520,8 @@ export default function App() {
             {pastItems.length > 0 && <h4 className="group-title">Your meetings</h4>}
             {pastItems.map((i) => (
               <MeetingCard
-                key={i.id} item={i} people={people} me={personId}
-                role={i.absentPersonId === personId ? "attendee" : "organizer"}
+                key={i.id} item={i} people={people} me={shownId}
+                role={i.absentPersonId === shownId ? "attendee" : "organizer"}
                 refresh={refresh} readOnly activity={activityFor(i.id)}
               />
             ))}
@@ -354,10 +532,14 @@ export default function App() {
           </div>
         )}
       </main>
+      </div>
 
       {showEmails && (
-        <aside className="drawer">
-          <h4>Emails the app sent (demo: shown here instead of real inboxes)</h4>
+        <aside className="drawer" aria-label="Emails">
+          <header className="guide-head drawer-head">
+            <h4>Emails the app sent (demo: shown here instead of real inboxes)</h4>
+            <button className="message-close" onClick={() => setShowEmails(false)} aria-label="Close the emails" title="Close">✕</button>
+          </header>
           {outbox.length === 0 && <p className="reason">None yet.</p>}
           {[...outbox].reverse().map((m, idx) => (
             <div key={idx} className="mail">
@@ -374,15 +556,19 @@ export default function App() {
           today={settings?.today}
           people={people}
           me={personId}
+          calendarConnected={calendarStatus.connected}
           onClose={() => setShowSchedule(false)}
           onDone={async (result, when) => {
             setShowSchedule(false);
             const out = result.affected.map((i) => people[i.absentPersonId]?.name.split(" ")[0]).filter(Boolean);
             const who = out.length === 1 ? `${out[0]} is` : `${out.slice(0, -1).join(", ")} and ${out.at(-1)} are`;
             setNoticeAction(null);
+            const scheduledWhere = result.calendarProvider === "google"
+              ? "Google Calendar updated"
+              : "Meeting scheduled";
             setNotice(out.length === 0
-              ? `Meeting scheduled for ${fmtWhen(when)}. Nobody required is out at that time.`
-              : `Meeting scheduled for ${fmtWhen(when)}, but ${who} out that day. It's in your Organizer Mode, ready for a decision.`);
+              ? `${scheduledWhere} for ${fmtWhen(when)}. Nobody required is out at that time.`
+              : `${scheduledWhere} for ${fmtWhen(when)}, but ${who} out that day. It's in your Organizer Mode, ready for a decision.`);
             if (out.length > 0) {
               setTab("organizer");
               setGroup((g) => ({ ...g, organizer: "needs" }));
