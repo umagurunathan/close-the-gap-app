@@ -32,6 +32,11 @@ body {
   /* a soft coloured band behind the header that fades into the page tint, so the page is not flat white */
   background: var(--page-bg);
   min-height: 100vh;
+  color: var(--ink);
+  /* Inter looks the same on every computer; the system fonts are the fallback if it cannot load */
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
 }
 
 .auth-page {
@@ -90,11 +95,6 @@ body {
   border-radius: 8px;
   color: #7b271a;
   background: #fce8e6;
-  color: var(--ink);
-  /* Inter looks the same on every computer; the system fonts are the fallback if it cannot load */
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  font-size: 15px;
-  line-height: 1.45;
 }
 
 .app { max-width: 1440px; margin: 0 auto; padding: 0 24px 64px; }
