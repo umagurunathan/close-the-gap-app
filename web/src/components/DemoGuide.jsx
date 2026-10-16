@@ -17,8 +17,8 @@ export default function DemoGuide({ onClose }) {
           <button className="message-close" onClick={onClose} aria-label="Close the demo guide" autoFocus>✕</button>
         </header>
         <p className="reason">
-          Pick a person in the dark bar at the top. The people and meetings are sample data; <b>Reset data</b> restores
-          them. <b>Emails</b> shows the emails the app would send.
+          Pick a person in the dark bar at the top. <b>Emails</b> shows the emails the app would send. Anyone else
+          appears under <b>More…</b> only while they have something to do, for example a proxy request to answer.
         </p>
         <ol className="guide-steps">
           <li>
@@ -46,10 +46,24 @@ export default function DemoGuide({ onClose }) {
             <b>Lena Fox</b>, on vacation for a week (26–30 Oct). A full calendar: daily stand-ups go on without her,
             and each of the other meetings gets its own recommendation.
           </li>
+          <li>
+            <b>Dev Nair</b>, a proxy who says no. As Priya, ask Dev to cover <b>Sprint Planning</b>; as Dev,
+            <b> Decline</b> in <b>Proxy Requests</b>. Priya's card then offers <b>Choose another proxy</b>.
+          </li>
+          <li>
+            <b>Ben Carter</b>, Legal Counsel, organizer of <b>Audit Committee Prep</b>, which Arjun will miss. In
+            <b> Organizer Mode</b>, his card suggests who can cover for Arjun.
+          </li>
         </ol>
         <p className="reason">
           Each card shows who wrote the recommendation (<b>Gemini · ADK agent</b> or <b>Rule-based</b>) and why.
           A person always decides.
+        </p>
+        <h4 className="guide-sub">Reset demo data</h4>
+        <p className="reason">
+          The eight people above are the demo people; their colleagues in the same meetings are sample data too.
+          <b> Reset demo data</b> puts all of their meetings, requests and decisions back to the start (it takes about
+          a minute) and lets the AI analyze every card again. Real users who sign in with Google are never touched.
         </p>
       </section>
     </div>

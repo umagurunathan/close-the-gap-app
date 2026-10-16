@@ -97,15 +97,22 @@ body {
   background: #fce8e6;
 }
 
-.app { max-width: 1440px; margin: 0 auto; padding: 0 24px 64px; }
+/* 16px at the bottom, the same gap the meeting list keeps above the window's edge, so the page ends with the list */
+.app { max-width: 1440px; margin: 0 auto; padding: 0 24px 16px; }
 @media (max-width: 600px) { .app { padding: 0 16px 48px; } }
 
-/* Judges' demo controls: a slim dark strip above the product, clearly an add-on */
+/* Demo controls: a dark strip above the product, clearly an add-on. Row 1: the demo's own buttons (amber, so they
+   read as "demo", not product); row 2: the people to view the app as. */
 .demo-toolbar { background: var(--toolbar); color: #c9cce0; font-size: 13px; }
-.demo-toolbar-inner { max-width: 1440px; margin: 0 auto; padding: 7px 24px; display: flex; align-items: center; gap: 10px;
-  flex-wrap: wrap; }
-.demo-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #9ea2c4;
-  margin-right: auto; }
+.demo-toolbar-inner { max-width: 1440px; margin: 0 auto; padding: 6px 24px 7px; display: flex; flex-direction: column;
+  gap: 6px; }
+.demo-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.demo-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #9ea2c4; }
+.demo-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 600px) { .demo-tools .start-here { display: none; } .demo-toolbar .demo-tools button { padding: 4px 10px; } }
+.demo-toolbar .demo-tools button { border-color: #c98d2e; color: #ffd591; }
+.demo-toolbar .demo-tools button:hover:not(:disabled), .demo-toolbar .demo-tools button[aria-pressed="true"] {
+  background: rgba(224, 168, 74, 0.16); border-color: #e0a84a; }
 .demo-view-as { display: flex; align-items: center; gap: 6px; }
 .demo-toolbar select { padding: 4px 8px; font-size: 13px; background: var(--toolbar-raise); color: #fff; border: 1px solid var(--toolbar-line); }
 .demo-toolbar button { padding: 4px 12px; font-size: 13px; background: transparent; color: #e4e6f5; border: 1px solid var(--toolbar-line); }
@@ -320,8 +327,21 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .note-label { display: grid; gap: 6px; margin-top: 12px; color: var(--muted); font-size: 13px; }
 .note-label textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; color: var(--ink); }
 .note-text { white-space: pre-wrap; margin-top: 4px; }
-.meeting-notes { margin: 4px 0 8px; }
-.meeting-notes > .link { padding-left: 0; }
+/* "Summaries & agenda": a small link at the end of the people row, and its pop-up */
+.invitees .people button.summaries-link { margin-left: auto; padding: 2px 4px; font-size: 13px; }
+.rec-details button.inline-link { padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.modal.summaries { width: 640px; max-width: calc(100vw - 32px); max-height: 90vh; overflow: auto; }
+.modal.summaries .guide-sub:first-of-type { margin-top: 6px; }
+.summary-form textarea { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  resize: vertical; color: var(--ink); }
+fieldset.note-readers { border: none; padding: 0; margin: 12px 0 0; min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); column-gap: 12px; }
+fieldset.note-readers .note-readers-head { grid-column: 1 / -1; }
+.modal label.note-reader { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.modal .note-reader input { width: auto; padding: 0; }
+.modal.summaries { display: block; }   /* a reading layout: the general pop-up grid spaces sections too far apart */
+.modal.summaries .reason { margin: 4px 0 0; }
+.meet-capture summary { cursor: pointer; color: var(--primary); font-size: 14px; }
 .meeting-note { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .meeting-note:last-of-type { border-bottom: 0; }
 .meeting-note .note-text { color: var(--ink); }
@@ -363,6 +383,7 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .modal.guide { width: 560px; max-width: calc(100vw - 32px); max-height: 90vh; overflow: auto; }
 .guide-head { display: flex; justify-content: space-between; align-items: center; }
 .guide-steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; line-height: 1.45; }
+.guide-sub { margin: 14px 0 4px; font-size: 14px; }
 .modal .row { display: grid; grid-template-columns: 1.3fr 1fr 0.8fr; gap: 8px; }
 .modal input, .modal textarea { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; width: 100%; }
 .modal textarea { resize: vertical; color: var(--ink); }
@@ -412,7 +433,7 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 .empty-state p { margin: 0; color: var(--muted); font-size: 13.5px; }
 
 /* Demo guide: highlighted until it has been opened once */
-.demo-toolbar button.guide-new { background: var(--primary); border-color: var(--toolbar-accent); color: #fff; font-weight: 600; }
+.demo-toolbar .demo-tools button.guide-new { background: #e0a84a; border-color: #e0a84a; color: #2b2e45; font-weight: 600; }
 .start-here { margin-left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
   background: #34c38f; color: #0d3b2a; border-radius: 999px; padding: 1px 7px; }
 @media (prefers-reduced-motion: no-preference) {
@@ -481,7 +502,7 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
   .subtabs { display: flex; }
 }
 
-/* Judges' bar: the demo people as one-click pills, with the part they play */
+/* Demo controls, row 2: the demo people as one-click pills, with the part they play */
 .demo-view-as { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .demo-view-label { color: #9ea2c4; font-size: 12px; margin-right: 2px; }
 .demo-toolbar button.persona { display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 8px; border-radius: 999px; }
@@ -490,7 +511,7 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 .demo-toolbar button.persona[aria-pressed="true"], .demo-toolbar button.persona[aria-pressed="true"]:hover:not(:disabled) {
   background: #fff; color: var(--toolbar); border-color: #fff; }
 .demo-toolbar button.persona[aria-pressed="true"] span { color: var(--primary); }
-@media (max-width: 700px) { .demo-view-as { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+@media (max-width: 1100px) { .demo-view-as { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
   .demo-view-as::-webkit-scrollbar { display: none; } .demo-view-as > * { flex: none; } }
 
 /* The chosen tile points at the card it opened */
@@ -515,11 +536,7 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
   .impact-tile:nth-child(even) .info-pop { left: auto; right: -10px; } }
 .impact-foot .icon { vertical-align: -2px; }
 
-/* Shorter screens: the judges' bar label shortens so the bar stays on one row */
-.demo-label-short { display: none; }
-@media (max-width: 1500px) { .demo-label-long { display: none; } .demo-label-short { display: inline; } }
 .demo-view-as select { width: 84px; }
-@media (max-width: 1300px) { .demo-view-label { display: none; } }
 .impact-tile .info-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 @media (max-width: 500px) { .impact-tiles { grid-template-columns: 1fr; } .impact-tile, .impact-tile:nth-child(n) { border-left: none; padding-left: 4px; } .impact-tile.hero { padding-left: 12px; } .impact-tile:nth-child(n) .info-pop { left: -10px; right: auto; } }
 

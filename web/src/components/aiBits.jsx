@@ -172,7 +172,9 @@ export function AgentTrail({ ai, name = (id) => id }) {
 }
 
 // The collapsed "Recommendation details" panel.
-export function RecommendationDetails({ ai }) {
+// `onSummaries`: opens the "Summaries & agenda" pop-up from the summaries and agenda named under "Based on".
+export function RecommendationDetails({ ai, onSummaries = null }) {
+  const opens = (s) => onSummaries && /summar|agenda/i.test(s) && !/^no /i.test(s);
   return (
     <details className="rec-details">
       <summary>Recommendation details</summary>
@@ -180,7 +182,11 @@ export function RecommendationDetails({ ai }) {
         <dt>Recommended by</dt>
         <dd>{writtenBy(ai)}</dd>
         <dt>Based on</dt>
-        <dd>{ai.sources.map(cap).join(" · ")}</dd>
+        <dd>{ai.sources.map((s, n) => (
+          <span key={n}>{n > 0 && " · "}
+            {opens(s) ? <button type="button" className="link inline-link" onClick={onSummaries}>{cap(s)}</button> : cap(s)}
+          </span>
+        ))}</dd>
         <dt>Meeting summaries</dt>
         <dd>{summariesLine(ai)}</dd>
         <dt>Adjustments by our rules</dt>

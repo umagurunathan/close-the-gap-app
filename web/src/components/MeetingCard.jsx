@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "../api.js";
 import { actionLabel, statusLabel, urgencyLabel, fmtWhen } from "../format.js";
 import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
+import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 // One card per (meeting, absent person). Used in Attendee Mode and Past. The organizer sees OrganizerCard instead.
 export default function MeetingCard({ item, people, me, role, refresh, quiet = false, readOnly = false, activity = [] }) {
@@ -13,22 +14,14 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const [showActions, setShowActions] = useState(!quiet);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [meetingNotes, setMeetingNotes] = useState([]);
-  const [notesLoaded, setNotesLoaded] = useState(false);
-  const [notesLoading, setNotesLoading] = useState(false);
-  const [notesSaving, setNotesSaving] = useState(false);
-  const [meetSaving, setMeetSaving] = useState(false);
-  const [meetImporting, setMeetImporting] = useState(false);
-  const [meetStatus, setMeetStatus] = useState(null);
-  const [meetUrlInput, setMeetUrlInput] = useState("");
-  const [meetingNoteText, setMeetingNoteText] = useState("");
-  const [noteReaders, setNoteReaders] = useState([]);
+  const [showSummaries, setShowSummaries] = useState(false);
+  const closeSummaries = useCallback(() => setShowSummaries(false), []);
 
   const ev = item.event;
   const name = (id) => people[id]?.name ?? id;
-  const inviteeIds = [...new Set(ev.attendees.map((a) => a.personId).filter((id) => id !== ev.organizerId))];
-  const canViewMeetingNotes = ev.organizerId === me || inviteeIds.includes(me);
+  // Summaries and the agenda are for the meeting's invitees (and its organizer) only
+  const canSeeSummaries = ev.organizerId === me || ev.attendees.some((a) => a.personId === me);
+  const openSummaries = canSeeSummaries ? () => setShowSummaries(true) : null;
   const iAmOrganizer = ev.organizerId === me;
   const terminal = item.status === "rescheduled" || item.status === "cancelled";
   // Both sides can act: the absent person sees the organizer can too, and vice versa (said on that person's chip).
@@ -41,101 +34,6 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const who = name(item.absentPersonId).split(" ")[0];
   const label = (a) => actionLabel(a, mine, who);
   const urgency = urgencyLabel(item.urgency, item.hoursToStart); // amber within 3 days, red within 24 hours
-
-  async function toggleMeetingNotes() {
-    setError("");
-    if (notesOpen) {
-      setNotesOpen(false);
-      return;
-    }
-    setNotesOpen(true);
-    if (notesLoaded) return;
-    setNotesLoading(true);
-    try {
-      const [notes, meet] = await Promise.all([
-        api(`/items/${item.id}/notes`, { person: me }),
-        api(`/items/${item.id}/meet`, { person: me }),
-      ]);
-      setMeetingNotes(notes);
-      setMeetStatus(meet);
-      setMeetUrlInput(meet.meetUrl || "");
-      setNotesLoaded(true);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setNotesLoading(false);
-    }
-  }
-
-  async function saveMeetingNote(e) {
-    e.preventDefault();
-    setNotesSaving(true);
-    setError("");
-    try {
-      const saved = await api(`/items/${item.id}/notes`, {
-        method: "POST",
-        person: me,
-        body: { text: meetingNoteText, sharedWith: noteReaders },
-      });
-      setMeetingNotes((current) => [...current, saved]);
-      setMeetingNoteText("");
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setNotesSaving(false);
-    }
-  }
-
-  async function saveMeetLink(e) {
-    e.preventDefault();
-    setMeetSaving(true);
-    setError("");
-    try {
-      const status = await api(`/items/${item.id}/meet`, {
-        method: "PUT",
-        person: me,
-        body: { meetUrl: meetUrlInput },
-      });
-      setMeetStatus(status);
-      setMeetUrlInput(status.meetUrl || "");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setMeetSaving(false);
-    }
-  }
-
-  async function connectGoogleMeet() {
-    setError("");
-    try {
-      const { authorizationUrl } = await api("/integrations/google-meet/authorize", { person: me });
-      window.location.assign(authorizationUrl);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function importMeetTranscript() {
-    setMeetImporting(true);
-    setError("");
-    try {
-      const imported = await api(`/items/${item.id}/meet/import`, {
-        method: "POST",
-        person: me,
-        body: { sharedWith: noteReaders },
-      });
-      setMeetingNotes((current) => [
-        ...current.filter((currentNote) => currentNote.docId !== imported.docId),
-        imported,
-      ]);
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setMeetImporting(false);
-    }
-  }
 
   async function act(action, proxyId, extra = {}) {
     setBusy(true);
@@ -218,131 +116,10 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         </div>
       </header>
 
-      <Invitees event={ev} absentId={item.absentPersonId} people={people} alsoActsId={alsoActsId} />
-
-      {canViewMeetingNotes && <section className="meeting-notes">
-        <button className="link" aria-expanded={notesOpen} onClick={toggleMeetingNotes}>
-          {notesOpen ? "Hide meeting notes" : "Meeting notes"}
-        </button>
-        {notesOpen && (
-          <div className="panel">
-            <h4>Meeting notes</h4>
-            {notesLoading ? <p className="reason">Loading notes…</p> : meetingNotes.length === 0 ? (
-              <p className="reason">No notes are shared with you yet.</p>
-            ) : meetingNotes.map((meetingNote) => (
-              <div className="meeting-note" key={meetingNote.docId}>
-                <div className="reason">
-                  {meetingNote.source === "google_meet_transcript" ? "Google Meet transcript · " : ""}
-                  {fmtWhen(meetingNote.modifiedAt)}
-                </div>
-                <p className="note-text">{meetingNote.text}</p>
-                {iAmOrganizer && (
-                  <div className="reason">
-                    Shared with: {meetingNote.sharedWith.map(name).join(", ") || "organizer only"}
-                  </div>
-                )}
-              </div>
-            ))}
-            {iAmOrganizer && !readOnly && (
-              <div className="meet-capture">
-                <h4>Google Meet capture</h4>
-                {!meetStatus?.configured ? (
-                  <p className="reason">Google Meet import needs OAuth credentials configured on the backend.</p>
-                ) : (
-                  <>
-                    <form className="meet-link-form" onSubmit={saveMeetLink}>
-                      <label className="note-label">
-                        Meet link
-                        <input
-                          type="url"
-                          value={meetUrlInput}
-                          onChange={(e) => setMeetUrlInput(e.target.value)}
-                          placeholder="https://meet.google.com/abc-defg-hij"
-                          required
-                        />
-                      </label>
-                      <button type="submit" disabled={meetSaving || !meetUrlInput.trim()}>
-                        {meetSaving ? "Saving…" : "Save Meet link"}
-                      </button>
-                    </form>
-                    <div className="actions">
-                      <button onClick={connectGoogleMeet}>
-                        {meetStatus.connected ? "Reconnect Google Meet" : "Connect Google Meet"}
-                      </button>
-                      <span className="reason">
-                        {meetStatus.connected ? "Organizer account connected" : "Connect the organizer's Google account"}
-                      </span>
-                    </div>
-                    {meetStatus.connected && meetStatus.meetUrl && (
-                      <>
-                        <p className="reason">After the meeting ends and Meet generates a transcript, import it here.</p>
-                        <button disabled={meetImporting} onClick={importMeetTranscript}>
-                          {meetImporting ? "Importing transcript…" : "Import transcript"}
-                        </button>
-                        <div className="note-readers">
-                          <div className="note-readers-head">
-                            <span>Transcript readers</span>
-                            <button type="button" className="link" onClick={() => setNoteReaders(inviteeIds)}>Select all</button>
-                          </div>
-                          {inviteeIds.map((id) => (
-                            <label className="note-reader" key={id}>
-                              <input
-                                type="checkbox"
-                                checked={noteReaders.includes(id)}
-                                onChange={(e) => setNoteReaders((current) => e.target.checked
-                                  ? [...current, id]
-                                  : current.filter((reader) => reader !== id))}
-                              />
-                              {name(id)}
-                            </label>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-            {iAmOrganizer && !readOnly && (
-              <form onSubmit={saveMeetingNote}>
-                <label className="note-label">
-                  Add a note
-                  <textarea
-                    rows={4}
-                    value={meetingNoteText}
-                    onChange={(e) => setMeetingNoteText(e.target.value)}
-                    placeholder="Write notes or a handover summary…"
-                    required
-                  />
-                </label>
-                <div className="note-readers">
-                  <div className="note-readers-head">
-                    <span>Choose who can read this note</span>
-                    <button type="button" className="link" onClick={() => setNoteReaders(inviteeIds)}>Select all</button>
-                  </div>
-                  {inviteeIds.map((id) => (
-                    <label className="note-reader" key={id}>
-                      <input
-                        type="checkbox"
-                        checked={noteReaders.includes(id)}
-                        onChange={(e) => setNoteReaders((current) => e.target.checked
-                          ? [...current, id]
-                          : current.filter((reader) => reader !== id))}
-                      />
-                      {name(id)}
-                    </label>
-                  ))}
-                </div>
-                <div className="actions">
-                  <button className="primary" type="submit" disabled={notesSaving || !meetingNoteText.trim()}>
-                    {notesSaving ? "Saving…" : "Save note"}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        )}
-      </section>}
+      <Invitees event={ev} absentId={item.absentPersonId} people={people} alsoActsId={alsoActsId}
+        extra={openSummaries && <SummariesLink onOpen={openSummaries} />} />
+      {showSummaries && <SummariesDialog itemId={item.id} event={ev} people={people} me={me} readOnly={readOnly}
+        refresh={refresh} onClose={closeSummaries} />}
 
       <section className="ai">
         <div className="ai-row">
@@ -355,7 +132,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         {ai.engine === "analysing" && <div className="skeleton" aria-hidden="true" />}
         <ProxySuggestions ai={ai} declined={declined} name={name} />
         <AgentTrail ai={ai} name={name} />
-        <RecommendationDetails ai={ai} />
+        <RecommendationDetails ai={ai} onSummaries={openSummaries} />
       </section>
 
       {((item.chosenProxyId && !afterDecline) || item.decidedBy) && (

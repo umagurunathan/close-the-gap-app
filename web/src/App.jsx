@@ -22,9 +22,10 @@ const DEFAULT_PERSON = "p_priya";
 // A link can open the app as someone, on a tab: ?as=p_sam&tab=organizer (handy for demos and the judges' guide).
 const PARAMS = new URLSearchParams(window.location.search);
 const TABS = ["attendee", "organizer", "proxy", "past"];
-// The demo's people, one click each in the judges' bar, with the part they play. Everyone else is under "More".
+// The demo's eight people, one click each in the judges' bar, with the part they play. Anyone else appears under
+// "More…" only while they have something to do (for example, a proxy request waiting for their answer).
 const PERSONAS = [["p_priya", "on leave"], ["p_meena", "proxy"], ["p_sam", "organizer"], ["p_arjun", "AI vs rules"],
-  ["p_kiran", "out suddenly"], ["p_lena", "on vacation"]];
+  ["p_kiran", "out suddenly"], ["p_lena", "on vacation"], ["p_dev", "declines"], ["p_ben", "audit organizer"]];
 
 // The tab a person lands on: the first with something in "Needs action" (Attendee, then Organizer, then
 // Proxy Requests); Attendee when nothing needs action.
@@ -65,6 +66,7 @@ export default function App() {
   const [switchingDataMode, setSwitchingDataMode] = useState(false);
   const [activeIds, setActiveIds] = useState(null); // people with something to see; null = not loaded yet
   const [showGuide, setShowGuide] = useState(false);
+  const [resetting, setResetting] = useState(false);
   // Each working tab has groups ("Needs action", "Settled", …) and a chosen meeting shown in full on the right.
   const [group, setGroup] = useState({ attendee: "needs", organizer: "needs", proxy: "waiting" });
   const [chosen, setChosen] = useState({});
@@ -146,7 +148,7 @@ export default function App() {
         api("/metrics"),
         firebaseAuthEnabled ? Promise.resolve([]) : api("/dev/outbox"),
         api("/integrations/google-calendar/status", { person: activePersonId }),
-        api("/people/active"),   // who has something to see (for the "Signed in as" list)
+        api("/people/active"),   // who has something to do (for the "More…" list)
       ]);
       setMe(m); setAbsences(a); setAttendee(att); setOrganizer(org); setProxyReqs(pr); setPastItems(pi); setPastProxy(pp);
       setHistory(h); setMetrics(met); setOutbox(ob); setCalendarStatus(cal); setActiveIds(act);
@@ -193,15 +195,22 @@ export default function App() {
     setChosen({});
   }
 
-  // Demo only: reload the demo data and clear the AI's cache, so every card is analysed again.
+  // Demo only: the demo people (everyone in the sample data) and their meetings go back to the start, and the AI's
+  // cache is cleared, so every card is analysed again. Real people's data is not touched.
   async function resetDemo() {
-    if (!window.confirm("Restore the sample data? Everything done so far is undone, and the AI analyzes every card again.")) return;
+    if (!window.confirm("Reset the demo data? The demo people's meetings go back to the start and the AI analyzes "
+      + "every card again. Real users' data is not touched.")) return;
+    setResetting(true);
+    setNoticeAction(null);
+    setNotice("Resetting the demo data. This takes about a minute.");
     try {
       await api("/dev/reset-demo", { method: "POST", person: personId });
-      setNotice("Sample data restored. The AI is analyzing every card again.");
+      setNotice("Demo data reset. The AI is analyzing every card again.");
       await refresh();
     } catch (e) {
       setError(e.message);
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -289,15 +298,35 @@ export default function App() {
   const waitingReqs = proxyReqs.filter((v) => v.request.status === "pending");
   const answeredReqs = proxyReqs.filter((v) => v.request.status !== "pending");
   const upcomingAbsence = absences[0];
+  // The judges' "More…" list: people outside the eight pills who have something to do now (and whoever is viewed now)
+  const morePeople = Object.values(people)
+    .filter((p) => !p.isGroup && !PERSONAS.some(([id]) => id === p.id)
+      && ((activeIds || []).includes(p.id) || p.id === personId))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <>
-      {/* Judges' demo controls: an add-on on top of the prototype (not part of the product), so a judge can switch
-          people, see the emails the app sends, read the guide and restore the sample data. Someone really signed in
-          with Google sees only their own meetings, so the person buttons are off for them. */}
-      <div className="demo-toolbar" role="region" aria-label="Demo controls for judges">
+      {/* Demo controls: an add-on on top of the prototype (not part of the product), so a visitor can switch people,
+          see the emails the app sends, read the guide and reset the demo data. Two rows: the demo's own buttons, then
+          the people. Someone really signed in with Google sees only their own meetings, so the person buttons are off. */}
+      <div className="demo-toolbar" role="region" aria-label="Demo controls">
         <div className="demo-toolbar-inner">
-          <span className="demo-label"><span className="demo-label-long">Judges' demo</span><span className="demo-label-short">Demo</span></span>
+          <div className="demo-row">
+            <span className="demo-label">Demo controls</span>
+            <div className="demo-tools">
+              <button onClick={openGuide} className={guideSeen ? "" : "guide-new"}>
+                Demo guide{!guideSeen && <span className="start-here">Start here</span>}
+              </button>
+              {/* not in the shared guest demo: one visitor must not wipe what others are trying */}
+              {!publicDemoMode && <button onClick={resetDemo} disabled={resetting}
+                title={resetting ? "Resetting the demo data. This takes about a minute."
+                  : "Puts the demo people's meetings back to the start, so the AI analyzes every card again. Real users' data is not touched."}>
+                {resetting ? "Resetting…" : "Reset demo data"}
+              </button>}
+              <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
+                title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
+            </div>
+          </div>
           <div className="demo-view-as" role="group" aria-label="View as">
             <span className="demo-view-label">{firebaseAuthEnabled ? "Signed in: you see your own meetings" : "View as"}</span>
             {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
@@ -308,29 +337,16 @@ export default function App() {
                 <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
               </button>
             ))}
-            {/* everyone else with something to see (and whoever is viewed now), so nobody lands on an empty screen */}
+            {/* anyone else only while they have something to do (and whoever is viewed now) */}
             <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
-              disabled={firebaseAuthEnabled}
-              title={firebaseAuthEnabled ? "You're signed in with Google, so you see your own meetings." : undefined}
+              disabled={firebaseAuthEnabled || morePeople.length === 0}
+              title={firebaseAuthEnabled ? "You're signed in with Google, so you see your own meetings."
+                : morePeople.length === 0 ? "Nobody else has something to do right now." : undefined}
               onChange={(e) => e.target.value && switchPerson(e.target.value)}>
               <option value="">More…</option>
-              {Object.values(people)
-                .filter((p) => !p.isGroup && !PERSONAS.some(([id]) => id === p.id)
-                  && (!activeIds || activeIds.includes(p.id) || p.id === personId))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {morePeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
-          <button onClick={openGuide} className={guideSeen ? "" : "guide-new"}>
-            Demo guide{!guideSeen && <span className="start-here">Start here</span>}
-          </button>
-          {/* not in the shared guest demo: one visitor must not wipe what others are trying */}
-          {!publicDemoMode && <button onClick={resetDemo}
-            title="Restores the sample people and meetings and clears the cache, so the AI analyzes every card again.">
-            Reset data
-          </button>}
-          <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
-            title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
         </div>
       </div>
 
@@ -364,7 +380,7 @@ export default function App() {
             <button className="ghost" onClick={syncCalendar}>Sync Google Calendar</button>
           ) : (
             <button className="ghost" onClick={connectCalendar} disabled={!calendarStatus.configured}
-              title={calendarStatus.configured ? undefined : "Google Calendar isn't set up on this server yet."}>
+              title={calendarStatus.configured ? undefined : "Google Calendar isn't set up for this demo."}>
               Connect Google Calendar
             </button>
           ))}
