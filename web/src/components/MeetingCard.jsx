@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { actionLabel, statusLabel, urgencyLabel, fmtWhen } from "../format.js";
-import { AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
+import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
+import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
 
@@ -17,11 +18,9 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const name = (id) => people[id]?.name ?? id;
   const iAmOrganizer = ev.organizerId === me;
   const terminal = item.status === "rescheduled" || item.status === "cancelled";
-  // Both sides can act: the absent person sees the organizer can too, and vice versa.
-  const otherSideNote =
-    role === "attendee"
-      ? ev.organizerId !== me && `${name(ev.organizerId)} (organizer) can also act on this meeting.`
-      : `${name(item.absentPersonId)} can also act on this meeting.`;
+  // Both sides can act: the absent person sees the organizer can too, and vice versa (said on that person's chip).
+  const alsoActsId = readOnly || terminal ? null
+    : role === "attendee" ? (ev.organizerId !== me ? ev.organizerId : null) : item.absentPersonId;
   const organizerTag = ev.organizerId === item.absentPersonId;
   const ai = item.ai;
   // "me" = the absent person is the one looking; otherwise labels use their first name
@@ -69,8 +68,10 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         : ai.recommendation === "proxy" && ai.suggestedProxyId ? `Ask ${firstName(ai.suggestedProxyId)} to cover` : "Choose a proxy",
       onClick: () => setMode("proxy"),
     },
-    { action: "reschedule", text: iAmOrganizer ? "Reschedule" : "Ask organizer to reschedule", onClick: onReschedule },
-    { action: "cancel", text: iAmOrganizer ? "Cancel this meeting" : "Ask organizer to cancel", onClick: () => act("cancel"), danger: true },
+    { action: "reschedule", text: iAmOrganizer ? "Reschedule" : "Ask to reschedule", onClick: onReschedule,
+      hint: iAmOrganizer ? undefined : `Asks ${name(ev.organizerId)} (organizer) to reschedule` },
+    { action: "cancel", text: iAmOrganizer ? "Cancel this meeting" : "Ask to cancel", onClick: () => act("cancel"), danger: true,
+      hint: iAmOrganizer ? undefined : `Asks ${name(ev.organizerId)} (organizer) to cancel` },
   ].filter(Boolean);
   // Only point at the recommendation while a decision is still needed (not after someone already acted on it).
   const deciding = ["pending_decision", "proxy_declined", "no_slot_found"].includes(item.status);
@@ -80,14 +81,15 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const taken = !deciding && item.chosenAction ? item.chosenAction : null;
   const proxyFirst = item.chosenProxyId ? firstName(item.chosenProxyId) : "";
   const takenText = {
-    proxy: item.status === "proxy_accepted" ? `✓ ${proxyFirst} will cover` : `✓ ${proxyFirst} asked to cover`,
-    proceed_without: mine ? "✓ Going on without you" : `✓ Going on without ${who}`,
-    attend: "✓ You'll attend",
-    reschedule: "✓ Organizer asked to reschedule",
-    cancel: "✓ Organizer asked to cancel",
+    proxy: item.status === "proxy_accepted" ? `${proxyFirst} will cover` : `${proxyFirst} asked to cover`,
+    proceed_without: mine ? "Going on without you" : `Going on without ${who}`,
+    attend: "You'll attend",
+    reschedule: "Organizer asked to reschedule",
+    cancel: "Organizer asked to cancel",
   };
   const first = taken ?? highlight;
   const ordered = [...buttons.filter((b) => b.action === first), ...buttons.filter((b) => b.action !== first)];
+  const leads = Boolean(first) && ordered[0]?.action === first;   // one button leads; the rest are smaller
   const attention = item.urgency || (item.needsAttention ? "open" : "settled");
 
   return (
@@ -95,7 +97,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
       <header className="card-head">
         <div>
           <h3>{ev.title}</h3>
-          <div className="when">{fmtWhen(ev.start)}</div>
+          <div className="when"><Icon name="calendar" size={14} />{fmtWhen(ev.start)}</div>
         </div>
         <div className="chips">
           {organizerTag && <span className="chip chip-tag">Organizer</span>}
@@ -104,7 +106,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         </div>
       </header>
 
-      <Invitees event={ev} absentId={item.absentPersonId} people={people} />
+      <Invitees event={ev} absentId={item.absentPersonId} people={people} alsoActsId={alsoActsId} />
 
       <section className="ai">
         <div className="ai-row">
@@ -114,7 +116,9 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
           <AiSource ai={ai} />
         </div>
         <p className="reason">{ai.reason}</p>
+        {ai.engine === "analysing" && <div className="skeleton" aria-hidden="true" />}
         <ProxySuggestions ai={ai} declined={declined} name={name} />
+        <AgentTrail ai={ai} name={name} />
         <RecommendationDetails ai={ai} />
       </section>
 
@@ -126,10 +130,9 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
       )}
       {item.rescheduledTo && <div className="note">Moved to {fmtWhen(item.rescheduledTo)}</div>}
       {afterDecline && <div className="note warn">{declineNotice(ai, declined, name)}</div>}
-      {item.status === "no_slot_found" && <div className="note warn">No time works for everyone in the next working days. Please pick a time in your calendar.</div>}
+      {item.status === "no_slot_found" && <div className="note warn">No time works for everyone in the next few working days. Please pick a time yourself.</div>}
       {item.status === "awaiting_organizer" && <div className="note">The organizer has been asked to {item.chosenAction}.</div>}
 
-      {!readOnly && !terminal && otherSideNote && <div className="note muted">{otherSideNote}</div>}
 
       {!readOnly && !terminal && !showActions && (
         <button className="link" onClick={() => setShowActions(true)}>Review or change</button>
@@ -140,20 +143,25 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
           {ordered.map((b, n) => {
             const recommended = b.action === highlight;
             const isTaken = b.action === taken;
+            // with a recommended or taken action leading, the others are smaller: one clear choice, the rest as options
+            const secondary = leads && n > 0;
             const button = (
               <button
                 key={b.action}
                 // the taken action can't be repeated, except a proxy: clicking it lets you choose someone else
                 disabled={busy || (isTaken && b.action !== "proxy")}
-                className={[recommended ? "primary" : "", isTaken ? "taken" : "", b.danger && !isTaken ? "danger" : ""].join(" ").trim()}
-                title={isTaken ? (b.action === "proxy" ? "Done. Click to choose someone else." : "Done") : recommended ? "Recommended" : undefined}
+                className={[recommended ? "primary lead" : "", isTaken ? "taken" : "", secondary ? "small" : "",
+                  b.danger && !isTaken ? "danger" : ""].join(" ").trim()}
+                title={isTaken ? (b.action === "proxy" ? "Done. Click to choose someone else." : "Done") : recommended ? "Recommended" : b.hint}
                 aria-label={isTaken ? `${takenText[b.action]} (done)` : recommended ? `Recommended: ${b.text}` : b.text}
                 onClick={b.onClick}
               >
-                {isTaken ? takenText[b.action] : `${recommended ? "★ " : ""}${b.text}`}
+                {isTaken ? <><Icon name="check" size={15} />{takenText[b.action]}</>
+                  : recommended ? <><Icon name="spark" size={15} />{b.text}</> : b.text}
               </button>
             );
-            return taken && n === 1 ? [<span key="change" className="change-label">or change to:</span>, button] : button;
+            if (n !== 1 || !leads) return button;
+            return [<span key="change" className="change-label">{taken ? "or change to:" : "or"}</span>, button];
           })}
           {busy && <span className="saving" role="status">Saving…</span>}
         </div>
@@ -176,7 +184,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
           )}
           <div className="actions">
             <button className="primary" disabled={busy} onClick={() => act("reschedule")}>
-              {proposal.none ? "Record: no time found" : "Confirm reschedule"}
+              {proposal.none ? "Note that no time works" : "Confirm reschedule"}
             </button>
             <button className="link" onClick={() => setMode("idle")}>Back</button>
           </div>

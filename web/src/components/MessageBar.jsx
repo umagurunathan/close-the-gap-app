@@ -4,7 +4,8 @@ import { useEffect } from "react";
 // themselves after a few seconds (`hideAfter`, from the backend's config file).
 const ICON = { error: "⚠", success: "✓", info: "ℹ" };
 
-export default function MessageBar({ kind = "info", text, onClose, hideAfter = 6 }) {
+// `action` (optional): { label, onClick }, a button inside the message, e.g. "Open Sam's view".
+export default function MessageBar({ kind = "info", text, onClose, hideAfter = 6, action = null }) {
   useEffect(() => {
     if (!text || kind === "error" || !hideAfter) return undefined;
     // a long message gets twice the time to read
@@ -17,6 +18,7 @@ export default function MessageBar({ kind = "info", text, onClose, hideAfter = 6
     <div className={`message message-${kind}`} role={kind === "error" ? "alert" : "status"}>
       <span className="message-icon" aria-hidden="true">{ICON[kind]}</span>
       <span className="message-text">{text}</span>
+      {action && <button className="message-action" onClick={() => { action.onClick(); onClose(); }}>{action.label}</button>}
       <button className="message-close" onClick={onClose} aria-label="Close this message">✕</button>
     </div>
   );

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { statusLabel, urgencyLabel, fmtWhen } from "../format.js";
-import { AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
+import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
+import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
 
-// Organizer Mode: ONE card per meeting, naming everyone who is out (Decision 55).
+// Organizer Mode: ONE card per meeting, naming everyone who is out.
 // Meeting-level actions (reschedule, go on without them, cancel) apply to everyone on the card; a proxy is chosen per
 // person, on that person's line.
 const MEETING_LABEL = {
@@ -81,13 +82,16 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
   const taken = goingOnWithout ? "proceed_without" : null;
   const first_ = taken ?? highlight;
   const ordered = [...actions.filter((b) => b.action === first_), ...actions.filter((b) => b.action !== first_)];
+  const leads = Boolean(first_) && ordered[0]?.action === first_;   // one button leads; the rest are smaller
+  // a proxy recommendation leads on the person's line, so the whole-meeting buttons are all the smaller options
+  const allSmall = !leads && highlight === "proxy";
 
   return (
     <article className={`card attn-${attention}`}>
       <header className="card-head">
         <div>
           <h3>{ev.title}</h3>
-          <div className="when">{fmtWhen(ev.start)}</div>
+          <div className="when"><Icon name="calendar" size={14} />{fmtWhen(ev.start)}</div>
         </div>
         <div className="chips">
           {urgency && <span className={`chip urgency-${meeting.urgency}`}>{urgency}</span>}
@@ -105,6 +109,8 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
           <AiSource ai={ai} />
         </div>
         <p className="reason">{ai.reason}</p>
+        {ai.engine === "analysing" && <div className="skeleton" aria-hidden="true" />}
+        <AgentTrail ai={ai} name={name} />
         <RecommendationDetails ai={ai} />
       </section>
 
@@ -123,7 +129,8 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
                 <span className={`chip status-${a.status}`}>{statusLabel(a.status, false, first(a.absentPersonId), a.chosenAction)}</span>
                 {!terminal && hasProxy && (
                   <button className="taken" title="Done. Click to choose someone else." onClick={() => setProxyFor(a.id)}>
-                    {a.status === "proxy_accepted" ? `✓ ${first(a.chosenProxyId)} will cover` : `✓ ${first(a.chosenProxyId)} asked to cover`}
+                    <Icon name="check" size={15} />
+                    {a.status === "proxy_accepted" ? `${first(a.chosenProxyId)} will cover` : `${first(a.chosenProxyId)} asked to cover`}
                   </button>
                 )}
                 {/* A proxy can still be chosen after "go on without them" or "they'll attend": people change their mind.
@@ -134,7 +141,7 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
                     aria-label={`Choose a proxy for ${name(a.absentPersonId)}`}
                     onClick={() => setProxyFor(a.id)}
                   >
-                    {stars ? "★ " : ""}
+                    {stars && <Icon name="spark" size={15} />}
                     {afterDecline ? "Choose another proxy" : deciding && suggested ? `Ask ${first(suggested)} to cover` : "Choose a proxy"}
                   </button>
                 )}
@@ -161,14 +168,17 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
             const isTaken = b.action === taken;
             const button = (
               <button key={b.action} disabled={busy || isTaken}
-                className={[recommended ? "primary" : "", isTaken ? "taken" : "", b.danger && !isTaken ? "danger" : ""].join(" ").trim()}
+                className={[recommended ? "primary lead" : "", isTaken ? "taken" : "", (leads && n > 0) || allSmall ? "small" : "",
+                  b.danger && !isTaken ? "danger" : ""].join(" ").trim()}
                 title={isTaken ? "Done" : undefined}
                 aria-label={isTaken ? "Going on without them (done)" : recommended ? `Recommended: ${MEETING_LABEL[b.action]}` : MEETING_LABEL[b.action]}
                 onClick={b.onClick}>
-                {isTaken ? "✓ Going on without them" : `${recommended ? "★ " : ""}${MEETING_LABEL[b.action]}`}
+                {isTaken ? <><Icon name="check" size={15} />Going on without them</>
+                  : recommended ? <><Icon name="spark" size={15} />{MEETING_LABEL[b.action]}</> : MEETING_LABEL[b.action]}
               </button>
             );
-            return taken && n === 1 ? [<span key="change" className="change-label">or change to:</span>, button] : button;
+            if (n !== 1 || !leads) return button;
+            return [<span key="change" className="change-label">{taken ? "or change to:" : "or"}</span>, button];
           })}
           {busy && <span className="saving" role="status">Saving…</span>}
         </div>
@@ -177,7 +187,7 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
       {proposal && (
         <div className="panel">
           {proposal.none ? (
-            <p>No time works for everyone in the next working days. You'll need to pick one yourself.</p>
+            <p>No time works for everyone in the next few working days. Please pick a time yourself.</p>
           ) : (
             <p>
               Move to <b>{fmtWhen(proposal.proposedStart)}</b>
@@ -187,7 +197,7 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
           )}
           <div className="actions">
             <button className="primary" disabled={busy} onClick={() => decide("reschedule")}>
-              {proposal.none ? "Record: no time found" : "Confirm reschedule"}
+              {proposal.none ? "Note that no time works" : "Confirm reschedule"}
             </button>
             <button className="link" onClick={() => setProposal(null)}>Back</button>
           </div>

@@ -10,14 +10,14 @@ from typing import Optional
 
 from agents.note_drafter import draft_note
 from agents.orchestrator import ai_needed, analyze
-from agents.proxy_ranker import rank_proxies
+from agents.fallback.candidate_order import rank_proxies
 
 from . import config, notify
 from .calendar import SimCalendar
 from .models import (
     AiResult, Absence, AbsenceSource, AbsenceType, Action, AttendeeItems, CalEvent, Counts, DirectoryEntry,
     EventAttendee, EventRef,
-    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, NoteDraft, NoteDraftAvailable, OrganizerMeeting, Person,
+    HistoryEvent, ItemKind, ItemStatus, MeetingItem, Metrics, Projection, ProjectionRow, NoteDraft, NoteDraftAvailable, OrganizerMeeting, Person,
     ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
@@ -45,6 +45,21 @@ SOON_HOURS = S.urgency.soon_hours              # amber chip
 SUDDEN_NOTICE_HOURS = S.absence.sudden_notice_hours  # less notice than this = a "sudden" absence
 
 
+def _either(words: list[str]) -> str:
+    """["a", "b", "c"] -> "a, b or c"."""
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} or {words[-1]}"
+
+
+def _people(item: MeetingItem) -> int:
+    """Everyone in the meeting: the organizer and the invitees."""
+    return len({item.event.organizerId} | {a.personId for a in item.event.attendees})
+
+
+# How each outcome reads in the impact note (the config keys are status names).
+_OUTCOME_WORDS = {"proxy_accepted": "covered by a proxy", "proceeding_without": "going on without them",
+                  "rescheduled": "rescheduled in time", "cancelled": "canceled in time", "auto_handled": "handled automatically"}
+
+
 class Service:
     def __init__(self, store: Store, calendar: SimCalendar):
         self.store = store
@@ -53,7 +68,7 @@ class Service:
         # fingerprint of the summaries visible to the viewer, so two viewers who can open the same documents share
         # one result, and a changed or newly shared summary triggers a fresh analysis.
         self._analysis_cache: dict[tuple, tuple[ItemKind, AiResult]] = {}
-        # Background analysis (B22): cards are answered at once with the rules' suggestion ("AI analysing…") while the
+        # Background analysis: cards are answered at once with the rules' suggestion ("AI analysing…") while the
         # AI works in a small pool of threads; the web app checks again until every card has its final answer.
         self._lock = threading.Lock()
         self._pending: dict[tuple, float] = {}                                  # key -> when the analysis started
@@ -108,7 +123,7 @@ class Service:
             ai.engine = "analysing"
         else:
             ai.engine = "rules_fallback"
-            ai.checks = ["the AI is taking longer than usual; rule-based suggestion shown, the card updates when it answers"]
+            ai.checks = ["the AI is taking longer than usual. The rule-based suggestion is shown until it answers"]
         return kind, ai
 
     def _background(self) -> ThreadPoolExecutor:
@@ -199,7 +214,7 @@ class Service:
         if s == ItemStatus.rescheduled:
             return f"{who} rescheduled the meeting to a time when everyone is back."
         if s == ItemStatus.cancelled:
-            return f"{who} cancelled this meeting."
+            return f"{who} canceled this meeting."
         return f"{who} updated the plan for this meeting."
 
     def organizer_decider(self, item: MeetingItem) -> str:
@@ -222,13 +237,19 @@ class Service:
 
     def create_absence(self, person_id: str, start: date, end: date,
                        source: AbsenceSource, entered_by: str) -> Absence:
+        return self.report_absence(person_id, start, end, source, entered_by)[0]
+
+    def report_absence(self, person_id: str, start: date, end: date, source: AbsenceSource,
+                       entered_by: str) -> tuple[Absence, list[MeetingItem]]:
+        """Saves the absence and returns it with the cards it created (one per affected meeting)."""
         self.person(person_id)
+        if end < start:
+            raise ValueError("The end date must be on or after the start date.")
         absence = Absence(
             id=self.store.next_id("a"), personId=person_id, start=start, end=end, type=self.absence_type(start),
             source=source, enteredBy=entered_by, createdAt=self.now())
         self.store.add_absence(absence)
-        self._scan(absence)
-        return absence
+        return absence, self._scan(absence)
 
     def _create_item(self, absence: Absence, absent: Person, e: CalEvent, now: datetime) -> Optional[MeetingItem]:
         """One card for (this meeting, this absent person), unless the meeting is over or the card already exists."""
@@ -294,7 +315,7 @@ class Service:
         now, day = self.now(), e.start.date()
         created: list[MeetingItem] = []
         # Every required invitee who is out gets a card. In a large event, ordinary attendees get a quiet one
-        # (classified as an org-wide event); only the organizer and hosts need the organizer to act (Decision 55).
+        # (classified as an org-wide event); only the organizer and hosts need the organizer to act.
         for pid in dict.fromkeys([e.organizerId] + required_ids(e)):
             if only is not None and pid not in only:
                 continue
@@ -327,9 +348,18 @@ class Service:
                 created.append(item)
 
         needs = [i for i in created if i.status == ItemStatus.pending_decision]
-        notify.send_email(
-            absent.email, f"You're out {absence.start} to {absence.end}: {len(needs)} meeting(s) need a decision",
-            f"{len(created)} meetings are affected; {len(needs)} need your decision. Open Close the Gap.", now)
+        if created:   # no email when nothing is affected (e.g. leave planned months ahead with no meetings yet)
+            day = lambda d: f"{d.day} {d:%b}"   # noqa: E731  "20 Oct", the same format as the web app
+            when = (f"on {day(absence.start)}" if absence.start == absence.end
+                    else f"{day(absence.start)} – {day(absence.end)}")
+            n_aff, n_dec = len(created), len(needs)
+            subject = (f"You're out {when}: {n_dec} {'meeting needs' if n_dec == 1 else 'meetings need'} a decision"
+                       if n_dec else f"You're out {when}: no meetings need a decision")
+            body = (f"{n_aff} {'meeting is' if n_aff == 1 else 'meetings are'} affected, and "
+                    f"{n_dec} {'needs' if n_dec == 1 else 'need'} your decision. Open Close the Gap to decide."
+                    if n_dec else
+                    f"{n_aff} {'meeting is' if n_aff == 1 else 'meetings are'} affected, and none needs your decision.")
+            notify.send_email(absent.email, subject, body, now)
         if absence.type == AbsenceType.sudden:
             # Sudden absence: organizers are told right away. (Planned leave: no email at creation; they see the
             # items in Organizer Mode and get the under-24-hour alert if nobody has acted.)
@@ -401,7 +431,7 @@ class Service:
         return sorted(out, key=lambda i: i.event.start)
 
     def organizer_meetings(self, me: str) -> list[OrganizerMeeting]:
-        """Organizer Mode: one card per meeting (Decision 55). Groups the per-person items of each meeting and gives
+        """Organizer Mode: one card per meeting. Groups the per-person items of each meeting and gives
         one recommendation for the whole meeting."""
         groups: dict[str, list[MeetingItem]] = {}
         for i in self.organizer_items(me):
@@ -447,7 +477,7 @@ class Service:
         )
 
     def apply_meeting_action(self, event_id: str, caller: str, action: Action) -> Optional[OrganizerMeeting]:
-        """The organizer decides for the whole meeting (Decision 55): reschedule (one new time when every key person
+        """The organizer decides for the whole meeting: reschedule (one new time when every key person
         is back), cancel (this occurrence), or go on without them (people still undecided go ahead; any proxy or
         "I'll attend" already arranged is kept). A proxy is chosen per person, on that person's line."""
         items = [i for i in self.store.items() if i.event.calendarEventId == event_id and i.kind == ItemKind.key_meeting
@@ -461,7 +491,7 @@ class Service:
             raise ValueError("For the whole meeting you can reschedule, cancel or go on without them. A proxy is chosen for each person.")
         open_items = [i for i in items if i.status not in TERMINAL]
         if not open_items:
-            raise ValueError("This meeting has already been rescheduled or cancelled, so there is nothing left to decide.")
+            raise ValueError("This meeting has already been rescheduled or canceled, so there is nothing left to decide.")
 
         if action == Action.proceed_without:
             # only people with nothing arranged; a pending or accepted proxy, or "I'll attend", is kept
@@ -525,8 +555,7 @@ class Service:
 
     def _draft_notes(self, item: MeetingItem, caller: str, proxy_id: Optional[str]):
         """The summaries an AI-drafted note for this proxy may use: those the sender can open AND the chosen proxy can
-        open, so the note cannot reveal anything the proxy may not read (Uma 2026-10-14; replaces "shared with
-        everyone invited"). Returns (event, notes, reason); the reason says in plain words why no draft is possible."""
+        open, so the note cannot reveal anything the proxy may not read. Returns (event, notes, reason); the reason says in plain words why no draft is possible."""
         if caller not in ({item.absentPersonId} | self._organizer_side(item)):
             raise PermissionError("Only the person who is out or the organizer can do this.")
         e = self.calendar.get(item.event.calendarEventId)
@@ -744,6 +773,24 @@ class Service:
         return [ProxyCandidate(personId=r["personId"], rank=r["rank"], reason=r["reason"],
                                choice=choice.get(r["personId"]), declined=r["personId"] in declined) for r in ranked]
 
+    def active_people(self) -> list[str]:
+        """Who has something to see right now: out (Attendee Mode), organizing an affected meeting (Organizer Mode),
+        asked to cover (Proxy Requests), or a recent meeting in Past. Read from the stored data only (no AI call).
+        The "Signed in as" list shows just these, so nobody picks a person with an empty screen."""
+        ids: set[str] = set()
+        for i in self.store.items():
+            if self._is_past(i) and not self._recent_past(i):
+                continue
+            ids.add(i.absentPersonId)
+            if i.kind == ItemKind.key_meeting:
+                ids |= self._organizer_side(i)
+        for r in self.store.proxy_requests():
+            item = self.store.get_item(r.itemId)
+            if item and (not self._is_past(item) or self._recent_past(item)):
+                ids.add(r.proxyId)
+        people = self.people_map()
+        return sorted((pid for pid in ids if pid in people and not people[pid].isGroup), key=lambda pid: people[pid].name)
+
     def _declined(self, item_id: str) -> list[str]:
         """Who declined to cover this card, in the order they declined. A fact, so no AI is needed after a decline."""
         reqs = sorted((r for r in self.store.proxy_requests()
@@ -809,15 +856,15 @@ class Service:
             if self._is_past(item):
                 continue
             for pid in {r.proxyId, item.event.organizerId}:
-                notify.send_email(self.person(pid).email, f"Reminder: proxy request for '{item.event.title}' is unanswered",
-                                  "The organizer decides if it stays unanswered.", now)
+                notify.send_email(self.person(pid).email, f"Reminder: the request to cover '{item.event.title}' is still unanswered",
+                                  "If it stays unanswered, the organizer will decide.", now)
             r.remindersSent += 1
             self.store.save_proxy_request(r)
             sent += 1
         # Under-24-hour alert: if a meeting starting within 24 hours still needs someone to act
         # (not handled, proxy unanswered, waiting on the organizer, proxy declined, no slot found), the organizer is
         # emailed once. This is the only email organizers get for planned leave besides asks.
-        # One email per meeting (Decision 55), naming everyone who is out.
+        # One email per meeting, naming everyone who is out.
         due: dict[tuple[str, str], list[MeetingItem]] = {}
         for i in self.store.items():
             if i.kind != ItemKind.key_meeting or i.organizerAlerted or i.status not in ATTENTION:
@@ -846,27 +893,94 @@ class Service:
         return sorted([h for h in self.store.history() if h.at >= cutoff and (h.actorId == me or h.itemId in mine_items)],
                       key=lambda h: h.at, reverse=True)
 
-    def metrics(self) -> Metrics:
-        """The impact tiles. Every number and which statuses count are in [metrics] in config/settings.toml.
+    @staticmethod
+    def _in_window(day: date, start: Optional[date], end: Optional[date]) -> bool:
+        return (start is None or day >= start) and (end is None or day <= end)
+
+    @staticmethod
+    def _overlaps(a_start: date, a_end: date, start: Optional[date], end: Optional[date]) -> bool:
+        return (end is None or a_start <= end) and (start is None or a_end >= start)
+
+    def metrics(self, start: Optional[date] = None, end: Optional[date] = None) -> Metrics:
+        """The impact band. Every number and which statuses count are in [metrics] in config/settings.toml.
+        With `start`/`end`, only meetings in that window (by their original date) and absences overlapping it count.
         - Meetings with a plan: affected meetings whose card is settled (auto-handled, proxy, go on without, ...).
         - Days of notice: how long before the meeting the plan was made, on average (vs. finding out at the start).
         - Team hours saved (estimate): per settled card, the people in the meeting x the minutes that outcome saves
           each of them (e.g. a covered meeting avoids a failed start and a follow-up meeting).
         - Recommendations followed: of the decisions people made, how many matched what was recommended."""
-        items = self.store.items()
+        items = [i for i in self.store.items() if self._in_window(i.event.instanceStart.date(), start, end)]
         planned = [i for i in items if i.status.value in S.metrics.plan_statuses]
         leads = [max((i.event.instanceStart - i.updatedAt).total_seconds() / 86400, 0) for i in planned]
         per_person = S.metrics.minutes_saved_per_invitee
-        minutes = sum(len(i.event.attendees) * getattr(per_person, i.status.value, 0) for i in planned)
+        saving = [i for i in planned if getattr(per_person, i.status.value, 0)]
+        minutes = sum(_people(i) * getattr(per_person, i.status.value, 0) for i in saving)
+        # still at risk: upcoming key meetings without a plan yet (people x the minutes lost if nobody acts)
+        unplanned = [i for i in items if i.status.value not in S.metrics.plan_statuses
+                     and i.kind == ItemKind.key_meeting and not self._is_past(i)]
+        at_risk = sum(_people(i) * S.metrics.at_risk_minutes_per_invitee for i in unplanned)
+        ahead = self._went_ahead(items)
         decided = [i for i in items if i.decidedBy and i.recommendedWhenDecided and i.chosenAction]
         followed = [i for i in decided if i.chosenAction == i.recommendedWhenDecided]
+        absences = [a for a in self.store.absences() if self._overlaps(a.start, a.end, start, end)]
         return Metrics(
+            absencesSpotted=len(absences), teamHoursAtRisk=round(at_risk / 60, 1),
+            handledAutomatically=sum(1 for i in planned if i.status == ItemStatus.auto_handled),
             meetingsWithPlan=len(planned), meetingsAffected=len(items),
             avgNoticeDays=round(sum(leads) / len(leads), 1) if leads else 0.0,
             teamHoursSaved=round(minutes / 60, 1),
             recommendationsFollowedPct=round(100 * len(followed) / len(decided)) if decided else None,
             decisionsCounted=len(decided),
-            estimateNote="Estimate. For each meeting with a plan: people in the meeting × minutes saved per person — "
-                         + ", ".join(f"{k.replace('_', ' ')} {v} min" for k, v in vars(per_person).items() if v)
-                         + ". Baseline: without a plan, people join, wait and give up, and a covered decision needs a "
-                           "follow-up meeting.")
+            decisionsOnSchedule=len(ahead), daysWaitingAvoided=sum(days for _, days in ahead),
+            peopleSpared=sum(_people(i) for i in saving),
+            estimateNote="Estimate. For each meeting " + _either(
+                [_OUTCOME_WORDS.get(k, k.replace("_", " ")) for k, v in vars(per_person).items() if v])
+                         + f": people in the meeting × {max(vars(per_person).values())} min, the start everyone would "
+                           "otherwise waste joining, waiting and giving up. Meetings that go ahead anyway count 0.")
+
+    def _went_ahead(self, items: list[MeetingItem]) -> list[tuple[MeetingItem, int]]:
+        """Key meetings that went ahead (a proxy covered, or they went on without the person) instead of waiting for
+        the person to come back, each with the days of waiting avoided: from the meeting to the first working day the
+        person is back."""
+        absences = {a.id: a for a in self.store.absences()}
+        out = []
+        for i in items:
+            a = absences.get(i.absenceId)
+            if i.kind == ItemKind.key_meeting and i.status in (ItemStatus.proxy_accepted, ItemStatus.proceeding_without) and a:
+                back = a.end + timedelta(days=1)
+                while back.weekday() >= 5:      # Saturday or Sunday: back on Monday
+                    back += timedelta(days=1)
+                out.append((i, max((back - i.event.instanceStart.date()).days, 0)))
+        return out
+
+    def projection(self) -> Projection:
+        """"At company scale": rates measured from the meetings this app has handled (or the config's fallbacks when
+        there are too few), times a company's size and the leave assumptions in [metrics.projection]."""
+        P = S.metrics.projection
+        per_person = S.metrics.minutes_saved_per_invitee
+        minutes = max(vars(per_person).values())
+        key = [i for i in self.store.items() if i.kind == ItemKind.key_meeting]
+        decided = [i for i in key if i.status.value in S.metrics.plan_statuses]
+        measured = len(decided) >= P.min_meetings_measured
+        if measured:
+            closed = sum(1 for i in decided if getattr(per_person, i.status.value, 0)) / len(decided)
+            ahead = self._went_ahead(decided)
+            went = len(ahead) / len(decided)
+            people = sum(_people(i) for i in key) / len(key)
+            days = sum(d for _, d in ahead) / len(ahead) if ahead else P.fallback_days_waiting_avoided
+        else:
+            closed, went = P.fallback_share_closed_early, P.fallback_share_went_ahead
+            people, days = P.fallback_people_per_meeting, P.fallback_days_waiting_avoided
+        rows = []
+        for n in P.company_sizes:
+            affected = n * P.leave_days_per_year * P.key_meetings_per_leave_day
+            hours = affected * closed * people * minutes / 60
+            on_time = affected * went
+            rows.append(ProjectionRow(employees=n, affectedMeetings=round(affected), hoursSaved=round(hours),
+                                      value=round(hours * P.hourly_cost), decisionsOnSchedule=round(on_time),
+                                      daysWaitingAvoided=round(on_time * days)))
+        return Projection(rows=rows, measured=measured, meetingsMeasured=len(decided),
+                          shareClosedEarly=round(closed, 2), shareWentAhead=round(went, 2),
+                          peoplePerMeeting=round(people, 1), daysWaitingAvoided=round(days, 1),
+                          leaveDaysPerYear=P.leave_days_per_year, keyMeetingsPerLeaveDay=P.key_meetings_per_leave_day,
+                          minutesSavedPerPerson=minutes, hourlyCost=P.hourly_cost, currency=P.currency)

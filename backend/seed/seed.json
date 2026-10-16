@@ -1,1001 +1,1561 @@
 {
-  "people": [
-    {
-      "id": "p_priya",
-      "name": "Priya Sharma",
-      "email": "priya@example.com",
-      "title": "Senior Manager",
-      "department": "Finance Ops",
-      "managerId": "p_arjun"
-    },
-    {
-      "id": "p_arjun",
-      "name": "Arjun Rao",
-      "email": "arjun@example.com",
-      "title": "Director",
-      "department": "Finance Ops",
-      "managerId": null
-    },
-    {
-      "id": "p_meena",
-      "name": "Meena Iyer",
-      "email": "meena@example.com",
-      "title": "Senior Analyst",
-      "department": "Finance Ops",
-      "managerId": "p_arjun"
-    },
-    {
-      "id": "p_kiran",
-      "name": "Kiran Patel",
-      "email": "kiran@example.com",
-      "title": "Analyst",
-      "department": "Finance Ops",
-      "managerId": "p_priya"
-    },
-    {
-      "id": "p_dev",
-      "name": "Dev Nair",
-      "email": "dev@example.com",
-      "title": "Team Lead",
-      "department": "Finance Ops",
-      "managerId": "p_arjun"
-    },
-    {
-      "id": "p_sam",
-      "name": "Sam Wilson",
-      "email": "sam@example.com",
-      "title": "Procurement Lead",
-      "department": "Procurement",
-      "managerId": "p_vera"
-    },
-    {
-      "id": "p_vera",
-      "name": "Vera Lopez",
-      "email": "vera@example.com",
-      "title": "Director",
-      "department": "Procurement",
-      "managerId": null
-    },
-    {
-      "id": "p_neha",
-      "name": "Neha Verma",
-      "email": "neha@example.com",
-      "title": "HR Partner",
-      "department": "HR",
-      "managerId": null
-    },
-    {
-      "id": "p_events",
-      "name": "Site Events Team",
-      "email": "events@example.com",
-      "title": "Events",
-      "department": "Communications",
-      "managerId": null,
-      "isGroup": true
-    },
-    {
-      "id": "p_asha",
-      "name": "Asha Menon",
-      "email": "asha@example.com",
-      "title": "Associate Analyst",
-      "department": "Finance Ops",
-      "managerId": "p_priya"
-    },
-    {
-      "id": "p_rohan",
-      "name": "Rohan Das",
-      "email": "rohan@example.com",
-      "title": "Business Analyst",
-      "department": "Finance Ops",
-      "managerId": "p_dev"
-    },
-    {
-      "id": "p_tara",
-      "name": "Tara Nguyen",
-      "email": "tara@example.com",
-      "title": "Category Manager",
-      "department": "Procurement",
-      "managerId": "p_vera"
-    },
-    {
-      "id": "p_ishaan",
-      "name": "Ishaan Kapoor",
-      "email": "ishaan.kapoor@example.com",
-      "title": "Senior Analyst",
-      "department": "Finance Ops",
-      "managerId": "p_dev"
-    },
-    {
-      "id": "p_naomi",
-      "name": "Naomi Fischer",
-      "email": "naomi.fischer@example.com",
-      "title": "Controller",
-      "department": "Finance",
-      "managerId": "p_arjun"
-    },
-    {
-      "id": "p_leo",
-      "name": "Leo Martins",
-      "email": "leo.martins@example.com",
-      "title": "Procurement Analyst",
-      "department": "Procurement",
-      "managerId": "p_sam"
-    },
-    {
-      "id": "p_zoya",
-      "name": "Zoya Khan",
-      "email": "zoya.khan@example.com",
-      "title": "Program Manager",
-      "department": "Operations",
-      "managerId": "p_vera"
-    },
-    {
-      "id": "p_ben",
-      "name": "Ben Carter",
-      "email": "ben.carter@example.com",
-      "title": "Legal Counsel",
-      "department": "Legal",
-      "managerId": null
-    },
-    {
-      "id": "p_lena",
-      "name": "Lena Fox",
-      "email": "lena.fox@example.com",
-      "title": "IT Business Partner",
-      "department": "IT",
-      "managerId": null
-    }
-  ],
-  "events": [
-    {
-      "id": "evt_su_12",
-      "seriesId": "series_standup",
-      "title": "Daily Stand-up",
-      "description": "Quick daily status.",
-      "start": "2026-10-12T04:00:00Z",
-      "end": "2026-10-12T04:15:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_su_1",
-          "modifiedAt": "2026-10-09T15:00:00Z",
-          "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_kiran",
-            "p_arjun"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_su_13",
-      "seriesId": "series_standup",
-      "title": "Daily Stand-up",
-      "description": "Quick daily status.",
-      "start": "2026-10-13T04:00:00Z",
-      "end": "2026-10-13T04:15:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_su_1",
-          "modifiedAt": "2026-10-09T15:00:00Z",
-          "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_kiran",
-            "p_arjun"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_release",
-      "title": "Release Readiness",
-      "description": "Go/no-go review for the October release.",
-      "start": "2026-10-12T09:30:00Z",
-      "end": "2026-10-12T10:30:00Z",
-      "organizerId": "p_sam",
-      "attendees": [
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_dev"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_rr_1",
-          "modifiedAt": "2026-10-05T16:30:00Z",
-          "text": "Release readiness summary. Decision pending on the release date. Kiran owns the go/no-go checklist. Dev backs up Kiran on the checklist.",
-          "sharedWith": [
-            "p_kiran",
-            "p_dev"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_su_20",
-      "seriesId": "series_standup",
-      "title": "Daily Stand-up",
-      "description": "Quick daily status.",
-      "start": "2026-10-20T04:00:00Z",
-      "end": "2026-10-20T04:15:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_su_1",
-          "modifiedAt": "2026-10-09T15:00:00Z",
-          "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_kiran",
-            "p_arjun"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_su_21",
-      "seriesId": "series_standup",
-      "title": "Daily Stand-up",
-      "description": "Quick daily status.",
-      "start": "2026-10-21T04:00:00Z",
-      "end": "2026-10-21T04:15:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_su_1",
-          "modifiedAt": "2026-10-09T15:00:00Z",
-          "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_kiran",
-            "p_arjun"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_su_22",
-      "seriesId": "series_standup",
-      "title": "Daily Stand-up",
-      "description": "Quick daily status.",
-      "start": "2026-10-22T04:00:00Z",
-      "end": "2026-10-22T04:15:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_su_1",
-          "modifiedAt": "2026-10-09T15:00:00Z",
-          "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_kiran",
-            "p_arjun"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_sprint",
-      "title": "Sprint Planning",
-      "description": "Plan the next sprint.",
-      "start": "2026-10-20T05:30:00Z",
-      "end": "2026-10-20T06:30:00Z",
-      "organizerId": "p_priya",
-      "attendees": [
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_dev"
-        },
-        {
-          "personId": "p_kiran"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_sp_1",
-          "modifiedAt": "2026-10-06T17:00:00Z",
-          "text": "Sprint planning summary. Priorities decided by Priya. Action item: Priya approves the sprint scope.",
-          "sharedWith": [
-            "p_meena",
-            "p_dev",
-            "p_kiran"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_budget",
-      "title": "Q4 Budget Review",
-      "description": "Review the Q4 budget and the vendor shortlist.",
-      "start": "2026-10-21T09:30:00Z",
-      "end": "2026-10-21T10:30:00Z",
-      "organizerId": "p_sam",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_bud_1",
-          "modifiedAt": "2026-10-02T18:00:00Z",
-          "text": "Q3 budget review summary. Decision: vendor shortlist approved. Priya owns the final vendor decision and sign-off. Meena to prepare the cost comparison. Action item: Priya to confirm contract terms.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_arjun"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_techtalk",
-      "title": "Site-wide Tech Talk: Cloud Cost Optimization",
-      "description": "Open session for everyone on site.",
-      "start": "2026-10-21T11:30:00Z",
-      "end": "2026-10-21T12:30:00Z",
-      "organizerId": "p_events",
-      "inviteGroup": "site-all",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_dev"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_sam"
-        },
-        {
-          "personId": "p_neha"
-        }
-      ]
-    },
-    {
-      "id": "evt_vendor",
-      "title": "Vendor Contract Decision",
-      "description": "Decide on the vendor contract.",
-      "start": "2026-10-22T08:30:00Z",
-      "end": "2026-10-22T09:30:00Z",
-      "organizerId": "p_sam",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ]
-    },
-    {
-      "id": "evt_design",
-      "title": "Design Review",
-      "description": "Review the dashboard designs.",
-      "start": "2026-10-22T11:00:00Z",
-      "end": "2026-10-22T12:00:00Z",
-      "organizerId": "p_meena",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_dev"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_des_1",
-          "modifiedAt": "2026-10-07T16:00:00Z",
-          "text": "Design review summary. Decision: go with layout B. Dev owns the final mockups.",
-          "sharedWith": [
-            "p_dev"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_leads_su",
-      "title": "Finance Leads Stand-up",
-      "description": "Daily stand-up for the finance leads.",
-      "start": "2026-10-26T04:00:00Z",
-      "end": "2026-10-26T04:15:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_naomi"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_lsu_1",
-          "modifiedAt": "2026-10-23T05:00:00Z",
-          "text": "Leads stand-up. Status updates only. Naomi closed the September accruals. No decisions.",
-          "sharedWith": [
-            "p_arjun",
-            "p_meena",
-            "p_naomi"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_opssync",
-      "title": "Weekly Ops Sync",
-      "description": "Weekly sync on hiring and capacity.",
-      "start": "2026-10-26T06:00:00Z",
-      "end": "2026-10-26T06:30:00Z",
-      "organizerId": "p_dev",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_naomi"
-        },
-        {
-          "personId": "p_rohan"
-        },
-        {
-          "personId": "p_ishaan"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_ops_1",
-          "modifiedAt": "2026-10-19T07:00:00Z",
-          "text": "Ops sync. Arjun signed off the two analyst roles; they cannot be posted without him. The November overtime budget is waiting for Arjun. Rohan shared the capacity numbers.",
-          "sharedWith": [
-            "p_arjun",
-            "p_naomi",
-            "p_rohan",
-            "p_ishaan"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_pricing",
-      "title": "Pricing Committee",
-      "description": "Monthly pricing committee.",
-      "start": "2026-10-27T05:30:00Z",
-      "end": "2026-10-27T06:30:00Z",
-      "organizerId": "p_sam",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_tara"
-        },
-        {
-          "personId": "p_naomi"
-        },
-        {
-          "personId": "p_leo"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_pri_1",
-          "modifiedAt": "2026-10-13T07:00:00Z",
-          "text": "Pricing committee summary. Tara proposed the new discount tiers and knows them best. Arjun approves any discount above 20%. Naomi checked the margin impact with Arjun.",
-          "sharedWith": [
-            "p_arjun",
-            "p_tara",
-            "p_naomi",
-            "p_sam",
-            "p_leo"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_allhands",
-      "title": "All-hands: H2 plan",
-      "description": "Quarterly all-hands for everyone on site. Arjun walks us through the H2 numbers, then open Q&A.",
-      "start": "2026-10-27T09:30:00Z",
-      "end": "2026-10-27T10:30:00Z",
-      "organizerId": "p_vera",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_dev"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_sam"
-        },
-        {
-          "personId": "p_neha"
-        },
-        {
-          "personId": "p_naomi"
-        }
-      ],
-      "inviteGroup": "site-all"
-    },
-    {
-      "id": "evt_acme",
-      "title": "Acme renewal escalation",
-      "description": "Acme's CFO asked for this call to agree the renewal terms.",
-      "start": "2026-10-28T08:30:00Z",
-      "end": "2026-10-28T09:30:00Z",
-      "organizerId": "p_vera",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_sam"
-        },
-        {
-          "personId": "p_ben"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_acme_1",
-          "modifiedAt": "2026-10-21T10:00:00Z",
-          "text": "Escalation call notes. Acme's CFO will only commit to the renewal with Arjun on the call. Arjun signs the final terms. Ben prepared the contract changes.",
-          "sharedWith": [
-            "p_arjun",
-            "p_vera",
-            "p_sam",
-            "p_ben"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_close_rev",
-      "title": "Month-end Close Review",
-      "description": "Review the September close.",
-      "start": "2026-10-06T05:00:00Z",
-      "end": "2026-10-06T06:00:00Z",
-      "organizerId": "p_naomi",
-      "attendees": [
-        {
-          "personId": "p_dev"
-        },
-        {
-          "personId": "p_rohan"
-        },
-        {
-          "personId": "p_ishaan"
-        },
-        {
-          "personId": "p_meena"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_close_1",
-          "modifiedAt": "2026-09-08T06:00:00Z",
-          "text": "Close review. Dev owns the reconciliation sign-off. Rohan prepared the variance report.",
-          "sharedWith": [
-            "p_dev",
-            "p_rohan",
-            "p_ishaan",
-            "p_meena",
-            "p_naomi"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_vendor_onb",
-      "title": "Vendor Onboarding Review",
-      "description": "Check the onboarding of the two new vendors.",
-      "start": "2026-10-07T07:00:00Z",
-      "end": "2026-10-07T08:00:00Z",
-      "organizerId": "p_sam",
-      "attendees": [
-        {
-          "personId": "p_dev"
-        },
-        {
-          "personId": "p_leo"
-        },
-        {
-          "personId": "p_tara"
-        }
-      ]
-    },
-    {
-      "id": "evt_golive",
-      "title": "Release Go/No-Go",
-      "description": "Go/no-go for the reporting release.",
-      "start": "2026-10-07T10:00:00Z",
-      "end": "2026-10-07T10:30:00Z",
-      "organizerId": "p_lena",
-      "attendees": [
-        {
-          "personId": "p_dev"
-        },
-        {
-          "personId": "p_kiran"
-        },
-        {
-          "personId": "p_rohan"
-        },
-        {
-          "personId": "p_ishaan"
-        },
-        {
-          "personId": "p_zoya"
-        }
-      ]
-    },
-    {
-      "id": "evt_costmodel",
-      "title": "Cost Model Walkthrough",
-      "description": "Walk the controllers through the new cost model.",
-      "start": "2026-10-08T06:00:00Z",
-      "end": "2026-10-08T07:00:00Z",
-      "organizerId": "p_naomi",
-      "attendees": [
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_ishaan"
-        },
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_rohan"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_cm_1",
-          "modifiedAt": "2026-09-30T06:00:00Z",
-          "text": "Cost model draft. Meena owns the model; Ishaan built the allocation tables.",
-          "sharedWith": [
-            "p_meena",
-            "p_ishaan",
-            "p_arjun",
-            "p_rohan",
-            "p_naomi"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_q3vendor",
-      "title": "Q3 Vendor Review",
-      "description": "Review the three shortlisted vendors.",
-      "start": "2026-10-05T09:00:00Z",
-      "end": "2026-10-05T10:00:00Z",
-      "organizerId": "p_sam",
-      "attendees": [
-        {
-          "personId": "p_priya"
-        },
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_arjun"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_q3v_1",
-          "modifiedAt": "2026-09-21T10:00:00Z",
-          "text": "Vendor review notes. Priya leads the scoring. Meena prepared the vendor comparison sheet. Decision pending: which two vendors go to the final round.",
-          "sharedWith": [
-            "p_priya",
-            "p_meena",
-            "p_arjun",
-            "p_sam"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "evt_fin_lead",
-      "title": "Finance Leadership Review",
-      "description": "Monthly review of the finance leadership priorities.",
-      "start": "2026-10-06T08:00:00Z",
-      "end": "2026-10-06T09:00:00Z",
-      "organizerId": "p_vera",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_naomi"
-        },
-        {
-          "personId": "p_sam"
-        }
-      ]
-    },
-    {
-      "id": "evt_proc_ops",
-      "title": "Procurement Ops Review",
-      "description": "Weekly look at open purchase orders.",
-      "start": "2026-10-08T09:00:00Z",
-      "end": "2026-10-08T09:30:00Z",
-      "organizerId": "p_vera",
-      "attendees": [
-        {
-          "personId": "p_meena"
-        },
-        {
-          "personId": "p_tara"
-        },
-        {
-          "personId": "p_leo"
-        }
-      ]
-    },
-    {
-      "id": "evt_audit_prep",
-      "title": "Audit Committee Prep",
-      "description": "Prepare the answers for next week's audit committee.",
-      "start": "2026-10-28T05:30:00Z",
-      "end": "2026-10-28T06:30:00Z",
-      "organizerId": "p_ben",
-      "attendees": [
-        {
-          "personId": "p_arjun"
-        },
-        {
-          "personId": "p_naomi"
-        },
-        {
-          "personId": "p_lena"
-        }
-      ],
-      "notes": [
-        {
-          "docId": "doc_audit_1",
-          "modifiedAt": "2026-10-14T06:00:00Z",
-          "text": "Audit prep notes. Rohan usually stands in for Arjun on audit items. Arjun owns the answers on revenue recognition. Naomi drafted the controls summary with Arjun.",
-          "sharedWith": [
-            "p_arjun",
-            "p_naomi",
-            "p_lena",
-            "p_ben"
-          ]
-        }
-      ]
-    }
-  ],
-  "absences": [
-    {
-      "personId": "p_priya",
-      "start": "2026-10-20",
-      "end": "2026-10-22",
-      "source": "calendar_ooo",
-      "enteredBy": "p_priya"
-    },
-    {
-      "personId": "p_kiran",
-      "start": "2026-10-12",
-      "end": "2026-10-13",
-      "source": "manual",
-      "enteredBy": "p_priya"
-    },
-    {
-      "personId": "p_arjun",
-      "start": "2026-10-26",
-      "end": "2026-10-28",
-      "source": "calendar_ooo",
-      "enteredBy": "p_arjun"
-    },
-    {
-      "personId": "p_tara",
-      "start": "2026-10-27",
-      "end": "2026-10-27",
-      "source": "manual",
-      "enteredBy": "p_tara"
-    },
-    {
-      "personId": "p_rohan",
-      "start": "2026-10-28",
-      "end": "2026-10-28",
-      "source": "manual",
-      "enteredBy": "p_rohan"
-    }
-  ],
-  "pastWeek": {
-    "now": "2026-10-01T09:00:00Z",
-    "absences": [
-      {
-        "personId": "p_dev",
-        "start": "2026-10-06",
-        "end": "2026-10-07",
-        "source": "calendar_ooo",
-        "enteredBy": "p_dev"
-      },
-      {
-        "personId": "p_meena",
-        "start": "2026-10-08",
-        "end": "2026-10-08",
-        "source": "calendar_ooo",
-        "enteredBy": "p_meena"
-      },
-      {
-        "personId": "p_priya",
-        "start": "2026-10-05",
-        "end": "2026-10-05",
-        "source": "calendar_ooo",
-        "enteredBy": "p_priya"
-      },
-      {
-        "personId": "p_arjun",
-        "start": "2026-10-06",
-        "end": "2026-10-06",
-        "source": "calendar_ooo",
-        "enteredBy": "p_arjun"
-      }
-    ],
-    "actions": [
-      {
-        "eventId": "evt_close_rev",
-        "absent": "p_dev",
-        "by": "p_dev",
-        "action": "proxy",
-        "proxyId": "p_rohan",
-        "accept": true
-      },
-      {
-        "eventId": "evt_vendor_onb",
-        "absent": "p_dev",
-        "by": "p_sam",
-        "action": "reschedule"
-      },
-      {
-        "eventId": "evt_golive",
-        "absent": "p_dev",
-        "by": "p_dev",
-        "action": "proceed_without"
-      },
-      {
-        "eventId": "evt_costmodel",
-        "absent": "p_meena",
-        "by": "p_meena",
-        "action": "proxy",
-        "proxyId": "p_ishaan",
-        "accept": true
-      },
-      {
-        "eventId": "evt_q3vendor",
-        "absent": "p_priya",
-        "by": "p_priya",
-        "action": "proxy",
-        "proxyId": "p_meena",
-        "accept": true
-      },
-      {
-        "eventId": "evt_fin_lead",
-        "absent": "p_arjun",
-        "by": "p_vera",
-        "action": "reschedule"
-      },
-      {
-        "eventId": "evt_proc_ops",
-        "absent": "p_meena",
-        "by": "p_vera",
-        "action": "proceed_without"
-      }
-    ]
+ "people": [
+  {
+   "id": "p_priya",
+   "name": "Priya Sharma",
+   "email": "priya@example.com",
+   "title": "Senior Manager",
+   "department": "Finance Ops",
+   "managerId": "p_arjun"
+  },
+  {
+   "id": "p_arjun",
+   "name": "Arjun Rao",
+   "email": "arjun@example.com",
+   "title": "Director",
+   "department": "Finance Ops",
+   "managerId": null
+  },
+  {
+   "id": "p_meena",
+   "name": "Meena Iyer",
+   "email": "meena@example.com",
+   "title": "Senior Analyst",
+   "department": "Finance Ops",
+   "managerId": "p_arjun"
+  },
+  {
+   "id": "p_kiran",
+   "name": "Kiran Patel",
+   "email": "kiran@example.com",
+   "title": "Analyst",
+   "department": "Finance Ops",
+   "managerId": "p_priya"
+  },
+  {
+   "id": "p_dev",
+   "name": "Dev Nair",
+   "email": "dev@example.com",
+   "title": "Team Lead",
+   "department": "Finance Ops",
+   "managerId": "p_arjun"
+  },
+  {
+   "id": "p_sam",
+   "name": "Sam Wilson",
+   "email": "sam@example.com",
+   "title": "Procurement Lead",
+   "department": "Procurement",
+   "managerId": "p_vera"
+  },
+  {
+   "id": "p_vera",
+   "name": "Vera Lopez",
+   "email": "vera@example.com",
+   "title": "Director",
+   "department": "Procurement",
+   "managerId": null
+  },
+  {
+   "id": "p_neha",
+   "name": "Neha Verma",
+   "email": "neha@example.com",
+   "title": "HR Partner",
+   "department": "HR",
+   "managerId": null
+  },
+  {
+   "id": "p_events",
+   "name": "Site Events Team",
+   "email": "events@example.com",
+   "title": "Events",
+   "department": "Communications",
+   "managerId": null,
+   "isGroup": true
+  },
+  {
+   "id": "p_asha",
+   "name": "Asha Menon",
+   "email": "asha@example.com",
+   "title": "Associate Analyst",
+   "department": "Finance Ops",
+   "managerId": "p_priya"
+  },
+  {
+   "id": "p_rohan",
+   "name": "Rohan Das",
+   "email": "rohan@example.com",
+   "title": "Business Analyst",
+   "department": "Finance Ops",
+   "managerId": "p_dev"
+  },
+  {
+   "id": "p_tara",
+   "name": "Tara Nguyen",
+   "email": "tara@example.com",
+   "title": "Category Manager",
+   "department": "Procurement",
+   "managerId": "p_vera"
+  },
+  {
+   "id": "p_ishaan",
+   "name": "Ishaan Kapoor",
+   "email": "ishaan.kapoor@example.com",
+   "title": "Senior Analyst",
+   "department": "Finance Ops",
+   "managerId": "p_dev"
+  },
+  {
+   "id": "p_naomi",
+   "name": "Naomi Fischer",
+   "email": "naomi.fischer@example.com",
+   "title": "Controller",
+   "department": "Finance",
+   "managerId": "p_arjun"
+  },
+  {
+   "id": "p_leo",
+   "name": "Leo Martins",
+   "email": "leo.martins@example.com",
+   "title": "Procurement Analyst",
+   "department": "Procurement",
+   "managerId": "p_sam"
+  },
+  {
+   "id": "p_zoya",
+   "name": "Zoya Khan",
+   "email": "zoya.khan@example.com",
+   "title": "Program Manager",
+   "department": "Operations",
+   "managerId": "p_vera"
+  },
+  {
+   "id": "p_ben",
+   "name": "Ben Carter",
+   "email": "ben.carter@example.com",
+   "title": "Legal Counsel",
+   "department": "Legal",
+   "managerId": null
+  },
+  {
+   "id": "p_lena",
+   "name": "Lena Fox",
+   "email": "lena.fox@example.com",
+   "title": "IT Business Partner",
+   "department": "IT",
+   "managerId": null
+  },
+  {
+   "id": "p_omar",
+   "name": "Omar Haddad",
+   "email": "omar.haddad@example.com",
+   "title": "Engineering Manager",
+   "department": "IT",
+   "managerId": "p_lena"
+  },
+  {
+   "id": "p_maya",
+   "name": "Maya Chen",
+   "email": "maya.chen@example.com",
+   "title": "Solutions Architect",
+   "department": "IT",
+   "managerId": "p_lena"
+  },
+  {
+   "id": "p_raj",
+   "name": "Raj Iyer",
+   "email": "raj.iyer@example.com",
+   "title": "Security Analyst",
+   "department": "IT",
+   "managerId": "p_omar"
+  },
+  {
+   "id": "p_sofia",
+   "name": "Sofia Rossi",
+   "email": "sofia.rossi@example.com",
+   "title": "Data Engineer",
+   "department": "IT",
+   "managerId": "p_omar"
+  },
+  {
+   "id": "p_kofi",
+   "name": "Kofi Mensah",
+   "email": "kofi.mensah@example.com",
+   "title": "QA Lead",
+   "department": "IT",
+   "managerId": "p_omar"
+  },
+  {
+   "id": "p_hana",
+   "name": "Hana Sato",
+   "email": "hana.sato@example.com",
+   "title": "Finance Analyst",
+   "department": "Finance Ops",
+   "managerId": "p_dev"
+  },
+  {
+   "id": "p_luis",
+   "name": "Luis Ortega",
+   "email": "luis.ortega@example.com",
+   "title": "Procurement Specialist",
+   "department": "Procurement",
+   "managerId": "p_sam"
+  },
+  {
+   "id": "p_anya",
+   "name": "Anya Petrova",
+   "email": "anya.petrova@example.com",
+   "title": "Operations Analyst",
+   "department": "Operations",
+   "managerId": "p_zoya"
   }
+ ],
+ "events": [
+  {
+   "id": "evt_su_12",
+   "seriesId": "series_standup",
+   "title": "Daily Stand-up",
+   "description": "Quick daily status.",
+   "start": "2026-10-12T04:00:00Z",
+   "end": "2026-10-12T04:15:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_arjun"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_su_1",
+     "modifiedAt": "2026-10-09T15:00:00Z",
+     "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_kiran",
+      "p_arjun"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_su_13",
+   "seriesId": "series_standup",
+   "title": "Daily Stand-up",
+   "description": "Quick daily status.",
+   "start": "2026-10-13T04:00:00Z",
+   "end": "2026-10-13T04:15:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_arjun"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_su_1",
+     "modifiedAt": "2026-10-09T15:00:00Z",
+     "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_kiran",
+      "p_arjun"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_release",
+   "title": "Release Readiness",
+   "description": "Go/no-go review for the October release.",
+   "start": "2026-10-12T09:30:00Z",
+   "end": "2026-10-12T10:30:00Z",
+   "organizerId": "p_sam",
+   "attendees": [
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_kofi"
+    },
+    {
+     "personId": "p_hana"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_rr_1",
+     "modifiedAt": "2026-10-05T16:30:00Z",
+     "text": "Release readiness summary. Decision pending on the release date. Kiran owns the go/no-go checklist. Dev backs up Kiran on the checklist.",
+     "sharedWith": [
+      "p_kiran",
+      "p_dev"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_su_20",
+   "seriesId": "series_standup",
+   "title": "Daily Stand-up",
+   "description": "Quick daily status.",
+   "start": "2026-10-20T04:00:00Z",
+   "end": "2026-10-20T04:15:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_arjun"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_su_1",
+     "modifiedAt": "2026-10-09T15:00:00Z",
+     "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_kiran",
+      "p_arjun"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_su_21",
+   "seriesId": "series_standup",
+   "title": "Daily Stand-up",
+   "description": "Quick daily status.",
+   "start": "2026-10-21T04:00:00Z",
+   "end": "2026-10-21T04:15:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_arjun"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_su_1",
+     "modifiedAt": "2026-10-09T15:00:00Z",
+     "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_kiran",
+      "p_arjun"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_su_22",
+   "seriesId": "series_standup",
+   "title": "Daily Stand-up",
+   "description": "Quick daily status.",
+   "start": "2026-10-22T04:00:00Z",
+   "end": "2026-10-22T04:15:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_arjun"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_su_1",
+     "modifiedAt": "2026-10-09T15:00:00Z",
+     "text": "Stand-up summary: status updates only. Kiran blocked on the test environment. Meena finished the reconciliation. No decisions.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_kiran",
+      "p_arjun"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_sprint",
+   "title": "Sprint Planning",
+   "description": "Plan the next sprint.",
+   "start": "2026-10-20T05:30:00Z",
+   "end": "2026-10-20T06:30:00Z",
+   "organizerId": "p_priya",
+   "attendees": [
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_ishaan"
+    },
+    {
+     "personId": "p_hana"
+    },
+    {
+     "personId": "p_rohan"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_sp_1",
+     "modifiedAt": "2026-10-06T17:00:00Z",
+     "text": "Sprint planning summary. Priorities decided by Priya. Action item: Priya approves the sprint scope.",
+     "sharedWith": [
+      "p_meena",
+      "p_dev",
+      "p_kiran"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_budget",
+   "title": "Q4 Budget Review",
+   "description": "Review the Q4 budget and the vendor shortlist.",
+   "start": "2026-10-21T09:30:00Z",
+   "end": "2026-10-21T10:30:00Z",
+   "organizerId": "p_sam",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_luis"
+    },
+    {
+     "personId": "p_hana"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_bud_1",
+     "modifiedAt": "2026-10-02T18:00:00Z",
+     "text": "Q3 budget review summary. Decision: vendor shortlist approved. Priya owns the final vendor decision and sign-off. Meena to prepare the cost comparison. Action item: Priya to confirm contract terms.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_arjun"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_techtalk",
+   "title": "Site-wide Tech Talk: Cloud Cost Optimization",
+   "description": "Open session for everyone on site.",
+   "start": "2026-10-21T11:30:00Z",
+   "end": "2026-10-21T12:30:00Z",
+   "organizerId": "p_events",
+   "inviteGroup": "site-all",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_sam"
+    },
+    {
+     "personId": "p_neha"
+    }
+   ]
+  },
+  {
+   "id": "evt_vendor",
+   "title": "Vendor Contract Decision",
+   "description": "Decide on the vendor contract.",
+   "start": "2026-10-22T08:30:00Z",
+   "end": "2026-10-22T09:30:00Z",
+   "organizerId": "p_sam",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_leo"
+    },
+    {
+     "personId": "p_luis"
+    },
+    {
+     "personId": "p_ben"
+    }
+   ]
+  },
+  {
+   "id": "evt_design",
+   "title": "Design Review",
+   "description": "Review the dashboard designs.",
+   "start": "2026-10-22T11:00:00Z",
+   "end": "2026-10-22T12:00:00Z",
+   "organizerId": "p_meena",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_hana"
+    },
+    {
+     "personId": "p_anya"
+    },
+    {
+     "personId": "p_ishaan"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_des_1",
+     "modifiedAt": "2026-10-07T16:00:00Z",
+     "text": "Design review summary. Decision: go with layout B. Dev owns the final mockups.",
+     "sharedWith": [
+      "p_dev"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_leads_su",
+   "title": "Finance Leads Stand-up",
+   "description": "Daily stand-up for the finance leads.",
+   "start": "2026-10-26T04:00:00Z",
+   "end": "2026-10-26T04:15:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_naomi"
+    },
+    {
+     "personId": "p_hana"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_lsu_1",
+     "modifiedAt": "2026-10-23T05:00:00Z",
+     "text": "Leads stand-up. Status updates only. Naomi closed the September accruals. No decisions.",
+     "sharedWith": [
+      "p_arjun",
+      "p_meena",
+      "p_naomi"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_opssync",
+   "title": "Weekly Ops Sync",
+   "description": "Weekly sync on hiring and capacity.",
+   "start": "2026-10-26T06:00:00Z",
+   "end": "2026-10-26T06:30:00Z",
+   "organizerId": "p_dev",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_naomi"
+    },
+    {
+     "personId": "p_rohan"
+    },
+    {
+     "personId": "p_ishaan"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_ops_1",
+     "modifiedAt": "2026-10-19T07:00:00Z",
+     "text": "Ops sync. Arjun signed off the two analyst roles; they cannot be posted without him. The November overtime budget is waiting for Arjun. Rohan shared the capacity numbers.",
+     "sharedWith": [
+      "p_arjun",
+      "p_naomi",
+      "p_rohan",
+      "p_ishaan"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_pricing",
+   "title": "Pricing Committee",
+   "description": "Monthly pricing committee.",
+   "start": "2026-10-27T05:30:00Z",
+   "end": "2026-10-27T06:30:00Z",
+   "organizerId": "p_sam",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_tara"
+    },
+    {
+     "personId": "p_naomi"
+    },
+    {
+     "personId": "p_leo"
+    },
+    {
+     "personId": "p_luis"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_pri_1",
+     "modifiedAt": "2026-10-13T07:00:00Z",
+     "text": "Pricing committee summary. Tara proposed the new discount tiers and knows them best. Arjun approves any discount above 20%. Naomi checked the margin impact with Arjun.",
+     "sharedWith": [
+      "p_arjun",
+      "p_tara",
+      "p_naomi",
+      "p_sam",
+      "p_leo"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_allhands",
+   "title": "All-hands: H2 plan",
+   "description": "Quarterly all-hands for everyone on site. Arjun walks us through the H2 numbers, then open Q&A.",
+   "start": "2026-10-27T09:30:00Z",
+   "end": "2026-10-27T10:30:00Z",
+   "organizerId": "p_vera",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_sam"
+    },
+    {
+     "personId": "p_neha"
+    },
+    {
+     "personId": "p_naomi"
+    }
+   ],
+   "inviteGroup": "site-all"
+  },
+  {
+   "id": "evt_acme",
+   "title": "Acme renewal escalation",
+   "description": "Acme's CFO asked for this call to agree the renewal terms.",
+   "start": "2026-10-28T08:30:00Z",
+   "end": "2026-10-28T09:30:00Z",
+   "organizerId": "p_vera",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_sam"
+    },
+    {
+     "personId": "p_ben"
+    },
+    {
+     "personId": "p_zoya"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_acme_1",
+     "modifiedAt": "2026-10-21T10:00:00Z",
+     "text": "Escalation call notes. Acme's CFO will only commit to the renewal with Arjun on the call. Arjun signs the final terms. Ben prepared the contract changes.",
+     "sharedWith": [
+      "p_arjun",
+      "p_vera",
+      "p_sam",
+      "p_ben"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_close_rev",
+   "title": "Month-end Close Review",
+   "description": "Review the September close.",
+   "start": "2026-10-06T05:00:00Z",
+   "end": "2026-10-06T06:00:00Z",
+   "organizerId": "p_naomi",
+   "attendees": [
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_rohan"
+    },
+    {
+     "personId": "p_ishaan"
+    },
+    {
+     "personId": "p_meena"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_close_1",
+     "modifiedAt": "2026-09-08T06:00:00Z",
+     "text": "Close review. Dev owns the reconciliation sign-off. Rohan prepared the variance report.",
+     "sharedWith": [
+      "p_dev",
+      "p_rohan",
+      "p_ishaan",
+      "p_meena",
+      "p_naomi"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_vendor_onb",
+   "title": "Vendor Onboarding Review",
+   "description": "Check the onboarding of the two new vendors.",
+   "start": "2026-10-07T07:00:00Z",
+   "end": "2026-10-07T08:00:00Z",
+   "organizerId": "p_sam",
+   "attendees": [
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_leo"
+    },
+    {
+     "personId": "p_tara"
+    },
+    {
+     "personId": "p_luis"
+    }
+   ]
+  },
+  {
+   "id": "evt_golive",
+   "title": "Release Go/No-Go",
+   "description": "Go/no-go for the reporting release.",
+   "start": "2026-10-07T10:00:00Z",
+   "end": "2026-10-07T10:30:00Z",
+   "organizerId": "p_lena",
+   "attendees": [
+    {
+     "personId": "p_dev"
+    },
+    {
+     "personId": "p_kiran"
+    },
+    {
+     "personId": "p_rohan"
+    },
+    {
+     "personId": "p_ishaan"
+    },
+    {
+     "personId": "p_zoya"
+    }
+   ]
+  },
+  {
+   "id": "evt_costmodel",
+   "title": "Cost Model Walkthrough",
+   "description": "Walk the controllers through the new cost model.",
+   "start": "2026-10-08T06:00:00Z",
+   "end": "2026-10-08T07:00:00Z",
+   "organizerId": "p_naomi",
+   "attendees": [
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_ishaan"
+    },
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_rohan"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_cm_1",
+     "modifiedAt": "2026-09-30T06:00:00Z",
+     "text": "Cost model draft. Meena owns the model; Ishaan built the allocation tables.",
+     "sharedWith": [
+      "p_meena",
+      "p_ishaan",
+      "p_arjun",
+      "p_rohan",
+      "p_naomi"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_q3vendor",
+   "title": "Q3 Vendor Review",
+   "description": "Review the three shortlisted vendors.",
+   "start": "2026-10-05T09:00:00Z",
+   "end": "2026-10-05T10:00:00Z",
+   "organizerId": "p_sam",
+   "attendees": [
+    {
+     "personId": "p_priya"
+    },
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_luis"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_q3v_1",
+     "modifiedAt": "2026-09-21T10:00:00Z",
+     "text": "Vendor review notes. Priya leads the scoring. Meena prepared the vendor comparison sheet. Decision pending: which two vendors go to the final round.",
+     "sharedWith": [
+      "p_priya",
+      "p_meena",
+      "p_arjun",
+      "p_sam"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_fin_lead",
+   "title": "Finance Leadership Review",
+   "description": "Monthly review of the finance leadership priorities.",
+   "start": "2026-10-06T08:00:00Z",
+   "end": "2026-10-06T09:00:00Z",
+   "organizerId": "p_vera",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_naomi"
+    },
+    {
+     "personId": "p_sam"
+    },
+    {
+     "personId": "p_hana"
+    }
+   ]
+  },
+  {
+   "id": "evt_proc_ops",
+   "title": "Procurement Ops Review",
+   "description": "Weekly look at open purchase orders.",
+   "start": "2026-10-08T09:00:00Z",
+   "end": "2026-10-08T09:30:00Z",
+   "organizerId": "p_vera",
+   "attendees": [
+    {
+     "personId": "p_meena"
+    },
+    {
+     "personId": "p_tara"
+    },
+    {
+     "personId": "p_leo"
+    },
+    {
+     "personId": "p_luis"
+    }
+   ]
+  },
+  {
+   "id": "evt_audit_prep",
+   "title": "Audit Committee Prep",
+   "description": "Prepare the answers for next week's audit committee.",
+   "start": "2026-10-28T05:30:00Z",
+   "end": "2026-10-28T06:30:00Z",
+   "organizerId": "p_ben",
+   "attendees": [
+    {
+     "personId": "p_arjun"
+    },
+    {
+     "personId": "p_naomi"
+    },
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_raj"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_audit_1",
+     "modifiedAt": "2026-10-14T06:00:00Z",
+     "text": "Audit prep notes. Rohan usually stands in for Arjun on audit items. Arjun owns the answers on revenue recognition. Naomi drafted the controls summary with Arjun.",
+     "sharedWith": [
+      "p_arjun",
+      "p_naomi",
+      "p_lena",
+      "p_ben"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_it_su_26",
+   "title": "IT Ops Stand-up",
+   "description": "Daily status for the IT operations team.",
+   "start": "2026-10-26T04:30:00Z",
+   "end": "2026-10-26T04:45:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_itsu_1",
+     "modifiedAt": "2026-10-15T05:00:00Z",
+     "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_raj",
+      "p_sofia",
+      "p_kofi"
+     ]
+    }
+   ],
+   "seriesId": "series_it_standup"
+  },
+  {
+   "id": "evt_it_su_27",
+   "title": "IT Ops Stand-up",
+   "description": "Daily status for the IT operations team.",
+   "start": "2026-10-27T04:30:00Z",
+   "end": "2026-10-27T04:45:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_itsu_1",
+     "modifiedAt": "2026-10-15T05:00:00Z",
+     "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_raj",
+      "p_sofia",
+      "p_kofi"
+     ]
+    }
+   ],
+   "seriesId": "series_it_standup"
+  },
+  {
+   "id": "evt_it_su_28",
+   "title": "IT Ops Stand-up",
+   "description": "Daily status for the IT operations team.",
+   "start": "2026-10-28T04:30:00Z",
+   "end": "2026-10-28T04:45:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_itsu_1",
+     "modifiedAt": "2026-10-15T05:00:00Z",
+     "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_raj",
+      "p_sofia",
+      "p_kofi"
+     ]
+    }
+   ],
+   "seriesId": "series_it_standup"
+  },
+  {
+   "id": "evt_it_su_29",
+   "title": "IT Ops Stand-up",
+   "description": "Daily status for the IT operations team.",
+   "start": "2026-10-29T04:30:00Z",
+   "end": "2026-10-29T04:45:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_itsu_1",
+     "modifiedAt": "2026-10-15T05:00:00Z",
+     "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_raj",
+      "p_sofia",
+      "p_kofi"
+     ]
+    }
+   ],
+   "seriesId": "series_it_standup"
+  },
+  {
+   "id": "evt_it_su_30",
+   "title": "IT Ops Stand-up",
+   "description": "Daily status for the IT operations team.",
+   "start": "2026-10-30T04:30:00Z",
+   "end": "2026-10-30T04:45:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_itsu_1",
+     "modifiedAt": "2026-10-15T05:00:00Z",
+     "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_raj",
+      "p_sofia",
+      "p_kofi"
+     ]
+    }
+   ],
+   "seriesId": "series_it_standup"
+  },
+  {
+   "id": "evt_postmortem",
+   "title": "Payments Outage Postmortem",
+   "description": "Root cause, customer impact and follow-ups for the 14 Oct payments outage.",
+   "start": "2026-10-26T08:30:00Z",
+   "end": "2026-10-26T09:30:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    },
+    {
+     "personId": "p_dev"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_pm_1",
+     "modifiedAt": "2026-10-15T12:00:00Z",
+     "text": "Outage notes. Lena owns the escalation with the payment gateway vendor. Raj owns the security timeline. Sofia has the data-loss analysis. Decision needed: whether to switch to the backup gateway.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_raj",
+      "p_sofia",
+      "p_kofi",
+      "p_dev"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_roadmap",
+   "title": "Q1 IT Roadmap Prioritization",
+   "description": "Agree the Q1 priority order for IT projects. Maya presents the architecture options.",
+   "start": "2026-10-27T05:30:00Z",
+   "end": "2026-10-27T07:00:00Z",
+   "organizerId": "p_lena",
+   "attendees": [
+    {
+     "personId": "p_omar"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_zoya"
+    },
+    {
+     "personId": "p_sam"
+    },
+    {
+     "personId": "p_arjun"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_rm_1",
+     "modifiedAt": "2026-10-12T10:00:00Z",
+     "text": "Roadmap prep. Lena decides the final priority order with the business leads. Maya prepared the architecture options. Omar has the capacity plan.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_zoya"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_hiring",
+   "title": "Hiring Panel: Senior SRE",
+   "description": "Final panel for the Senior SRE role. Lena is the hiring manager and makes the final call.",
+   "start": "2026-10-28T09:30:00Z",
+   "end": "2026-10-28T10:30:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_neha"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_kofi"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "evt_archboard",
+   "title": "Architecture Review Board",
+   "description": "Monthly review. Lena presents the data platform migration plan; Maya reviews the security design.",
+   "start": "2026-10-29T04:30:00Z",
+   "end": "2026-10-29T05:30:00Z",
+   "organizerId": "p_maya",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_omar"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_raj"
+    },
+    {
+     "personId": "p_ishaan"
+    },
+    {
+     "personId": "p_zoya"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_arb_1",
+     "modifiedAt": "2026-10-01T09:00:00Z",
+     "text": "Board notes. The migration plan comes back on 29 Oct for approval; Lena presents it. Sofia built the cost model.",
+     "sharedWith": [
+      "p_lena",
+      "p_maya",
+      "p_omar",
+      "p_sofia",
+      "p_raj",
+      "p_ishaan",
+      "p_zoya"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_vendorsec",
+   "title": "Cloud Vendor Security Review",
+   "description": "Residual risk sign-off for the new cloud storage vendor.",
+   "start": "2026-10-29T10:30:00Z",
+   "end": "2026-10-29T11:15:00Z",
+   "organizerId": "p_raj",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_ben"
+    },
+    {
+     "personId": "p_luis"
+    },
+    {
+     "personId": "p_omar"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_vs_1",
+     "modifiedAt": "2026-10-14T11:00:00Z",
+     "text": "Security review notes. Raj leads the review. Lena signs off on residual risk; Omar signs off when Lena is away. Ben checks the contract clauses.",
+     "sharedWith": [
+      "p_lena",
+      "p_raj",
+      "p_ben",
+      "p_luis",
+      "p_omar"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evt_retro",
+   "title": "Sprint Demo & Retro",
+   "description": "Team demos and the sprint retrospective.",
+   "start": "2026-10-30T09:30:00Z",
+   "end": "2026-10-30T10:30:00Z",
+   "organizerId": "p_omar",
+   "attendees": [
+    {
+     "personId": "p_lena"
+    },
+    {
+     "personId": "p_maya"
+    },
+    {
+     "personId": "p_sofia"
+    },
+    {
+     "personId": "p_kofi"
+    },
+    {
+     "personId": "p_raj"
+    }
+   ],
+   "notes": [
+    {
+     "docId": "doc_retro_1",
+     "modifiedAt": "2026-10-16T10:00:00Z",
+     "text": "Retro summary: demos of the backup tooling and the test dashboard; team feedback only. No decisions.",
+     "sharedWith": [
+      "p_lena",
+      "p_omar",
+      "p_maya",
+      "p_sofia",
+      "p_kofi",
+      "p_raj"
+     ]
+    }
+   ]
+  }
+ ],
+ "absences": [
+  {
+   "personId": "p_priya",
+   "start": "2026-10-20",
+   "end": "2026-10-22",
+   "source": "calendar_ooo",
+   "enteredBy": "p_priya"
+  },
+  {
+   "personId": "p_kiran",
+   "start": "2026-10-12",
+   "end": "2026-10-13",
+   "source": "manual",
+   "enteredBy": "p_priya"
+  },
+  {
+   "personId": "p_arjun",
+   "start": "2026-10-26",
+   "end": "2026-10-28",
+   "source": "calendar_ooo",
+   "enteredBy": "p_arjun"
+  },
+  {
+   "personId": "p_tara",
+   "start": "2026-10-27",
+   "end": "2026-10-27",
+   "source": "manual",
+   "enteredBy": "p_tara"
+  },
+  {
+   "personId": "p_rohan",
+   "start": "2026-10-28",
+   "end": "2026-10-28",
+   "source": "manual",
+   "enteredBy": "p_rohan"
+  },
+  {
+   "personId": "p_lena",
+   "start": "2026-10-26",
+   "end": "2026-10-30",
+   "source": "calendar_ooo",
+   "enteredBy": "p_lena"
+  }
+ ],
+ "pastWeek": {
+  "now": "2026-10-01T09:00:00Z",
+  "absences": [
+   {
+    "personId": "p_dev",
+    "start": "2026-10-06",
+    "end": "2026-10-07",
+    "source": "calendar_ooo",
+    "enteredBy": "p_dev"
+   },
+   {
+    "personId": "p_meena",
+    "start": "2026-10-08",
+    "end": "2026-10-08",
+    "source": "calendar_ooo",
+    "enteredBy": "p_meena"
+   },
+   {
+    "personId": "p_priya",
+    "start": "2026-10-05",
+    "end": "2026-10-05",
+    "source": "calendar_ooo",
+    "enteredBy": "p_priya"
+   },
+   {
+    "personId": "p_arjun",
+    "start": "2026-10-06",
+    "end": "2026-10-06",
+    "source": "calendar_ooo",
+    "enteredBy": "p_arjun"
+   }
+  ],
+  "actions": [
+   {
+    "eventId": "evt_close_rev",
+    "absent": "p_dev",
+    "by": "p_dev",
+    "action": "proxy",
+    "proxyId": "p_rohan",
+    "accept": true
+   },
+   {
+    "eventId": "evt_vendor_onb",
+    "absent": "p_dev",
+    "by": "p_sam",
+    "action": "reschedule"
+   },
+   {
+    "eventId": "evt_golive",
+    "absent": "p_dev",
+    "by": "p_dev",
+    "action": "proceed_without"
+   },
+   {
+    "eventId": "evt_costmodel",
+    "absent": "p_meena",
+    "by": "p_meena",
+    "action": "proxy",
+    "proxyId": "p_ishaan",
+    "accept": true
+   },
+   {
+    "eventId": "evt_q3vendor",
+    "absent": "p_priya",
+    "by": "p_priya",
+    "action": "proxy",
+    "proxyId": "p_meena",
+    "accept": true
+   },
+   {
+    "eventId": "evt_fin_lead",
+    "absent": "p_arjun",
+    "by": "p_vera",
+    "action": "reschedule"
+   },
+   {
+    "eventId": "evt_proc_ops",
+    "absent": "p_meena",
+    "by": "p_vera",
+    "action": "proceed_without"
+   }
+  ]
+ }
 }

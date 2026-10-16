@@ -10,7 +10,7 @@ export function statusLabel(status, mine, who, chosenAction) {
     proxy_declined: "Proxy declined",
     awaiting_organizer: chosenAction === "cancel" ? "Cancel requested" : "Reschedule requested",
     rescheduled: "Rescheduled",
-    cancelled: "Cancelled",
+    cancelled: "Canceled",
     no_slot_found: "No suitable time found",
   };
   return labels[status] ?? status;
@@ -61,6 +61,13 @@ export function fmtDay(isoDate) {
 }
 
 // "1 meeting is" / "3 meetings are": counts read correctly in English.
+// Two calendar dates as one range: "20 – 22 Oct" in the same month, "30 Oct – 2 Nov" across months.
+export function fmtRange(startIso, endIso) {
+  const [, m1, d1] = startIso.split("-").map(Number);
+  const [, m2] = endIso.split("-").map(Number);
+  return m1 === m2 ? `${d1} – ${fmtDay(endIso)}` : `${fmtDay(startIso)} – ${fmtDay(endIso)}`;
+}
+
 export function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }

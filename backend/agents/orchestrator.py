@@ -19,7 +19,7 @@ from app.calendar import SimCalendar
 from app.models import AiResult, CalEvent, ItemKind, Person
 from app.roles import has_hosting_role, is_large_meeting, is_named_in
 from app.settings import settings as S
-from .recommender import recommend
+from .fallback.rules_recommender import recommend   # FALLBACK ONLY
 
 log = logging.getLogger("close_the_gap.ai")
 
@@ -49,7 +49,7 @@ def _with_retries(call: Callable[[], tuple[ItemKind, AiResult]]) -> tuple[ItemKi
 
 def ai_needed(event: CalEvent, absent: Person, notes) -> bool:
     """False when our rules answer on their own, with no AI review: a large event where this person has no hosting
-    role (Decision 55) and is not even named in it. If they are named ("Arjun walks us through the H2 numbers"), the
+    role and is not even named in it. If they are named ("Arjun walks us through the H2 numbers"), the
     AI looks (`[ai] large_event_ai_when_named`), because a keyword list cannot catch every way of saying "presents".
     Large events stay cheap: one AI call only for people the event actually mentions, never for the whole audience."""
     if not is_large_meeting(event) or has_hosting_role(event, absent, notes):
@@ -74,16 +74,25 @@ def analyze(
     if not (S.ai.enabled and use_ai):
         return rule_based()
 
-    # A large event where this person has no hosting role needs no AI review (Decision 55): plain rules, no cost.
+    # A large event where this person has no hosting role needs no AI review: plain rules, no cost.
     if not ai_needed(event, absent, notes):
         kind, ai = rule_based()
         ai.engine = "rules_policy"
-        ai.checks = ["large event, no hosting role and not named in it: handled by our rules, no AI review needed"]
+        ai.checks = ["a large event where this person has no hosting role and isn't named: our rules handle it, so no AI review is needed"]
         return kind, ai
 
     from . import guard
     from . import recommender_ai   # imported here so the app runs without the Google library when AI is off
-    check = lambda k, a: guard.check(k, a, event, absent, people, notes, is_out or (lambda _p, _d: False), rule_based)  # noqa: E731
+
+    def check(k: ItemKind, a: AiResult) -> tuple[ItemKind, AiResult]:
+        """The plain-code checks, then: record what simple rules alone would have said for the same meeting, so the
+        card can show the difference the AI makes (no extra AI call: the rules are cheap)."""
+        k, a = guard.check(k, a, event, absent, people, notes, is_out or (lambda _p, _d: False), rule_based)
+        rk, ra = rule_based()
+        a.kind = k
+        a.rulesAnswer = {"kind": rk.value, "recommendation": ra.recommendation.value if ra.recommendation else None,
+                         "suggestedProxyId": ra.suggestedProxyId, "reason": ra.reason}
+        return k, a
 
     # 1. The ADK agent, once (it already makes several calls; a failure goes straight to the single call below).
     agent_note = None
@@ -95,7 +104,8 @@ def analyze(
             return check(kind, ai)
         except Exception as err:   # noqa: BLE001
             log.warning("ADK agent failed for '%s' (%s): using the single Gemini call", event.title, err)
-            agent_note = f"ADK agent unavailable ({type(err).__name__}); answered by a single Gemini call"
+            what = "didn't answer in time" if isinstance(err, TimeoutError) else "wasn't available"
+            agent_note = f"the ADK agent {what}, so a single Gemini call answered instead"
 
     # 2. One Gemini call with everything in the prompt, retried on temporary errors.
     try:
@@ -107,7 +117,7 @@ def analyze(
             raise
         kind, ai = rule_based()
         ai.engine = "rules_fallback"
-        ai.checks = [f"AI unavailable ({type(err).__name__}); rule-based suggestion shown"]
+        ai.checks = ["the AI was unavailable, so the rule-based suggestion is shown"]
         return kind, ai
 
     ai.engine = "gemini"
