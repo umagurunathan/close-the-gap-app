@@ -1,4 +1,5 @@
 """Settings come from environment variables so the same code runs locally and on Cloud Run."""
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -31,30 +32,38 @@ def firestore_database() -> str:
     return os.getenv("FIRESTORE_DATABASE", "(default)")
 
 
+def _area_name(variable: str, default: str) -> str:
+    name = os.getenv(variable, default).strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+        raise ValueError(f"{variable} must start with a lowercase letter and contain only lowercase letters, "
+                         "digits, or underscores.")
+    return name
+
+
 def firestore_workspace_id() -> str:
-    workspace_id = os.getenv("FIRESTORE_WORKSPACE_ID", "company").strip()
-    if not re.fullmatch(r"[a-z][a-z0-9_]*", workspace_id):
-        raise ValueError(
-            "FIRESTORE_WORKSPACE_ID must start with a lowercase letter and contain only lowercase letters, "
-            "digits, or underscores."
-        )
-    return workspace_id
+    """The company area: people who sign in with Google, and only their own data."""
+    return _area_name("FIRESTORE_WORKSPACE_ID", "company")
+
+
+def demo_workspace_id() -> str:
+    """The demo area: everyone who has not signed in, acting as one of the demo people (seed.json)."""
+    return _area_name("FIRESTORE_DEMO_WORKSPACE_ID", "guest")
+
+
+def company_directory() -> list[dict]:
+    """The real people who may sign in: a JSON list of {id, name, email, title, department, managerId}. Private:
+    Secret Manager on Cloud Run, the git-ignored .env locally; never in the code."""
+    raw = os.getenv("COMPANY_DIRECTORY", "").strip()
+    if not raw:
+        return []
+    people = json.loads(raw)
+    if not isinstance(people, list) or not all(isinstance(p, dict) and p.get("id") and p.get("email") for p in people):
+        raise ValueError("COMPANY_DIRECTORY must be a JSON list of people, each with at least an id and an email.")
+    return people
 
 
 def firebase_auth_enabled() -> bool:
     return os.getenv("FIREBASE_AUTH_ENABLED", "").strip().lower() == "true"
-
-
-def data_mode_switch_enabled() -> bool:
-    return os.getenv("DATA_MODE_SWITCH_ENABLED", "").strip().lower() == "true"
-
-
-def data_mode_admin_emails() -> set[str]:
-    return {
-        email.strip().casefold()
-        for email in os.getenv("DATA_MODE_ADMIN_EMAILS", "").split(",")
-        if email.strip()
-    }
 
 
 def vertex_ai_location() -> str:
@@ -78,10 +87,15 @@ def web_app_url() -> str:
 
 
 def now() -> datetime:
-    """Current time. NOW env var fixes it (handy for demos and tests)."""
+    """Current time for the demo area. NOW env var fixes it (handy for demos and tests); the company area always
+    uses the real clock (real_now), because real people's meetings come from their real calendars."""
     fixed = os.getenv("NOW")
     if fixed:
         return datetime.fromisoformat(fixed.replace("Z", "+00:00"))
+    return datetime.now(timezone.utc)
+
+
+def real_now() -> datetime:
     return datetime.now(timezone.utc)
 
 

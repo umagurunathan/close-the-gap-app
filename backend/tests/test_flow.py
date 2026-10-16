@@ -346,17 +346,37 @@ def test_google_meet_oauth_imports_and_updates_transcript_note(client, svc, monk
     assert not any(n.source == "google_meet_transcript" for n in svc.meeting_notes(item.id, "p_dev"))
 
 
-def test_google_meet_link_is_restricted_to_organizer_and_valid_meet_urls(client, svc):
+def _signed_in_client(svc, monkeypatch):
+    """A client where the bearer token "as:<person id>" signs in as that person (only signed-in
+    people connect Google Meet or Calendar)."""
+    from app import firebase_auth
+    monkeypatch.setenv("FIREBASE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "close-the-gap-2026")
+    emails = {p.id: p.email for p in svc.store.people()}
+    monkeypatch.setattr(firebase_auth, "verify_firebase_token",
+                        lambda token, request, audience: {"email": emails[token.split(":", 1)[1]], "email_verified": True})
+    return TestClient(create_app(svc))
+
+
+def SIGNED(person):
+    return {"Authorization": f"Bearer as:{person}"}
+
+
+def test_google_meet_link_is_restricted_to_organizer_and_valid_meet_urls(svc, monkeypatch):
+    client = _signed_in_client(svc, monkeypatch)
     item = next(i for i in svc.store.items() if i.event.title == "Design Review")
     path = f"/items/{item.id}/meet"
+    # a guest (no sign-in) can never link Google Meet: the demo uses sample meetings
     assert client.put(path, json={"meetUrl": "https://meet.google.com/abc-defg-hij"},
-                      headers=H("p_priya")).status_code == 403
+                      headers=H("p_meena")).status_code == 403
+    assert client.put(path, json={"meetUrl": "https://meet.google.com/abc-defg-hij"},
+                      headers=SIGNED("p_priya")).status_code == 403
     assert client.put(path, json={"meetUrl": "https://example.com/not-a-meet"},
-                      headers=H("p_meena")).status_code == 400
+                      headers=SIGNED("p_meena")).status_code == 400
     saved = client.put(path, json={"meetUrl": "https://meet.google.com/abc-defg-hij"},
-                       headers=H("p_meena"))
+                       headers=SIGNED("p_meena"))
     assert saved.status_code == 200 and saved.json()["meetUrl"] == "https://meet.google.com/abc-defg-hij"
-    assert client.get(path, headers=H("p_neha")).status_code == 403
+    assert client.get(path, headers=SIGNED("p_neha")).status_code == 403
 
 
 def test_google_calendar_oauth_and_sync_store_only_directory_people(svc, monkeypatch):
@@ -473,8 +493,11 @@ def test_google_calendar_write_failure_does_not_resolve_local_item(svc):
     assert event.cancelled is False
 
 
-def test_google_calendar_oauth_is_restricted_to_loopback(client):
-    response = client.get("/integrations/google-calendar/authorize", headers=H("p_sam"))
+def test_google_calendar_oauth_is_restricted_to_loopback(svc, monkeypatch):
+    client = _signed_in_client(svc, monkeypatch)
+    # a guest is refused outright; a signed-in person outside the hosted setup only from the same machine
+    assert client.get("/integrations/google-calendar/authorize", headers=H("p_sam")).status_code == 403
+    response = client.get("/integrations/google-calendar/authorize", headers=SIGNED("p_sam"))
     assert response.status_code == 403
     assert response.json()["detail"] == "Google Calendar demo access is limited to local requests."
 

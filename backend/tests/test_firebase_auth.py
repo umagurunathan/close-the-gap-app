@@ -56,79 +56,60 @@ def test_firebase_auth_rejects_unmapped_or_unverified_accounts(monkeypatch):
     assert client.get("/people", headers={"Authorization": "Bearer valid-token"}).status_code == 403
 
 
-def test_firebase_auth_protects_routes_but_keeps_health_public(monkeypatch):
-    client = _client(monkeypatch, {
-        "email": _arjun_email(),
-        "email_verified": True,
-    })
+def test_without_sign_in_a_visitor_is_a_guest_in_the_demo(monkeypatch):
+    client = _client(monkeypatch, {"email": _arjun_email(), "email_verified": True})
 
     assert client.get("/health").status_code == 200
-    assert client.get("/people").status_code == 401
+    # no token: a guest, who may act as a demo person but must choose one
+    assert client.get("/me", headers={"X-Person-Id": "p_priya"}).status_code == 200
+    assert client.get("/me").status_code == 401
+    assert client.get("/session").json() == {"signedIn": False, "personId": None, "area": "demo"}
+    # a token that cannot be read is still refused
+    assert client.get("/me", headers={"Authorization": "Basic nope"}).status_code == 401
 
 
 def test_firebase_auth_errors_include_cors_headers(monkeypatch):
     monkeypatch.setenv("CORS_ORIGINS", "https://close-the-gap-2026.web.app")
-    client = _client(monkeypatch, {"email": _arjun_email(), "email_verified": True})
+    client = _client(monkeypatch, {"email": "someone@example.net", "email_verified": True})
 
-    response = client.get("/data-mode", headers={"Origin": "https://close-the-gap-2026.web.app"})
+    response = client.get("/me", headers={"Origin": "https://close-the-gap-2026.web.app",
+                                          "Authorization": "Bearer valid-token"})
 
-    assert response.status_code == 401
+    assert response.status_code == 403
+    assert response.json()["code"] == "not_in_directory"
     assert response.headers["access-control-allow-origin"] == "https://close-the-gap-2026.web.app"
 
 
-def test_firebase_auth_disables_demo_only_endpoints(monkeypatch):
-    client = _client(monkeypatch, {
-        "email": _arjun_email(),
-        "email_verified": True,
-    })
+def test_signed_in_people_cannot_reset_the_demo_and_see_only_their_own_emails(monkeypatch):
+    client = _client(monkeypatch, {"email": _arjun_email(), "email_verified": True})
     headers = {"Authorization": "Bearer valid-token"}
 
-    assert client.get("/dev/outbox", headers=headers).status_code == 404
-    # Reset only touches the demo people (everyone in seed.json), so it stays available with sign-in on
-    assert client.post("/dev/reset-demo", headers=headers).status_code == 200
+    assert client.post("/dev/reset-demo", headers=headers).status_code == 403
+    assert all(m["to"] == _arjun_email() for m in client.get("/dev/outbox", headers=headers).json())
+    assert client.post("/dev/reset-demo").status_code == 200   # a guest may reset the demo
 
 
-def test_global_data_mode_switch_is_limited_to_allowlisted_presenters(monkeypatch):
-    from app import data_mode
+def test_the_two_areas_never_mix(monkeypatch):
+    """The demo and the company are separate areas; neither side can reach the other."""
+    import json
+    monkeypatch.setenv("FIREBASE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "close-the-gap-2026")
+    monkeypatch.setenv("COMPANY_DIRECTORY", json.dumps([
+        {"id": "p_real", "name": "Real Person", "email": "real.person@example.org", "title": "Software Engineer"}]))
+    claims = {"email": "real.person@example.org", "email_verified": True}
+    monkeypatch.setattr(firebase_auth, "verify_firebase_token", lambda token, request, audience: claims)
+    client = TestClient(create_app())
+    signed = {"Authorization": "Bearer valid-token"}
 
-    arjun_email = _arjun_email()
-    claims = {"email": arjun_email, "email_verified": True}
-    monkeypatch.setenv("DATA_MODE_SWITCH_ENABLED", "true")
-    monkeypatch.setenv("DATA_MODE_ADMIN_EMAILS", arjun_email)
-
-    class FakeRegistry:
-        def __init__(self):
-            self.mode = "memory"
-
-        def get(self):
-            return self.mode
-
-        def set(self, mode):
-            self.mode = mode
-
-    registry = FakeRegistry()
-    monkeypatch.setattr(data_mode, "FirestoreDataMode", lambda: registry)
-    client = _client(monkeypatch, claims)
-    headers = {"Authorization": "Bearer unit-test-token"}
-
-    response = client.get("/data-mode", headers=headers)
-    assert response.status_code == 200
-    assert response.json() == {"enabled": True, "mode": "memory", "canSwitch": True}
-
-    claims["email"] = "sam@example.com"
-    response = client.post("/data-mode", headers=headers, json={"mode": "firestore"})
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Only an authorized demo presenter can change the app-wide data mode."
-
-    from app import main
-    from app.calendar import SimCalendar
-    from app.service import Service
-    from app.store import FirestoreStore
-
-    claims["email"] = arjun_email
-    next_service = Service(FirestoreStore(object()), SimCalendar([]))
-    monkeypatch.setattr(main, "build_service", lambda mode: next_service)
-    response = client.post("/data-mode", headers=headers, json={"mode": "firestore"})
-    assert response.status_code == 200
-    assert response.json() == {"enabled": True, "mode": "firestore", "canSwitch": True}
-    assert registry.mode == "firestore"
+    # the real person sees only the company: themselves, no demo people, no demo meetings
+    assert client.get("/me", headers=signed).json()["person"]["id"] == "p_real"
+    assert [p["id"] for p in client.get("/people", headers=signed).json()] == ["p_real"]
+    assert client.get("/items", params={"mode": "attendee"}, headers=signed).json()["needsAction"] == []
+    assert client.get("/session", headers=signed).json()["area"] == "company"
+    # a guest cannot act as the real person, and sees only the demo people
+    assert client.get("/me", headers={"X-Person-Id": "p_real"}).status_code == 401
+    guest_people = [p["id"] for p in client.get("/people").json()]
+    assert "p_real" not in guest_people and "p_priya" in guest_people
+    # a demo person's email is not in the company directory, so it cannot sign in
+    claims["email"] = _arjun_email()
+    assert client.get("/me", headers=signed).status_code == 403

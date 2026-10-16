@@ -37,17 +37,14 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
             svc.create_absence(absence_data["personId"], _d(absence_data["start"]), _d(absence_data["end"]),
                                AbsenceSource(absence_data["source"]), absence_data["enteredBy"])
     elif kind == "firestore":
+        # the demo area: the seed's people have made-up @example.com addresses
         client = new_client(config.firestore_project(), config.firestore_database())
-        workspace_id = config.firestore_workspace_id()
+        workspace_id = config.demo_workspace_id()
         store = FirestoreStore(client, workspace_id)
         calendar = FirestoreCalendar(client, workspace_id)
         new_events = []
         for person in people:
-            if workspace_id == "guest":
-                person.email = f"{person.id}@example.invalid"
-                store.ensure_guest_person(person)
-            else:
-                store.add_person_if_missing(person)
+            store.add_person_if_missing(person)
         for event in events:
             if calendar.add_event_if_missing(event):
                 new_events.append(event)
@@ -68,6 +65,25 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
     else:
         raise ValueError(f"Unsupported STORE={kind!r}; expected 'memory' or 'firestore'")
     notify.clear()  # don't show the seeding emails as if they were live
+    return svc
+
+
+def build_company_service(mode: Optional[str] = None) -> Service:
+    """The company area: the real people in the private company directory, and the meetings they
+    import from their own Google Calendar. Never seeded from seed.json and never reset. Real time, not NOW."""
+    people = [Person(**p) for p in config.company_directory()]
+    kind = (mode or config.store_kind()).strip().lower()
+    if kind == "firestore":
+        client = new_client(config.firestore_project(), config.firestore_database())
+        store = FirestoreStore(client, config.firestore_workspace_id())
+        calendar = FirestoreCalendar(client, config.firestore_workspace_id())
+        for person in people:
+            store.save_person(person)   # the directory is the source of truth for name, email and title
+    else:
+        store = InMemoryStore(people)
+        calendar = SimCalendar([])
+    svc = Service(store, calendar)
+    svc.now = config.real_now
     return svc
 
 

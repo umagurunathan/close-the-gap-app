@@ -1,4 +1,5 @@
-"""Firebase ID-token verification and mapping to one directory person."""
+"""Firebase ID-token verification and mapping to one directory person. A request without a token is a guest in
+the demo area; a request with a valid token is that person in the company area."""
 from __future__ import annotations
 
 import logging
@@ -39,9 +40,12 @@ def install_firebase_auth(app: FastAPI, store: Store | Callable[[], Store]) -> N
             return await call_next(request)
 
         authorization = request.headers.get("authorization", "")
+        if not authorization:
+            # no sign-in: a guest, who works in the demo area as one of the demo people
+            return await call_next(request)
         scheme, _, token = authorization.partition(" ")
         if scheme.casefold() != "bearer" or not token:
-            return JSONResponse({"detail": "Sign in with Google to continue."}, status_code=401)
+            return JSONResponse({"detail": "Your sign-in could not be read. Please sign in again."}, status_code=401)
 
         try:
             claims = verify_firebase_token(token, google_request, audience=project_id)
@@ -60,7 +64,8 @@ def install_firebase_auth(app: FastAPI, store: Store | Callable[[], Store]) -> N
         ]
         if len(matches) != 1:
             return JSONResponse(
-                {"detail": "Your Google account is not linked to exactly one person in the company directory."},
+                {"detail": "This Google account isn't in the company directory. You can keep using the demo.",
+                 "code": "not_in_directory"},
                 status_code=403,
             )
 
