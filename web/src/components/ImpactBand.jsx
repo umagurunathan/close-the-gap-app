@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { recall, remember } from "../storage.js";
+import { Icon } from "./Icons.jsx";
+import CompanyScale from "./CompanyScale.jsx";
 
 // The impact band: what Close the Gap saved, for a chosen period (rolling windows from the demo's "today").
 // Hours are estimates; the formula (from the config) is shown on hover.
@@ -17,9 +19,34 @@ function shift(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
+// The small (i) next to a number: tap or click to see how it is counted (hover tooltips don't work on touch screens).
+function InfoTip({ id, open, onToggle, children }) {
+  return (
+    <span className="info-wrap">
+      <button type="button" className="info-btn" aria-label="How this is counted" aria-expanded={open}
+        aria-controls={id} onClick={(e) => { e.stopPropagation(); onToggle(); }}>
+        <Icon name="info" size={14} />
+      </button>
+      {open && <span className="info-pop" id={id} role="note">{children}</span>}
+    </span>
+  );
+}
+
 export default function ImpactBand({ today, tick }) {
   const [period, setPeriod] = useState(() => recall("impactPeriod") || "all");
   const [m, setM] = useState(null);
+  const [openTip, setOpenTip] = useState(null);   // which tile's "how it's counted" is open
+  const [showScale, setShowScale] = useState(false);   // the "At company scale" table
+
+  // a click anywhere else, or Escape, closes it
+  useEffect(() => {
+    if (!openTip) return undefined;
+    const close = () => setOpenTip(null);
+    const onKey = (e) => e.key === "Escape" && close();
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("keydown", onKey); };
+  }, [openTip]);
 
   useEffect(() => {
     const p = PERIODS.find((x) => x.id === period);
@@ -34,11 +61,28 @@ export default function ImpactBand({ today, tick }) {
 
   if (!m) return null;
 
+  const pct = m.meetingsAffected ? Math.round((100 * m.meetingsWithPlan) / m.meetingsAffected) : 0;
+  const tips = {
+    saved: `${m.estimateNote}${m.peopleSpared ? ` ${m.peopleSpared} people were spared a wasted start.` : ""}`,
+    gaps: `Affected meetings that already have a plan: covered by a proxy, going ahead, rescheduled or canceled by a person, or handled automatically. Of these ${m.meetingsWithPlan}, ${m.handledAutomatically} ${m.handledAutomatically === 1 ? "was" : "were"} handled automatically.`,
+    notice: "On average, how many days before the meeting the plan was made: the earlier, the less disruption.",
+    ontime: `Key meetings that went ahead, with a proxy or without the person, instead of waiting for them to come back. Days of waiting avoided: from each meeting to the first working day the person is back${m.decisionsOnSchedule ? ` (${m.daysWaitingAvoided} in all)` : ""}.`,
+    accepted: m.decisionsCounted
+      ? `Of the ${m.decisionsCounted} decisions people made, how many followed the AI's recommendation. Meetings handled automatically are not counted here.`
+      : "Counts only decisions made by people. Meetings handled automatically are not counted here.",
+  };
+  const tip = (key) => (
+    <InfoTip id={`tip-${key}`} open={openTip === key} onToggle={() => setOpenTip(openTip === key ? null : key)}>
+      {tips[key]}
+    </InfoTip>
+  );
+
   // One slim row: the counts go in the title line, the four numbers sit beside their labels, the note is one line.
   return (
-    <section className="impact-band" aria-label="Impact">
+    <section className="impact-band" aria-label="Company-wide impact">
       <div className="impact-head">
         <h2 className="impact-title">
+          <Icon name="trend" size={16} />
           Company-wide impact
           <small>
             {" "}· {m.absencesSpotted} {m.absencesSpotted === 1 ? "absence" : "absences"} spotted ·{" "}
@@ -55,39 +99,53 @@ export default function ImpactBand({ today, tick }) {
       <div className="impact-tiles">
         {/* nothing saved yet in this period (e.g. coming weeks): the honest number is what is at risk */}
         {m.teamHoursSaved > 0 || m.teamHoursAtRisk === 0 ? (
-          <div className="impact-tile hero" title={m.estimateNote}>
+          <div className="impact-tile hero">
             <b>{m.teamHoursSaved}<small> h</small></b>
-            <span>Team time saved{m.teamHoursAtRisk > 0 && <em>+ {m.teamHoursAtRisk} h still at risk</em>}</span>
+            <span>Team time saved {tip("saved")}{m.teamHoursAtRisk > 0 && <em>+ {m.teamHoursAtRisk} h still at risk</em>}</span>
           </div>
         ) : (
-          <div className="impact-tile hero risk" title={m.estimateNote}>
+          <div className="impact-tile hero risk">
             <b>{m.teamHoursAtRisk}<small> h</small></b>
-            <span>Team time at risk<em>Decide early to save it</em></span>
+            <span>Team time at risk {tip("saved")}<em>Decide early to save it</em></span>
           </div>
         )}
-        <div className="impact-tile" title={`Affected meetings that already have a plan: covered by a proxy, going ahead, rescheduled or canceled by a person, or handled automatically. Of these ${m.meetingsWithPlan}, ${m.handledAutomatically} ${m.handledAutomatically === 1 ? "was" : "were"} handled automatically.`}>
+        <div className="impact-tile">
+          <b>{m.decisionsOnSchedule}</b>
+          <span>
+            Decisions kept on schedule {tip("ontime")}
+            {m.decisionsOnSchedule > 0 && <em className="good">{m.daysWaitingAvoided} {m.daysWaitingAvoided === 1 ? "day" : "days"} of waiting avoided</em>}
+          </span>
+        </div>
+        <div className="impact-tile">
           <b>{m.meetingsWithPlan}<small> of {m.meetingsAffected}</small></b>
-          <span>Meetings with the gap closed</span>
+          <span>
+            Meetings with the gap closed {tip("gaps")}
+            <span className="impact-bar" role="img" aria-label={`${pct}% of affected meetings have a plan`}>
+              <span style={{ width: `${pct}%` }} />
+            </span>
+          </span>
         </div>
-        <div className="impact-tile" title="On average, how many days before the meeting the plan was made.">
+        <div className="impact-tile">
           <b>{m.avgNoticeDays}<small> days</small></b>
-          <span>Average notice</span>
+          <span>Average notice {tip("notice")}</span>
         </div>
-        <div className="impact-tile" title={m.decisionsCounted
-          ? `Of the ${m.decisionsCounted} decisions people made, how many followed the recommendation. Meetings handled automatically are not counted here.`
-          : "Counts only decisions made by people. Meetings handled automatically are not counted here."}>
+        <div className="impact-tile">
           <b>{m.recommendationsFollowedPct ?? "–"}{m.recommendationsFollowedPct != null && <small>%</small>}</b>
           <span>
-            AI recommendations accepted
+            AI recommendations accepted {tip("accepted")}
             {!m.decisionsCounted && (
               <em className="calm">No decisions by people yet{m.handledAutomatically ? ` · ${m.handledAutomatically} handled automatically` : ""}</em>
             )}
           </span>
         </div>
       </div>
-      <p className="impact-foot">
-        Estimates across everyone's meetings: a leaders' view, open to all in this demo. Hover over a tile to see how it's counted.
-      </p>
+      <div className="impact-foot">
+        <span>
+          Estimates across everyone's meetings: a leaders' view, open to all in this demo. Tap <Icon name="info" size={12} /> to see how each number is counted.
+        </span>
+        <button type="button" className="link scale-link" onClick={() => setShowScale(true)}>At company scale ›</button>
+      </div>
+      {showScale && <CompanyScale onClose={() => setShowScale(false)} />}
     </section>
   );
 }

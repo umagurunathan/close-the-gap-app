@@ -3,7 +3,8 @@
 export default function Logo({ size = 40 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-      <rect x="1" y="1" width="38" height="38" rx="11" fill="#5b5fc7" />
+      {/* the brand colour follows the theme (web/src/themes.js) */}
+      <rect x="1" y="1" width="38" height="38" rx="11" style={{ fill: "var(--primary)" }} />
       {/* left calendar half */}
       <rect x="7" y="11" width="11" height="19" rx="3" fill="#ffffff" />
       <rect x="9.5" y="8" width="2.4" height="5" rx="1.2" fill="#ffffff" />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { prettyModel } from "./aiBits.jsx";
+import { Icon } from "./Icons.jsx";
 
 // Choose a proxy for ONE absent person's item: from the meeting's attendees or anyone in the directory, with an
 // optional note (Draft with AI only when allowed). Used on the person's card and on each line of the organizer's card.
@@ -159,7 +160,7 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
         </button>
         {fromAi && draftSource?.engine === "gemini" && (
           <span className="pill src-ai" title="Written by Gemini from the summaries you and the proxy can both open.">
-            ✓ Drafted by {prettyModel(draftSource.model)}
+            <Icon name="check" size={13} />Drafted by {prettyModel(draftSource.model)}
           </span>
         )}
         {fromAi && draftSource?.engine === "rules_fallback" && (
@@ -177,7 +178,9 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
       )}
       <div className="actions">
         <button className="primary" disabled={busy || !pick} onClick={send} aria-describedby={`send-why-${item.id}`}>
-          {busy ? "Sending…" : "Send proxy request"}
+          {busy ? "Sending…" : !note.trim() ? "Send proxy request"
+            : fromAi && draftSource?.engine === "gemini" ? <><Icon name="spark" size={15} />Send request with the AI note</>
+              : "Send request with the note"}
         </button>
         <button className="link" onClick={onBack}>Back</button>
       </div>

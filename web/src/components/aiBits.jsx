@@ -105,7 +105,7 @@ export function ProxySuggestions({ ai, declined = [], name }) {
         {picks.map(([id, label], n) => (
           <span key={id}>
             {n > 0 && " · "}
-            <b className={declined.includes(id) ? "declined-name" : ""}>{name(id)}</b>
+            <b className={declined.includes(id) ? "declined-name" : "proxy-name"}>{name(id)}</b>
             {picks.length > 1 && ` (${label}${declined.includes(id) ? ", declined" : ""})`}
             {picks.length === 1 && declined.includes(id) && " (declined)"}
           </span>

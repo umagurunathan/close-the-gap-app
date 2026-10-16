@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-// "Demo guide": whom to pick under "Signed in as" and what to try. Short on purpose; the cards explain the rest.
+// "Demo guide": whom to pick under "View as" and what to try. Short on purpose; the cards explain the rest.
 export default function DemoGuide({ onClose }) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -17,29 +17,34 @@ export default function DemoGuide({ onClose }) {
           <button className="message-close" onClick={onClose} aria-label="Close the demo guide" autoFocus>✕</button>
         </header>
         <p className="reason">
-          Pick a person under <b>View as</b> in the dark bar at the top. The people and meetings are sample data;
-          <b> Reset sample data</b> restores them. <b>Emails sent</b> shows the emails the app would send.
+          Pick a person in the dark bar at the top. The people and meetings are sample data; <b>Reset data</b> restores
+          them. <b>Emails</b> shows the emails the app would send.
         </p>
         <ol className="guide-steps">
           <li>
-            <b>Priya Sharma</b>, going on leave 20–22 Oct. In <b>Attendee Mode</b>, each meeting has an AI
-            recommendation (proxy, go ahead without her, reschedule). Try <b>Ask Meena to cover</b> →
-            <b> Draft with AI</b> for a handover note.
+            <b>Priya Sharma</b>, going on leave 20–22 Oct. In <b>Attendee Mode</b>, pick a meeting on the left; its
+            AI recommendation opens on the right. On <b>Q4 Budget Review</b>, try <b>Ask Meena to cover</b> →
+            <b> Draft with AI</b> for a handover note. Decided meetings move to <b>Settled</b>; team check-ins wait in
+            <b> No action needed</b>.
           </li>
           <li>
             <b>Meena Iyer</b>, asked to cover. In <b>Proxy Requests</b>, <b>Accept</b> or <b>Decline</b>. If she
-            declines, Priya's card shows the second choice.
+            declines, Priya's card offers the second choice.
           </li>
           <li>
             <b>Sam Wilson</b>, organizer. In <b>Organizer Mode</b>, one card per meeting with everyone who is out; he can
             act for the whole meeting.
           </li>
           <li>
-            <b>Arjun Rao</b>, where the AI beats simple rules. Open <b>Recommendation details</b> on his cards to see what
-            the agent looked up. "Weekly Ops Sync" looks routine, but the AI flags it.
+            <b>Arjun Rao</b>, where the AI beats simple rules. His cards show the agent's steps and what simple rules
+            alone would have said. "Weekly Ops Sync" looks routine, but the AI flags it.
           </li>
           <li>
             <b>Kiran Patel</b>, out suddenly. His organizer, Sam, is alerted straight away.
+          </li>
+          <li>
+            <b>Lena Fox</b>, on vacation for a week (26–30 Oct). A full calendar: daily stand-ups go on without her,
+            and each of the other meetings gets its own recommendation.
           </li>
         </ol>
         <p className="reason">

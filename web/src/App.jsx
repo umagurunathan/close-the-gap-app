@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { fmtDay, fmtRange, fmtWhen, needAction, plural } from "./format.js";
 import MeetingCard from "./components/MeetingCard.jsx";
@@ -11,12 +11,27 @@ import DemoGuide from "./components/DemoGuide.jsx";
 import Logo from "./components/Logo.jsx";
 import ImpactBand from "./components/ImpactBand.jsx";
 import { EmptyState, Icon } from "./components/Icons.jsx";
+import Workspace from "./components/Workspace.jsx";
+import { AttendeeTile, OrganizerTile, ProxyTile } from "./components/Tiles.jsx";
 import { recall, remember } from "./storage.js";
+import { applyTheme } from "./themes.js";
 
 const DEFAULT_PERSON = "p_priya";
 // A link can open the app as someone, on a tab: ?as=p_sam&tab=organizer (handy for demos and the judges' guide).
 const PARAMS = new URLSearchParams(window.location.search);
 const TABS = ["attendee", "organizer", "proxy", "past"];
+// The demo's people, one click each in the judges' bar, with the part they play. Everyone else is under "More".
+const PERSONAS = [["p_priya", "on leave"], ["p_meena", "proxy"], ["p_sam", "organizer"], ["p_arjun", "AI vs rules"],
+  ["p_kiran", "out suddenly"], ["p_lena", "on vacation"]];
+
+// The tab a person lands on: the first with something in "Needs action" (Attendee, then Organizer, then
+// Proxy Requests); Attendee when nothing needs action.
+function naturalTab(c = {}) {
+  if (c.attendeeOpen > 0) return "attendee";
+  if (c.organizerOpen > 0) return "organizer";
+  if (c.proxyOpen > 0) return "proxy";
+  return "attendee";
+}
 
 export default function App() {
   const [people, setPeople] = useState({});
@@ -40,15 +55,23 @@ export default function App() {
   const [settings, setSettings] = useState(null); // from GET /settings/public
   const [activeIds, setActiveIds] = useState(null); // people with something to see; null = not loaded yet
   const [showGuide, setShowGuide] = useState(false);
+  // Each working tab has groups ("Needs action", "Settled", …) and a chosen meeting shown in full on the right.
+  const [group, setGroup] = useState({ attendee: "needs", organizer: "needs", proxy: "waiting" });
+  const [chosen, setChosen] = useState({});
   const [guideSeen, setGuideSeen] = useState(() => recall("guideSeen") === "1");   // "Start here" until opened once
   const [error, setError] = useState("");
+  // After switching person, open the tab where they have something to do (set here, applied once /me arrives).
+  // On the first load too, unless the address names a tab.
+  const pickTabFor = useRef(TABS.includes(PARAMS.get("tab")) ? null : personId);
 
   useEffect(() => {
     api("/people")
       .then((list) => setPeople(Object.fromEntries(list.map((p) => [p.id, p]))))
       .catch((e) => setError(e.message));
     // the few settings the screen shows, from the backend's config file, so the two never disagree
-    api("/settings/public").then(setSettings).catch(() => {});
+    // the colour theme: ?theme=… in the address (to try one), otherwise the config's [ui] theme
+    api("/settings/public").then((s) => { setSettings(s); applyTheme(PARAMS.get("theme") || s.theme); })
+      .catch(() => applyTheme(PARAMS.get("theme")));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -69,6 +92,10 @@ export default function App() {
       ]);
       setMe(m); setAbsences(a); setAttendee(att); setOrganizer(org); setProxyReqs(pr); setPastItems(pi); setPastProxy(pp);
       setHistory(h); setMetrics(met); setOutbox(ob); setActiveIds(act);
+      if (pickTabFor.current === personId) {
+        pickTabFor.current = null;
+        setTab(naturalTab(m?.counts));
+      }
     } catch (e) {
       setError(e.message);
     }
@@ -89,7 +116,10 @@ export default function App() {
 
   function switchPerson(id) {
     remember("personId", id);
+    pickTabFor.current = id;
     setPersonId(id);
+    setGroup({ attendee: "needs", organizer: "needs", proxy: "waiting" });
+    setChosen({});
   }
 
   // Demo only: reload the demo data and clear the AI's cache, so every card is analysed again.
@@ -122,29 +152,29 @@ export default function App() {
     setGuideSeen(true);
     remember("guideSeen", "1");
   }
-  // "Start with the first": the soonest card that still needs a decision, scrolled into view
-  function goToFirst() {
-    setTab("attendee");
-    setTimeout(() => {
-      const card = document.querySelector("main > article.attn-urgent, main > article.attn-soon, main > article.attn-open");
-      card?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
-  }
+  const pick = (t) => ({ group: group[t], onGroup: (g) => setGroup((x) => ({ ...x, [t]: g })),
+    selected: chosen[t], onSelect: (k) => setChosen((x) => ({ ...x, [t]: k })) });
 
   const counts = me?.counts || { attendee: 0, organizer: 0, proxyRequests: 0, attendeeOpen: 0, organizerOpen: 0, proxyOpen: 0 };
   // Activity log lines per meeting, shown inside the cards in Past
   const activityFor = (itemId) => history.filter((h) => h.itemId === itemId).sort((a, b) => a.at.localeCompare(b.at));
   const noAction = attendee.noActionNeeded;
-  const settled = noAction.rescheduledOrCancelled || [];   // rescheduled or cancelled: the gap is closed
-  const noActionCount = noAction.teamCheckins.length + noAction.orgEvents.length + settled.length;
   const affectedCount = attendee.needsAction.length + noAction.teamCheckins.length + noAction.orgEvents.length;
-  const activeMeetings = organizer.filter((m) => !m.done);
-  const doneMeetings = organizer.filter((m) => m.done);
-  // Needs action first, the most urgent on top (red, then amber, then by date); settled ones below, by date.
+  // Attendee Mode's three groups. Needs action: not settled yet. Settled: a person decided (a proxy accepted,
+  // "I'll attend", "go on without me", rescheduled or canceled). No action needed: handled automatically (team
+  // check-ins, org-wide events); if someone acts on one, it moves to Settled. Each group: soonest first.
+  const byStart = (a, b) => a.event.start.localeCompare(b.event.start);
+  const allMine = [...attendee.needsAction, ...noAction.teamCheckins, ...noAction.orgEvents,
+    ...(noAction.rescheduledOrCancelled || [])].sort(byStart);
+  const attNeeds = allMine.filter((i) => i.needsAttention);
+  const attSettled = allMine.filter((i) => !i.needsAttention && i.status !== "auto_handled");
+  const attNone = allMine.filter((i) => !i.needsAttention && i.status === "auto_handled");
+  // Organizer Mode, the same groups as Attendee Mode: Needs action (most urgent first: red, amber, then by date) and
+  // Settled (everyone out has a plan, including meetings rescheduled or canceled), soonest first.
   const URGENCY = { urgent: 0, soon: 1 };
-  const openMeetings = activeMeetings.filter((m) => m.needsAttention)
+  const openMeetings = organizer.filter((m) => m.needsAttention)
     .sort((a, b) => (URGENCY[a.urgency] ?? 2) - (URGENCY[b.urgency] ?? 2) || a.event.start.localeCompare(b.event.start));
-  const settledMeetings = activeMeetings.filter((m) => !m.needsAttention);
+  const settledMeetings = organizer.filter((m) => !m.needsAttention).sort(byStart);
   // Proxy requests: waiting for your answer first, then the ones you answered.
   const waitingReqs = proxyReqs.filter((v) => v.request.status === "pending");
   const answeredReqs = proxyReqs.filter((v) => v.request.status !== "pending");
@@ -156,25 +186,35 @@ export default function App() {
           people, see the emails the app sends, read the guide and restore the sample data. */}
       <div className="demo-toolbar" role="region" aria-label="Demo controls for judges">
         <div className="demo-toolbar-inner">
-          <span className="demo-label">Judges' demo controls</span>
-          <label className="demo-view-as">
-            View as
-            {/* only people with something to see (and whoever is viewed now), so nobody lands on an empty screen */}
-            <select value={personId} onChange={(e) => switchPerson(e.target.value)}>
+          <span className="demo-label"><span className="demo-label-long">Judges' demo</span><span className="demo-label-short">Demo</span></span>
+          <div className="demo-view-as" role="group" aria-label="View as">
+            <span className="demo-view-label">View as</span>
+            {PERSONAS.filter(([id]) => people[id]).map(([id, role]) => (
+              <button key={id} className="persona" aria-pressed={personId === id} onClick={() => switchPerson(id)}
+                title={`View the app as ${people[id].name} (${role})`}>
+                <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
+              </button>
+            ))}
+            {/* everyone else with something to see (and whoever is viewed now), so nobody lands on an empty screen */}
+            <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
+              onChange={(e) => e.target.value && switchPerson(e.target.value)}>
+              <option value="">More…</option>
               {Object.values(people)
-                .filter((p) => !p.isGroup && (!activeIds || activeIds.includes(p.id) || p.id === personId))
+                .filter((p) => !p.isGroup && !PERSONAS.some(([id]) => id === p.id)
+                  && (!activeIds || activeIds.includes(p.id) || p.id === personId))
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-          </label>
+          </div>
           <button onClick={openGuide} className={guideSeen ? "" : "guide-new"}>
             Demo guide{!guideSeen && <span className="start-here">Start here</span>}
           </button>
           <button onClick={resetDemo}
             title="Restores the sample people and meetings and clears the cache, so the AI analyzes every card again.">
-            Reset sample data
+            Reset data
           </button>
-          <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}>Emails sent ({outbox.length})</button>
+          <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
+            title="The emails the app would have sent (shown here instead of real inboxes)">Emails ({outbox.length})</button>
         </div>
       </div>
 
@@ -220,7 +260,6 @@ export default function App() {
               {open > 0 && <div className="you-sub">{open === 1 ? "It has" : "Each has"} an AI recommendation below, soonest first.</div>}
               {!open && affectedCount > 0 && <div className="you-sub">You can still change any of them below.</div>}
             </div>
-            {open > 0 && <button onClick={goToFirst}>Start with the first ↓</button>}
           </section>
         );
       })()}
@@ -242,86 +281,62 @@ export default function App() {
       </nav>
 
       <main>
-        {tab === "attendee" && (
-          <>
-            {attendee.needsAction.length === 0 && noActionCount === 0 && (
-              <EmptyState title="No gaps">None of your meetings is affected by an absence, so nothing needs your action.</EmptyState>
-            )}
-            {/* decided cards stay listed (people may change their mind), so "all closed" = nothing still needs a decision */}
-            {(attendee.needsAction.length > 0 || noActionCount > 0) && !attendee.needsAction.some((i) => i.needsAttention) && (
-              <EmptyState title="All gaps closed">Every affected meeting has a plan. Nothing needs your action.</EmptyState>
-            )}
-            {attendee.needsAction.map((i) => (
-              <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} />
-            ))}
-            {noActionCount > 0 && (
-              // open by itself when it is all there is, so the page is never just a closed line
-              <details className="no-action" open={attendee.needsAction.length === 0}>
-                <summary>No action needed ({noActionCount})</summary>
-                {noAction.teamCheckins.length > 0 && <h4>Team check-ins</h4>}
-                {noAction.teamCheckins.map((i) => (
-                  <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} quiet />
-                ))}
-                {noAction.orgEvents.length > 0 && <h4>Org-wide events</h4>}
-                {noAction.orgEvents.map((i) => (
-                  <MeetingCard key={i.id} item={i} people={people} me={personId} role="attendee" refresh={refresh} quiet />
-                ))}
-                {settled.length > 0 && <h4>Rescheduled or canceled</h4>}
-                {settled.map((i) => (
-                  <SettledCard key={i.id} title={i.event.title} start={i.event.start} originalStart={i.originalStart}
-                    status={i.status} decidedBy={i.decidedBy} people={people} />
-                ))}
-              </details>
-            )}
-          </>
-        )}
+        {tab === "attendee" && (allMine.length === 0 ? (
+          <EmptyState title="No gaps">None of your meetings is affected by an absence, so nothing needs your action.</EmptyState>
+        ) : (
+          <Workspace label="Attendee Mode" {...pick("attendee")} keyOf={(i) => i.id} titleOf={(i) => i?.event.title}
+            groups={[
+              { id: "needs", label: "Needs action", items: attNeeds, attention: true,
+                empty: { title: "All gaps closed", text: "Every affected meeting has a plan. Nothing needs your action." } },
+              { id: "settled", label: "Settled", items: attSettled,
+                empty: { title: "Nothing settled yet", text: "Meetings move here once a decision is made: a proxy accepts, you choose to attend or go on without you, or the meeting is rescheduled or canceled." } },
+              { id: "none", label: "No action needed", items: attNone,
+                empty: { title: "Nothing handled automatically", text: "Team check-ins and org-wide events that can go on without you appear here." } },
+            ]}
+            renderTile={(i) => <AttendeeTile item={i} people={people} me={personId} />}
+            renderDetail={(i) => (i.status === "rescheduled" || i.status === "cancelled"
+              ? <SettledCard title={i.event.title} start={i.event.start} originalStart={i.originalStart} status={i.status}
+                  decidedBy={i.decidedBy} people={people} />
+              : <MeetingCard item={i} people={people} me={personId} role="attendee" refresh={refresh}
+                  quiet={i.status === "auto_handled"} />)}
+          />
+        ))}
 
-        {tab === "organizer" && (
-          <>
-            {activeMeetings.length === 0 && doneMeetings.length === 0 && (
-              <EmptyState title="No gaps">None of the meetings you organize is affected by an absence.</EmptyState>
-            )}
-            {openMeetings.length === 0 && (settledMeetings.length > 0 || doneMeetings.length > 0) && (
-              <EmptyState title="All gaps closed">Every affected meeting you organize has a plan. Nothing needs your action.</EmptyState>
-            )}
-            {openMeetings.map((m) => (
-              <OrganizerCard key={m.calendarEventId} meeting={m} people={people} me={personId} refresh={refresh} />
-            ))}
-            {settledMeetings.length > 0 && <h4 className="group-title">Settled ({settledMeetings.length})</h4>}
-            {settledMeetings.map((m) => (
-              <OrganizerCard key={m.calendarEventId} meeting={m} people={people} me={personId} refresh={refresh} />
-            ))}
-            {doneMeetings.length > 0 && (
-              <details className="no-action" open={activeMeetings.length === 0}>
-                <summary>Done ({doneMeetings.length})</summary>
-                {doneMeetings.map((m) => (
-                  <SettledCard key={m.calendarEventId} title={m.event.title} start={m.event.start}
-                    originalStart={m.absentees[0]?.originalStart} status={m.absentees[0]?.status}
-                    decidedBy={m.absentees[0]?.decidedBy} people={people} />
-                ))}
-              </details>
-            )}
-          </>
-        )}
+        {tab === "organizer" && (organizer.length === 0 ? (
+          <EmptyState title="No gaps">None of the meetings you organize is affected by an absence.</EmptyState>
+        ) : (
+          <Workspace label="Organizer Mode" {...pick("organizer")} keyOf={(m) => m.calendarEventId} titleOf={(m) => m?.event.title}
+            groups={[
+              { id: "needs", label: "Needs action", items: openMeetings, attention: true,
+                empty: { title: "All gaps closed", text: "Every affected meeting you organize has a plan. Nothing needs your action." } },
+              { id: "settled", label: "Settled", items: settledMeetings,
+                empty: { title: "Nothing settled yet", text: "Meetings move here once everyone who is out has a plan, or the meeting is rescheduled or canceled." } },
+            ]}
+            renderTile={(m) => <OrganizerTile meeting={m} people={people} />}
+            renderDetail={(m) => (m.done
+              ? <SettledCard title={m.event.title} start={m.event.start} originalStart={m.absentees[0]?.originalStart}
+                  status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} people={people} />
+              : <OrganizerCard meeting={m} people={people} me={personId} refresh={refresh} />)}
+          />
+        ))}
 
-        {tab === "proxy" && (
-          <>
-            {proxyReqs.length === 0 && <EmptyState title="No proxy requests">Nobody has asked you to cover a meeting.</EmptyState>}
-            {proxyReqs.length > 0 && waitingReqs.length === 0 && (
-              <EmptyState title="All answered">You've answered every request to cover a meeting.</EmptyState>
-            )}
-            {waitingReqs.map((v) => (
-              <ProxyCard key={v.request.id} view={v} people={people} onRespond={respond} />
-            ))}
-            {answeredReqs.length > 0 && <h4 className="group-title">Answered ({answeredReqs.length})</h4>}
-            {answeredReqs.map((v) => (
-              <ProxyCard key={v.request.id} view={v} people={people} onRespond={respond} />
-            ))}
-          </>
-        )}
+        {tab === "proxy" && (proxyReqs.length === 0 ? (
+          <EmptyState title="No pending coverage requests">You'll be notified when a colleague requests you as a proxy.</EmptyState>
+        ) : (
+          <Workspace label="Proxy Requests" {...pick("proxy")} keyOf={(v) => v.request.id} titleOf={(v) => v?.item.event.title}
+            groups={[
+              { id: "waiting", label: "Waiting for your answer", items: waitingReqs, attention: true,
+                empty: { title: "All answered", text: "You've answered every request to cover a meeting." } },
+              { id: "answered", label: "Answered", items: answeredReqs,
+                empty: { title: "Nothing answered yet", text: "Requests you accept or decline move here." } },
+            ]}
+            renderTile={(v) => <ProxyTile view={v} people={people} />}
+            renderDetail={(v) => <ProxyCard view={v} people={people} onRespond={respond} />}
+          />
+        ))}
 
         {tab === "past" && (
-          <>
+          <div className="single-col">
             <p className="reason">Meetings whose time has passed{settings ? `, kept for ${settings.pastDays} days` : ""}.</p>
             {pastItems.length === 0 && pastProxy.length === 0 && <div className="empty">Nothing in the past yet.</div>}
             {pastItems.length > 0 && <h4 className="group-title">Your meetings</h4>}
@@ -336,13 +351,13 @@ export default function App() {
             {pastProxy.map((v) => (
               <ProxyCard key={v.request.id} view={v} people={people} activity={activityFor(v.item.id)} />
             ))}
-          </>
+          </div>
         )}
       </main>
 
       {showEmails && (
         <aside className="drawer">
-          <h4>Emails sent (demo: shown here instead of real inboxes)</h4>
+          <h4>Emails the app sent (demo: shown here instead of real inboxes)</h4>
           {outbox.length === 0 && <p className="reason">None yet.</p>}
           {[...outbox].reverse().map((m, idx) => (
             <div key={idx} className="mail">
@@ -368,7 +383,11 @@ export default function App() {
             setNotice(out.length === 0
               ? `Meeting scheduled for ${fmtWhen(when)}. Nobody required is out at that time.`
               : `Meeting scheduled for ${fmtWhen(when)}, but ${who} out that day. It's in your Organizer Mode, ready for a decision.`);
-            if (out.length > 0) setTab("organizer");
+            if (out.length > 0) {
+              setTab("organizer");
+              setGroup((g) => ({ ...g, organizer: "needs" }));
+              setChosen((c) => ({ ...c, organizer: result.eventId }));
+            }
             await refresh();
           }}
         />
