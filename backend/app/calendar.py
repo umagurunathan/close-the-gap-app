@@ -10,7 +10,7 @@ from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from google.cloud.firestore_v1 import FieldFilter
 
-from .firestore import encode_model
+from .firestore import RequestReads, encode_model
 from .models import CalEvent, Note
 
 
@@ -79,44 +79,52 @@ class FirestoreCalendar:
     def __init__(self, client: firestore.Client, workspace_id: str = "company"):
         self._events = client.collection("events")
         self._workspace_id = workspace_id
+        self._reads = RequestReads(workspace_id)
 
     def _document(self, event_id: str):
         return self._events.document(f"{self._workspace_id}__{event_id}")
 
-    def get(self, event_id: str) -> Optional[CalEvent]:
-        snapshot = self._document(event_id).get()
-        if not snapshot.exists:
+    @staticmethod
+    def _model(data: Optional[dict]) -> Optional[CalEvent]:
+        if data is None:
             return None
-        data = snapshot.to_dict()
-        data.pop("workspaceId", None)
-        return CalEvent.model_validate(data)
+        return CalEvent.model_validate({key: value for key, value in data.items() if key != "workspaceId"})
+
+    def _query(self):
+        return self._events.where(filter=FieldFilter("workspaceId", "==", self._workspace_id))
+
+    def get(self, event_id: str) -> Optional[CalEvent]:
+        reference = self._document(event_id)
+        return self._model(self._reads.get("events", reference.id, reference.get, lambda: self._query().stream()))
 
     def all_events(self) -> list[CalEvent]:
-        return [
-            CalEvent.model_validate({key: value for key, value in doc.to_dict().items()
-                                     if key != "workspaceId"})
-            for doc in self._events.where(
-                filter=FieldFilter("workspaceId", "==", self._workspace_id)
-            ).stream()
-        ]
+        return [self._model(data) for data in self._reads.scan("events", self._query().stream)]
 
     def add_event(self, event: CalEvent) -> CalEvent:
         self.save_event(event)
         return event
 
     def remove_event(self, event_id: str) -> None:
-        self._document(event_id).delete()
+        reference = self._document(event_id)
+        reference.delete()
+        self._reads.wrote("events", reference.id, None)
 
     def add_event_if_missing(self, event: CalEvent) -> bool:
         reference = self._document(event.id)
+        data = {**encode_model(event), "workspaceId": self._workspace_id}
         try:
-            reference.create({**encode_model(event), "workspaceId": self._workspace_id})
+            reference.create(data)
         except AlreadyExists:
+            self._reads.forget("events", reference.id)
             return False
+        self._reads.wrote("events", reference.id, data)
         return True
 
     def save_event(self, event: CalEvent) -> CalEvent:
-        self._document(event.id).set({**encode_model(event), "workspaceId": self._workspace_id})
+        reference = self._document(event.id)
+        data = {**encode_model(event), "workspaceId": self._workspace_id}
+        reference.set(data)
+        self._reads.wrote("events", reference.id, data)
         return event
 
     def involving(self, person_id: str) -> list[CalEvent]:

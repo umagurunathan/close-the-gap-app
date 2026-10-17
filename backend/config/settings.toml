@@ -223,3 +223,12 @@ max_confidence_for_proxy_named_in_agenda = "medium"
 # The AI never sees the whole invitee list: only the count, plus at most this many likely candidates
 # (people named in the summaries first, then the reporting line, then the organizer, then others).
 max_candidates = 20
+
+
+# ---------------------------------------------------------------- Store (WIRED; Firestore)
+[store]
+# WIRED (2026-10-17): while one request runs, read each Firestore collection and document at most once and reuse it
+# (the request's own writes still go to Firestore first). Nothing is kept after the request, so no data is ever stale.
+# A page used to make 80-117 Firestore reads; false = the old way. The environment variable STORE_REQUEST_CACHE
+# overrides this line, so it can be switched off on Cloud Run without a rebuild.
+request_cache = true
