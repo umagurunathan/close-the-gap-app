@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EmptyState, Icon } from "./Icons.jsx";
+import { onTabKey } from "../tabKeys.js";
 
 // Wide enough for the list and the full card side by side; below it, tiles stack and the chosen one opens in place.
 const SIDE_BY_SIDE = "(min-width: 1000px)";
@@ -19,7 +20,7 @@ function useSideBySide() {
 // One tab's working area: sub-tabs ("Needs action", "Settled", …), small tiles on the left, the chosen meeting's full
 // card on the right. `groups`: [{ id, label, items, empty: { title, text } }]. The parent keeps `group` and `selected`,
 // so other parts of the page (the banner's "Start with the first") can point at a meeting.
-export default function Workspace({ groups, group, onGroup, selected, onSelect, keyOf, titleOf, renderTile, renderDetail, label }) {
+export default function Workspace({ groups, group, onGroup, selected, onSelect, keyOf, titleOf, renderTile, renderDetail, label, aside }) {
   const wide = useSideBySide();
   const current = groups.find((g) => g.id === group) ?? groups[0];
   const chosen = current.items.find((i) => keyOf(i) === selected) ?? (wide ? current.items[0] : null);
@@ -45,7 +46,7 @@ export default function Workspace({ groups, group, onGroup, selected, onSelect, 
   }, [groups, current, chosenKey, keyOf, titleOf]);
   useEffect(() => { setMoved(null); }, [group]);
 
-  // On a wide screen the list sits in a framed box that ends level with the open card on the right (Uma: the page ends
+  // On a wide screen the list sits in a framed box that ends level with the open card on the right (the page ends
   // where the card and the list end), and scrolls inside it, so the page doesn't grow with every meeting. Re-measured
   // whenever the card changes size; at least room for about two tiles. When more tiles are below, the box's bottom
   // edge fades so it's clear the list goes on.
@@ -60,10 +61,14 @@ export default function Workspace({ groups, group, onGroup, selected, onSelect, 
     const frame = frameRef.current;
     if (!wide || !frame) return undefined;
     const detail = frame.closest(".ws-body")?.querySelector(".ws-detail");
+    // As tall as the card, or as the tiles need (up to the window's bottom), whichever is taller: a short card no
+    // longer makes tiles scroll that would fit.
     const fit = () => {
       const top = frame.getBoundingClientRect().top;
       const bottom = detail ? detail.getBoundingClientRect().bottom : window.innerHeight - 16;
-      frame.style.height = `${Math.max(190, Math.round(bottom - top))}px`;
+      const tilesNeed = (listRef.current?.scrollHeight ?? 0) + 2;   // + the frame's border
+      const windowRoom = window.innerHeight - 16 - top;
+      frame.style.height = `${Math.round(Math.max(190, bottom - top, Math.min(tilesNeed, windowRoom)))}px`;
       checkMore();
     };
     fit();
@@ -94,13 +99,17 @@ export default function Workspace({ groups, group, onGroup, selected, onSelect, 
 
   return (
     <section className="workspace" aria-label={label}>
-      <div className="subtabs" role="tablist" aria-label={`${label}: groups`}>
-        {groups.map((g) => (
-          <button key={g.id} role="tab" aria-selected={g.id === current.id} onClick={() => onGroup(g.id)}
-            className={g.id === current.id ? "on" : ""}>
-            {g.label} <span className={`subtab-count ${g.attention && g.items.length ? "hot" : ""}`}>{g.items.length}</span>
-          </button>
-        ))}
+      <div className="subtabs-row">
+        <div className="subtabs" role="tablist" aria-label={`${label}: groups`}
+          onKeyDown={(e) => onTabKey(e, groups.map((g) => g.id), current.id, onGroup, (id) => `group-${id}`)}>
+          {groups.map((g) => (
+            <button key={g.id} id={`group-${g.id}`} role="tab" aria-selected={g.id === current.id} onClick={() => onGroup(g.id)}
+              tabIndex={g.id === current.id ? 0 : -1} className={g.id === current.id ? "on" : ""}>
+              {g.label} <span className={`subtab-count ${g.attention && g.items.length ? "hot" : ""}`}>{g.items.length}</span>
+            </button>
+          ))}
+        </div>
+        {aside}
       </div>
 
       {moved && (

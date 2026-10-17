@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtWhen, urgencyLabel } from "../format.js";
+import { fmtWhen, urgencyChip } from "../format.js";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 
@@ -25,7 +25,7 @@ export default function ProxyCard({ view, people, onRespond = null, activity = [
   }
   const name = (id) => people[id]?.name ?? id;
   const st = STATUS[r.status];
-  const urgency = r.status === "pending" ? urgencyLabel(item.urgency, item.hoursToStart) : null;
+  const urgency = r.status === "pending" ? urgencyChip(item.urgency, item.hoursToStart) : null;
   const meetingChange =
     item.status === "rescheduled" ? "Meeting was rescheduled" : item.status === "cancelled" ? "Meeting was canceled" : null;
 
@@ -37,7 +37,7 @@ export default function ProxyCard({ view, people, onRespond = null, activity = [
           <div className="when"><Icon name="calendar" size={14} />{fmtWhen(item.event.start)}</div>
         </div>
         <div className="chips">
-          {urgency && <span className={`chip urgency-${item.urgency}`}>{urgency}</span>}
+          {urgency && <span className={`chip ${urgency.cls}`}>{urgency.text}</span>}
           {meetingChange && <span className="chip chip-tag">{meetingChange}</span>}
           <span className={`chip ${st.cls}`}>{st.text}</span>
         </div>

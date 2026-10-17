@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { api } from "../api.js";
-import { actionLabel, statusLabel, urgencyLabel, fmtWhen } from "../format.js";
+import { actionLabel, statusLabel, urgencyChip, fmtWhen } from "../format.js";
 import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
@@ -33,7 +33,7 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   const mine = item.absentPersonId === me;
   const who = name(item.absentPersonId).split(" ")[0];
   const label = (a) => actionLabel(a, mine, who);
-  const urgency = urgencyLabel(item.urgency, item.hoursToStart); // amber within 3 days, red within 24 hours
+  const urgency = urgencyChip(item.urgency, item.hoursToStart); // green, amber within 2 days, red within 24 hours
 
   async function act(action, proxyId, extra = {}) {
     setBusy(true);
@@ -111,8 +111,11 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         </div>
         <div className="chips">
           {organizerTag && <span className="chip chip-tag">Organizer</span>}
-          {urgency && <span className={`chip urgency-${item.urgency}`}>{urgency}</span>}
-          <span className={`chip status-${item.status}`}>{statusLabel(item.status, mine, who, item.chosenAction)}</span>
+          {urgency && <span className={`chip ${urgency.cls}`}>{urgency.text}</span>}
+          {/* "Not handled yet" is not shown: the Needs action group already says so */}
+          {item.status !== "pending_decision" && (
+            <span className={`chip status-${item.status}`}>{statusLabel(item.status, mine, who, item.chosenAction)}</span>
+          )}
         </div>
       </header>
 
@@ -183,6 +186,17 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
       {mode === "proxy" && (
         <ProxyPanel item={item} me={me} people={people}
           onSent={async () => { setMode("idle"); await refresh(); }} onBack={() => setMode("idle")} />
+      )}
+      {/* while choosing a proxy, the other actions stay at hand: someone may decide to cancel halfway */}
+      {mode === "proxy" && !readOnly && !terminal && (
+        <div className="actions">
+          <span className="change-label">Or instead:</span>
+          {buttons.filter((b) => b.action !== "proxy").map((b) => (
+            <button key={b.action} className={["small", b.danger ? "danger" : ""].join(" ").trim()} disabled={busy}
+              title={b.hint} onClick={b.onClick}>{b.text}</button>
+          ))}
+          {busy && <span className="saving" role="status">Saving…</span>}
+        </div>
       )}
 
       {mode === "confirm" && proposal && (

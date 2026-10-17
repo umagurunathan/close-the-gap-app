@@ -14,7 +14,7 @@ from agents.fallback.candidate_order import rank_proxies
 
 from . import config, notify
 from .calendar import SimCalendar
-from .google_calendar import GoogleCalendarIntegration, calendar_event
+from .google_calendar import GoogleCalendarIntegration, calendar_event, is_not_a_meeting
 from .models import (
     AiResult, Absence, AbsenceSource, AbsenceType, Action, AttendeeItems, CalEvent, Counts, DirectoryEntry,
     EventAttendee, EventRef,
@@ -309,6 +309,12 @@ class Service:
         added = updated = skipped = 0
         affected = []
         for raw in event_data:
+            if is_not_a_meeting(raw):
+                # out of office, focus time, working location: not a meeting. One imported before this rule existed
+                # (its card could even offer "Cancel", which would delete the block) is removed with its cards.
+                self._remove_imported(owner_id, raw.get("id"))
+                skipped += 1
+                continue
             if raw.get("status") == "cancelled":
                 existing = next((
                     event for event in self.calendar.all_events()
@@ -361,6 +367,19 @@ class Service:
                 added += 1
             affected.extend(self._scan_event(event))
         return {"added": added, "updated": updated, "skipped": skipped, "affectedItems": len(affected)}
+
+    def _remove_imported(self, owner_id: str, google_event_id: Optional[str]) -> None:
+        """Removes a Google entry imported earlier as a meeting, with its cards (open proxy requests withdrawn)."""
+        if not google_event_id:
+            return
+        for event in self.calendar.all_events():
+            if event.googleEventId != google_event_id or event.googleCalendarOwnerId != owner_id:
+                continue
+            for item in self.store.items():
+                if item.event.calendarEventId == event.id:
+                    self._withdraw_requests(item, tell_accepted=False)
+                    self.store.delete_item(item.id)
+            self.calendar.remove_event(event.id)
 
     def add_attendee(self, event_id: str, caller: str, person_id: str, optional: bool = False) -> list[MeetingItem]:
         e = self.calendar.get(event_id)
@@ -462,7 +481,8 @@ class Service:
         """The item as `viewer` sees it. Two things are added:
         - the recommendation built from the summaries THIS viewer can open, and
         - the same for everyone: does the card still need someone to act, and how close is the
-          meeting? No 'who is responsible' rule: either side can act. Urgency: amber within 3 days, red within 24 hours."""
+          meeting? No 'who is responsible' rule: either side can act. Urgency: amber within 2 days, red within 24 hours (the web
+          app shows the days left in green further out)."""
         needs = item.status in ATTENTION and not self._is_past(item)
         hours = (item.event.start - self.now()).total_seconds() / 3600
         urgency = None

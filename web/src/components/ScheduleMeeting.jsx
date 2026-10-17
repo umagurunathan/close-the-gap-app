@@ -97,8 +97,8 @@ export default function ScheduleMeeting({ people, me, today, calendarConnected, 
 
         <p className="reason">
           {calendarConnected
-            ? "You are the organizer. This creates a Google Calendar invitation from your connected account. If a required invitee is already out that day, you will be told straight away."
-            : "You are the organizer. Google Calendar is not connected, so this meeting will be added to the demo calendar only. If a required invitee is already out, you will be told straight away."}
+            ? "You are the organizer. This creates a Google Calendar invitation from your connected account. If a required invitee is already out that day, you will be told straight away and the meeting is listed here for a decision. Otherwise it only goes to the calendar: this app lists only meetings affected by someone's absence."
+            : "You are the organizer. Google Calendar is not connected, so this meeting will be added to the demo calendar only. If a required invitee is already out that day, you will be told straight away and the meeting is listed here for a decision. Otherwise it only goes to the calendar: this app lists only meetings affected by someone's absence."}
         </p>
         {error && <div className="note warn">{error}</div>}
         <div className="actions">

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { recall, remember } from "../storage.js";
 import { Icon } from "./Icons.jsx";
 import CompanyScale from "./CompanyScale.jsx";
 
@@ -33,7 +32,9 @@ function InfoTip({ id, open, onToggle, children }) {
 }
 
 export default function ImpactBand({ today, tick }) {
-  const [period, setPeriod] = useState(() => recall("impactPeriod") || "all");
+  // every page load starts on "All" and open; the period and Hide last only until the page reloads
+  const [period, setPeriod] = useState("all");
+  const [open, setOpen] = useState(true);
   const [m, setM] = useState(null);
   const [openTip, setOpenTip] = useState(null);   // which tile's "how it's counted" is open
   const [showScale, setShowScale] = useState(false);   // the "At company scale" table
@@ -54,15 +55,11 @@ export default function ImpactBand({ today, tick }) {
     api(`/metrics${q}`).then(setM).catch(() => {});
   }, [period, today, tick]);
 
-  function choose(id) {
-    setPeriod(id);
-    remember("impactPeriod", id);
-  }
-
   if (!m) return null;
 
   const pct = m.meetingsAffected ? Math.round((100 * m.meetingsWithPlan) / m.meetingsAffected) : 0;
   const tips = {
+    about: "Estimates across everyone's meetings: a leaders' view, open to all in this demo. Tap the (i) next to a number to see how it is counted.",
     saved: `${m.estimateNote}${m.peopleSpared ? ` ${m.peopleSpared} people were spared a wasted start.` : ""}`,
     gaps: `Affected meetings that already have a plan: covered by a proxy, going ahead, rescheduled or canceled by a person, or handled automatically. Of these ${m.meetingsWithPlan}, ${m.handledAutomatically} ${m.handledAutomatically === 1 ? "was" : "were"} handled automatically.`,
     notice: "On average, how many days before the meeting the plan was made: the earlier, the less disruption.",
@@ -77,7 +74,36 @@ export default function ImpactBand({ today, tick }) {
     </InfoTip>
   );
 
-  // One slim row: the counts go in the title line, the four numbers sit beside their labels, the note is one line.
+  // a chevron only; its tooltip says what it does
+  const toggleText = open ? "Hide the company-wide impact" : "Show the company-wide impact";
+  const toggle = (
+    <button type="button" className="impact-toggle" aria-expanded={open} aria-controls="impact-tiles"
+      aria-label={toggleText} title={toggleText} onClick={() => { setOpen(!open); setOpenTip(null); }}>
+      <Icon name="chevron" size={16} />
+    </button>
+  );
+
+  // Hidden: one line with the two headline numbers, so the story stays on screen while the cards get the room.
+  if (!open) {
+    const label = period === "all" ? "" : ` (${PERIODS.find((p) => p.id === period).label.toLowerCase()})`;
+    return (
+      <section className="impact-band folded" aria-label="Company-wide impact">
+        <div className="impact-head">
+          <h2 className="impact-title">
+            <Icon name="trend" size={16} />
+            Company-wide impact{label}
+            <small>
+              {" "}· <b>{m.teamHoursSaved} h</b> team time saved · <b>{m.meetingsWithPlan} of {m.meetingsAffected}</b> meetings
+              with the gap closed
+            </small>
+          </h2>
+          {toggle}
+        </div>
+      </section>
+    );
+  }
+
+  // One slim row: the counts and the note go in the title line, the five numbers sit beside their labels.
   return (
     <section className="impact-band" aria-label="Company-wide impact">
       <div className="impact-head">
@@ -86,17 +112,20 @@ export default function ImpactBand({ today, tick }) {
           Company-wide impact
           <small>
             {" "}· {m.absencesSpotted} {m.absencesSpotted === 1 ? "absence" : "absences"} spotted ·{" "}
-            {m.meetingsAffected} {m.meetingsAffected === 1 ? "meeting" : "meetings"} affected
+            {m.meetingsAffected} {m.meetingsAffected === 1 ? "meeting" : "meetings"} affected · estimates {tip("about")}
           </small>
         </h2>
-        <div className="impact-periods" role="group" aria-label="Period">
-          {PERIODS.map((p) => (
-            <button key={p.id} aria-pressed={period === p.id} onClick={() => choose(p.id)}>{p.label}</button>
-          ))}
+        <div className="impact-head-tools">
+          <div className="impact-periods" role="group" aria-label="Period">
+            {PERIODS.map((p) => (
+              <button key={p.id} aria-pressed={period === p.id} onClick={() => setPeriod(p.id)}>{p.label}</button>
+            ))}
+          </div>
+          {toggle}
         </div>
       </div>
 
-      <div className="impact-tiles">
+      <div className="impact-tiles" id="impact-tiles">
         {/* nothing saved yet in this period (e.g. coming weeks): the honest number is what is at risk */}
         {m.teamHoursSaved > 0 || m.teamHoursAtRisk === 0 ? (
           <div className="impact-tile hero">
@@ -139,10 +168,8 @@ export default function ImpactBand({ today, tick }) {
           </span>
         </div>
       </div>
+      {/* its own line at the bottom-right, as before */}
       <div className="impact-foot">
-        <span>
-          Estimates across everyone's meetings: a leaders' view, open to all in this demo. Tap <Icon name="info" size={12} /> to see how each number is counted.
-        </span>
         <button type="button" className="link scale-link" onClick={() => setShowScale(true)}>At company scale ›</button>
       </div>
       {showScale && <CompanyScale onClose={() => setShowScale(false)} />}

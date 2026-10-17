@@ -35,7 +35,7 @@ organizer_alert_hours = 24
 
 # ---------------------------------------------------------------- Urgency chips (WIRED)
 [urgency]
-soon_hours = 72      # amber chip: the meeting starts within this many hours and still needs action
+soon_hours = 48      # amber chip: the meeting starts within this many hours and still needs action (further: green)
 urgent_hours = 24    # red "act now" chip
 
 
@@ -59,6 +59,10 @@ message_hide_seconds = 6
 # Colour theme of the web app: "purple" (today's look), "blue", "clear" or "google" (lighter blues). The themes are in
 # web/src/themes.js. To try one without changing this, add ?theme=google to the web app's address.
 theme = "purple"
+# WIRED (2026-10-17): while the page is on screen, it loads fresh data this often, so someone else's change (a proxy
+# accepts, an organizer reschedules) shows without a manual reload; also at once when you come back to the tab. It
+# pauses while a form is open and stops while the tab is in the background. 0 = off.
+auto_refresh_seconds = 30
 
 
 # ---------------------------------------------------------------- Reschedule search (WIRED; plain code, no AI)

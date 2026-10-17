@@ -162,6 +162,7 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return {"pastDays": S.visibility.past_days, "suddenNoticeHours": S.absence.sudden_notice_hours,
                 "refreshWhileAnalysingSeconds": S.ai.refresh_while_analysing_seconds,
                 "messageHideSeconds": S.ui.message_hide_seconds,
+                "autoRefreshSeconds": getattr(S.ui, "auto_refresh_seconds", 30),
                 "theme": getattr(S.ui, "theme", "purple"),
                 "today": svc.now().date().isoformat()}   # the demo's "today" (fixed by NOW), for form defaults
 
@@ -394,6 +395,14 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         from .seed import reset_demo as reset
         reset(demo_svc)
         return {"ok": True}
+
+    @app.get("/dev/demo-status")
+    def demo_status():
+        """When "Reset demo data" last ran (the real time, ISO), so every visitor can see it; null if never."""
+        try:
+            return {"lastResetAt": demo_svc.store.get_demo_reset_at()}
+        except Exception:   # noqa: BLE001 - only a display line; never fail the page for it
+            return {"lastResetAt": None}
 
     @app.post("/jobs/run-reminders")
     def run_reminders():

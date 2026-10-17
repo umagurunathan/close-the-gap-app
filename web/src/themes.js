@@ -18,11 +18,11 @@ const blue = (primary, hover, soft, line, rgb) => ({
 });
 
 export const THEMES = {
-  // today's look (the green and amber text are a little under 4.5:1; the blue themes fix that)
+  // today's look
   purple: {
     "--primary": "#5b5fc7", "--primary-hover": "#4a4eb3", "--primary-soft": "#e8e9fb", "--primary-rgb": "91, 95, 199",
-    "--bg": "#f3f4fa", "--ink": "#232738", "--muted": "#6a7088", "--line": "#e4e6f2",
-    "--good": "#2e8b57", "--good-soft": "#e3f4ea", "--good-text": "#18794e", "--warn": "#b26a00", "--warn-soft": "#fff1d6",
+    "--bg": "#f3f4fa", "--ink": "#232738", "--muted": "#61677f", "--line": "#e4e6f2",
+    "--good": "#227547", "--good-soft": "#e3f4ea", "--good-text": "#18794e", "--warn": "#965a00", "--warn-soft": "#fff1d6",
     "--bad": "#c4314b", "--bad-soft": "#fde7ec",
     "--ai-bg": "#f6f6fd", "--ai-line": "#ecedf8",
     "--toolbar": "#2b2e45", "--toolbar-raise": "#3a3e5c", "--toolbar-line": "#4c5175", "--toolbar-accent": "#8b8ff0",

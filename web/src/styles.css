@@ -3,13 +3,13 @@
   --bg: #f3f4fa;
   --card: #ffffff;
   --ink: #232738;
-  --muted: #6a7088;
+  --muted: #61677f;
   --line: #e4e6f2;
   --primary: #5b5fc7;
   --primary-soft: #e8e9fb;
-  --good: #2e8b57;
+  --good: #227547;
   --good-soft: #e3f4ea;
-  --warn: #b26a00;
+  --warn: #965a00;
   --warn-soft: #fff1d6;
   --bad: #c4314b;
   --bad-soft: #fde7ec;
@@ -29,6 +29,8 @@
 }
 
 * { box-sizing: border-box; }
+/* one keyboard focus ring for everything you can tab to (mouse clicks show none) */
+:is(button, a, select, summary, input, textarea, [tabindex]):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 body {
   margin: 0;
   /* a soft coloured band behind the header that fades into the page tint, so the page is not flat white */
@@ -59,16 +61,64 @@ body {
 .demo-toolbar select { padding: 4px 8px; font-size: 13px; background: #fff; color: var(--ink); border: 1px solid var(--demo-line); }
 .demo-toolbar button { padding: 4px 12px; font-size: 13px; background: #fff; color: var(--ink); border: 1px solid var(--demo-line); }
 .demo-toolbar button:hover:not(:disabled), .demo-toolbar button[aria-pressed="true"] { border-color: var(--primary); }
+/* Guests: the Demo controls as a card of its own, like the banners below: a heading and a line on
+   what it is for, then Reset and the Demo guide (far right); the people to view as, with the emails at the end. */
+.demo-toolbar.demo-panel { background: none; border-bottom: none; }
+.demo-panel .demo-toolbar-inner { padding: 14px 24px 0; }
+@media (max-width: 600px) { .demo-panel .demo-toolbar-inner { padding: 10px 16px 0; } }
+.demo-card { display: flex; flex-direction: column; gap: 8px; background: var(--primary-soft);
+  border: 1px solid var(--demo-line); border-left: 4px solid var(--primary); border-radius: 14px; padding: 10px 16px;
+  box-shadow: 0 1px 2px rgba(35, 39, 56, 0.05), 0 4px 14px rgba(35, 39, 56, 0.05); }
+.demo-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.demo-title h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--primary); }
+.demo-sub { font-size: 13px; color: var(--muted); }
+/* "Last reset: …" sits just left of the Reset button it belongs to */
+.demo-tools .demo-last-reset { align-self: center; margin-right: 4px; white-space: nowrap; }
+.demo-people { flex-wrap: nowrap; align-items: center; }
+/* Schedule a meeting and Report an absence at the right end of the tabs row: one joined pill of two equal buttons,
+   "things you can add", set apart from the tabs and not competing with the selected tab's colour */
+.tab-actions { margin-left: auto; display: inline-flex; align-items: stretch; background: #fff; border: 1px solid var(--line);
+  border-radius: 999px; overflow: hidden; box-shadow: 0 1px 2px rgba(35, 39, 56, 0.05); }
+.tabs .tab-actions button { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 0; background: none;
+  padding: 8px 16px; color: var(--primary); font-weight: 600; }
+.tabs .tab-actions button + button { border-left: 1px solid var(--line); }
+.tabs .tab-actions button:hover:not(:disabled) { background: var(--primary-soft); }
+.tabs .tab-actions button:focus-visible { outline-offset: -3px; }
+@media (max-width: 600px) { .tab-actions { margin-left: 0; } }
+/* "↻ Updated 10:42 am": quiet, at the end of the group row; a click refreshes now */
+.subtabs-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.subtabs-row .subtabs { margin-bottom: 0; }
+.updated-row { display: flex; justify-content: flex-end; margin: -4px 0 6px; }
+button.link.updated-at { border: none; background: none; padding: 4px 6px; font-size: 12.5px; color: var(--muted); border-radius: 8px; }
+button.link.updated-at:hover:not(:disabled) { color: var(--primary); background: none; }
+.demo-people .demo-view-as { flex: 1; min-width: 0; }
+.demo-people .demo-tools { flex: none; }
+/* phones: the people get the whole row; Emails goes below, on the right */
+@media (max-width: 600px) { .demo-people { flex-wrap: wrap; } .demo-people .demo-view-as { flex-basis: 100%; }
+  .demo-people .demo-tools { margin-left: auto; } }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 14px; gap: 16px; flex-wrap: wrap; }
 .brand-block { display: flex; align-items: center; gap: 12px; }
-.brand { font-size: 26px; font-weight: 800; color: var(--ink); letter-spacing: -0.6px; line-height: 1.1; }
+.brand { margin: 0; font-size: 26px; font-weight: 800; color: var(--ink); letter-spacing: -0.6px; line-height: 1.1; }
+/* "Skip to meetings": off screen until a keyboard user tabs to it */
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 100; background: var(--primary); color: #fff;
+  padding: 8px 14px; border-radius: 10px; font-weight: 600; text-decoration: none; }
+.skip-link:focus { top: 8px; }
+#tab-panel:focus { outline: none; }
 .brand span { color: var(--primary); }
 .tagline { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .topbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 /* Real people sign in here; a white button with a Google-blue edge, so it reads as an account action */
-button.sign-in { background: #fff; color: #1a56c4; border: 1px solid #c4d3ee; font-weight: 600; }
-button.sign-in:hover:not(:disabled) { background: #f2f6fd; border-color: #1a56c4; }
+/* "Sign in with Google" asks to be noticed: a border in Google's four colours and a soft pulsing glow (still for
+   anyone who prefers reduced motion) */
+button.sign-in { color: #1a56c4; font-weight: 600; border: 2px solid transparent;
+  background: linear-gradient(#fff, #fff) padding-box, linear-gradient(90deg, #4285f4, #34a853, #fbbc05, #ea4335) border-box; }
+button.sign-in:hover:not(:disabled) { background: linear-gradient(#f2f6fd, #f2f6fd) padding-box,
+  linear-gradient(90deg, #4285f4, #34a853, #fbbc05, #ea4335) border-box; border-color: transparent; }
+@media (prefers-reduced-motion: no-preference) {
+  button.sign-in:not(:disabled) { animation: signin-glow 2.4s ease-in-out infinite; }
+  @keyframes signin-glow { 50% { box-shadow: 0 0 0 5px rgba(66, 133, 244, 0.22), 0 4px 14px rgba(66, 133, 244, 0.25); } }
+}
 /* Signed in: who you are, on the dark strip where guests see the Demo controls */
 .signed-in-as { color: var(--muted); font-size: 13px; }
 .signed-in-as b { color: var(--ink); }
@@ -116,9 +166,26 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .invite-chip .chip-role { text-decoration: underline dotted; }
 .saving { color: var(--muted); font-size: 13px; }
 .declined-name { text-decoration: line-through; color: var(--muted); }
-.pick-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pick-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pick-row select { flex: 0 1 auto; }
-.pick-why { color: var(--muted); font-size: 13px; }
+.pick-or { color: var(--muted); font-size: 13px; }
+.pick-row .pick-search { flex: 1 1 260px; min-width: 0; }
+.pick-why { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+/* the proxy panel: a title with ✕, then the pick row, the note with "Draft with AI" on its label line, then Send */
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.panel-head h4 { margin: 0; }
+.panel-close { border: none; background: none; padding: 2px 8px; color: var(--muted); font-size: 15px; border-radius: 8px; }
+.note-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px;
+  color: var(--muted); font-size: 13px; }
+.note-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* "✦ Draft with AI" right beside the note's label, tinted so it is noticed; grey (with its reason) when not offered */
+.draft-btn { display: inline-flex; align-items: center; gap: 4px; }
+button.draft-btn:not(:disabled) { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+button.draft-btn:not(:disabled) .icon { color: #f5a524; }
+button.draft-btn:hover:not(:disabled) { background: #dcdef8; }
+.note-box { width: 100%; margin-top: 6px; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  resize: vertical; color: var(--ink); }
+.proxy-panel .actions { margin-top: 10px; }
 
 /* The "you" banner: the signed-in person's situation and next step, in two lines */
 .you { display: flex; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--line);
@@ -131,6 +198,13 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .you-text { flex: 1; min-width: 0; }
 .you-line { font-size: 15px; }
 .you-sub { font-size: 13.5px; color: var(--muted); }
+/* ‹ 1 of 2 ›: pages through the person's absences when there are several (a swipe also works on a phone) */
+.you-pager { display: flex; align-items: center; gap: 4px; flex: none; font-size: 13px; color: var(--muted);
+  white-space: nowrap; align-self: flex-start; }
+.you-pager button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: var(--card);
+  color: var(--primary); font-size: 17px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.you-pager button:hover:not(:disabled) { background: var(--primary-soft); }
+.you-pager button:disabled { color: var(--muted); opacity: 0.5; cursor: not-allowed; }
 .you-count { display: inline-block; background: var(--warn-soft); color: var(--warn); font-weight: 700; border-radius: 999px;
   padding: 0 10px; }
 .you > button { white-space: nowrap; }
@@ -143,9 +217,21 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
     linear-gradient(115deg, rgba(52, 195, 143, 0.08) 0%, rgba(255, 255, 255, 0) 45%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.78) 100%);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  border: 1px solid rgba(var(--primary-rgb), 0.18); border-radius: 16px; padding: 10px 14px 9px; margin-bottom: 16px;
+  border: 1px solid rgba(var(--primary-rgb), 0.18); border-radius: 16px; padding: 7px 14px 6px; margin-bottom: 12px;
   box-shadow: 0 6px 24px -4px rgba(var(--primary-rgb), 0.16), 0 2px 6px -1px rgba(15, 23, 42, 0.05); }
-.impact-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.impact-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.impact-head-tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+/* Hide/Show: a chevron in a small circle (up = hide, down = show); the tooltip says what it does */
+.impact-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
+  border-radius: 50%; color: var(--primary); background: rgba(255, 255, 255, 0.85); border: 1px solid #e3e6f0; }
+.impact-band.folded .impact-toggle .icon { transform: rotate(180deg); }
+/* "At company scale ›" on its own line at the band's bottom-right */
+.impact-foot { display: flex; justify-content: flex-end; margin: 2px 4px 0; }
+.impact-foot .scale-link { padding: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+/* Hidden: just the title line with the two headline numbers */
+.impact-band.folded { padding: 6px 14px; }
+.impact-band.folded .impact-head { margin-bottom: 0; }
+.impact-band.folded .impact-title small b { color: var(--primary); }
 .impact-title { margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--primary);
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .impact-title small { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); }
@@ -156,23 +242,22 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .impact-periods button[aria-pressed="true"], .impact-periods button[aria-pressed="true"]:hover:not(:disabled) { background: #fff; color: var(--primary); font-weight: 600;
   box-shadow: 0 1px 3px rgba(35, 39, 56, 0.14); }
 .impact-tiles { display: grid; grid-template-columns: 1.15fr 1fr 1fr 0.85fr 1.1fr; row-gap: 8px; }
-.impact-tile { padding: 6px 14px; cursor: help; display: flex; align-items: center; gap: 10px; border-left: 1px solid var(--line); }
+.impact-tile { padding: 4px 14px; cursor: help; display: flex; align-items: center; gap: 10px; border-left: 1px solid var(--line); }
 .impact-tile:first-child { border-left: none; padding-left: 4px; }
-.impact-tile b { font-size: 22px; line-height: 1; color: var(--primary); white-space: nowrap; }
+.impact-tile b { font-size: 21px; line-height: 1; color: var(--primary); white-space: nowrap; }
 .impact-tile.hero { background: #e2f5eb; border-radius: 10px; border-left: none; padding-left: 12px; }
 .impact-tile.hero + .impact-tile { border-left: none; }
-.impact-tile.hero b { color: #187a4f; font-size: 25px; }
+.impact-tile.hero b { color: #187a4f; font-size: 23px; }
 .impact-tile.hero > span { color: #2d5a45; }
 .impact-tile b small { font-size: 13px; font-weight: 600; color: var(--muted); }
 .impact-tile span { color: var(--muted); font-size: 13px; line-height: 1.25; }
-.impact-tile em { display: block; font-style: normal; font-size: 13px; color: #b26a00; font-weight: 600; }
+.impact-tile em { display: block; font-style: normal; font-size: 13px; color: var(--warn); font-weight: 600; }
 .impact-tile em.calm { color: var(--muted); font-weight: 400; }
 .impact-tile.hero.risk { background: #fff3dc; }
-.impact-tile.hero.risk b { color: #b26a00; }
+.impact-tile.hero.risk b { color: var(--warn); }
 .impact-tile.hero.risk > span { color: #7a5a1e; }
-.impact-foot { margin: 6px 4px 0; font-size: 12.5px; color: var(--muted); display: flex; justify-content: space-between;
-  align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
-.impact-foot .scale-link { padding: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+/* "estimates (i)" in the title line: the note that used to be its own line */
+.impact-title .info-wrap { position: relative; display: inline-flex; vertical-align: -2px; }
 .impact-tile em.good { color: var(--good); }
 /* five numbers: 3 a row on mid-size screens, 2 on phones, 1 on the smallest */
 @media (max-width: 1200px) {
@@ -187,9 +272,11 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 }
 
 .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.tabs .tab-list { display: flex; gap: 6px; flex-wrap: wrap; }
 .tabs button { border-radius: 999px; padding: 8px 16px; }
 .tabs button.on { background: var(--primary); color: #fff; border-color: var(--primary); }
 .tabs .open { margin-left: 8px; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
+.tabs .open.urgent { background: var(--bad); color: #fff; font-weight: 600; }
 
 .card {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px;
@@ -209,6 +296,7 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .chip-tag { background: #eef0f6; color: var(--muted); }
 .status-pending_decision { background: #eef0f6; color: var(--muted); }
 .status-proxy_requested, .status-awaiting_organizer { background: var(--warn-soft); color: var(--warn); }
+.urgency-later { background: var(--good-soft); color: var(--good); font-weight: 600; }   /* more than 2 days away */
 .urgency-soon { background: #ffe6b3; color: #8a5300; font-weight: 600; }
 .urgency-urgent { background: var(--bad); color: #fff; font-weight: 700; }
 .status-proxy_accepted, .status-rescheduled, .status-attending, .status-proceeding_without, .status-auto_handled { background: var(--good-soft); color: var(--good); }
@@ -314,7 +402,40 @@ fieldset.note-readers .note-readers-head { grid-column: 1 / -1; }
   z-index: 100; /* above everything, including animated pills */ }
 .modal { background: #fff; border-radius: 16px; padding: 20px 22px; width: 360px; display: grid; gap: 12px; }
 .modal.wide { width: 460px; max-height: 90vh; overflow: auto; }
-.modal.guide { width: 560px; max-width: calc(100vw - 32px); max-height: 90vh; overflow: auto; }
+.modal.guide { width: 940px; max-width: calc(100vw - 32px); max-height: 90vh; overflow: auto; gap: 16px; padding: 22px 26px; }
+.guide-head h3 { margin: 0; font-size: 19px; }
+/* Demo guide as a picture: the rule first, then the main story as four steps in a row, joined by arrows */
+.guide-rule { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: 12px;
+  background: #fff7e0; border: 1px solid #f1d58a; border-left: 4px solid #e0a100; color: var(--ink); font-size: 14px;
+  line-height: 1.45; }
+.guide-rule b { font-size: 15px; }
+.guide-rule-icon { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #e0a100; color: #fff;
+  display: grid; place-items: center; font: italic 700 14px/1 Georgia, serif; margin-top: 1px; }
+.guide-story-title { margin: 2px 0 -4px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.guide-story-title b { color: var(--ink); }
+.guide-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+.guide-step { position: relative; display: flex; flex-direction: column; gap: 10px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 16px;
+  box-shadow: 0 1px 2px rgba(35, 39, 56, 0.05), 0 4px 14px rgba(35, 39, 56, 0.06); }
+.guide-step-head { display: flex; gap: 10px; align-items: center; }
+.guide-num { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: #fff;
+  display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+.guide-who { font-weight: 700; font-size: 16px; color: var(--ink); line-height: 1.2; }
+.guide-role { font-size: 12.5px; color: var(--muted); }
+.guide-where { align-self: flex-start; font-size: 12px; font-weight: 600; color: var(--primary); background: var(--primary-soft);
+  border-radius: 999px; padding: 2px 10px; }
+.guide-do { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--ink); }
+.guide-arrow { position: absolute; right: -19px; top: 50%; transform: translateY(-50%); width: 16px; text-align: center;
+  font-size: 26px; font-weight: 700; color: var(--primary); line-height: 1; }
+.guide-also { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.guide-also-label { font-weight: 600; color: var(--muted); margin-right: 2px; }
+.guide-chip { background: var(--bg, #f5f6fb); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; color: var(--ink); }
+.guide-foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted);
+  border-top: 1px solid var(--line); padding-top: 12px; }
+.guide-foot span { display: inline-flex; align-items: center; gap: 6px; }
+.guide-foot svg { color: var(--primary); }
+.guide-details summary { cursor: pointer; color: var(--primary); font-weight: 600; font-size: 13.5px; width: fit-content; }
+.guide-details[open] summary { margin-bottom: 10px; }
 .guide-head { display: flex; justify-content: space-between; align-items: center; }
 .drawer-head { align-items: flex-start; gap: 8px; }
 .drawer-head h4 { margin: 4px 0 8px; }
@@ -363,15 +484,16 @@ h1, h2, h3, .brand, .impact-tile b { letter-spacing: -0.01em; }
 /* Action row: the recommended action leads; the alternatives are smaller, and cancel stays red */
 button.lead { font-weight: 600; box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.28); }
 button.small { font-size: 13px; padding: 5px 11px; border-radius: 8px; }
-button.small.danger { color: var(--bad); border-color: #f1c4cd; }
+/* Cancel stays quiet until pointed at, so the recommended action is the one thing that stands out */
+button.danger:hover:not(:disabled) { color: var(--bad); }
 
-/* The agent's steps and the "without AI" line, shown on the card */
+/* The agent's steps (small boxes) and "AI changed the answer" (an amber callout) */
 .trail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .trail-step { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--ai-line);
   border-radius: 999px; padding: 2px 10px 2px 8px; color: var(--ink); }
-.without-ai { margin-top: 8px; font-size: 13px; color: var(--muted); padding: 6px 10px; background: #fff;
-  border: 1px dashed #e0c79d; border-radius: 8px; }
-.without-ai b { color: #9a5b00; font-weight: 600; }
+.without-ai { margin-top: 8px; font-size: 13px; color: var(--ink); padding: 6px 10px; background: var(--warn-soft);
+  border-left: 3px solid var(--warn); border-radius: 8px; }
+.without-ai strong, .without-ai b { color: var(--warn); font-weight: 600; }
 
 /* A tab with nothing to act on */
 .empty-state { text-align: center; padding: 32px 16px; background: var(--card); border: 1px solid var(--line);
@@ -425,7 +547,9 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 .ws-body { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .ws-detail { position: sticky; top: 12px; min-width: 0; }
 .ws-detail .card { margin-bottom: 0; }
-.tile-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+/* align-content: start keeps the tiles together at the top: a grid taller than its tiles would otherwise spread them
+   out, leaving gaps after a tile moves to another group */
+.tile-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; align-content: start; }
 .tile-item { display: block; width: 100%; padding: 0; border: none; background: none; text-align: left; border-radius: 12px; }
 .tile-item:hover:not(:disabled) { background: none; }
 .tile { display: flex; flex-direction: column; gap: 2px; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--primary);
@@ -450,6 +574,7 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 /* Phones: the tab rows stay on one line and scroll sideways instead of wrapping */
 @media (max-width: 700px) {
   .tabs, .subtabs, .impact-periods { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .tabs .tab-list { flex-wrap: nowrap; flex: none; }
   .tabs::-webkit-scrollbar, .subtabs::-webkit-scrollbar, .impact-periods::-webkit-scrollbar { display: none; }
   .tabs button, .subtabs button, .impact-periods button { flex: none; white-space: nowrap; }
   .subtabs { display: flex; }
@@ -467,6 +592,36 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 @media (max-width: 1100px) { .demo-view-as { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
   .demo-view-as::-webkit-scrollbar { display: none; } .demo-view-as > * { flex: none; } }
 
+/* Demo controls in dark: the same card and coloured left edge, in the toolbar's dark slate so it
+   reads as outside the product rather than part of it; its grey text passes 4.5:1, which it did not on lavender */
+.demo-card.dark { background: var(--toolbar); border-color: var(--toolbar-line); border-left-color: var(--toolbar-accent);
+  color: #fff; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18); }
+.demo-card.dark .demo-title h2 { color: #fff; }
+.demo-card.dark .demo-sub, .demo-card.dark .demo-view-label { color: #c5c8e2; }
+.demo-card.dark button:not(.guide-new), .demo-card.dark select { background: var(--toolbar-raise); color: #fff;
+  border-color: var(--toolbar-line); }
+.demo-card.dark .demo-tools button:not(.guide-new) { color: #fff; border-color: var(--toolbar-line); }
+.demo-card.dark button:hover:not(:disabled):not(.guide-new) { border-color: var(--toolbar-accent); background: #454a6c; }
+.demo-card.dark .persona span { color: #c5c8e2; }
+.demo-card.dark button.persona[aria-pressed="true"], .demo-card.dark button.persona[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--toolbar-accent); color: #16182a; border-color: var(--toolbar-accent); }
+.demo-card.dark button.persona[aria-pressed="true"] span { color: #2b2e45; }
+.demo-card.dark :is(button, select):focus-visible { outline-color: #fff; }
+/* "More ▾": a pill like the people, opening a small white list below it */
+.more-people { position: relative; display: inline-flex; }
+.demo-toolbar button.more-btn { align-items: center; }
+.more-chevron { transform: rotate(180deg); }
+.more-btn[aria-expanded="true"] .more-chevron { transform: none; }
+.more-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 200px; max-height: 300px; overflow-y: auto;
+  margin: 0; padding: 4px; list-style: none; background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22); }
+.demo-card.dark .more-menu button, .more-menu button { display: block; width: 100%; text-align: left; background: none;
+  border: none; border-radius: 8px; padding: 7px 10px; font-size: 13.5px; color: var(--ink); }
+.demo-card.dark .more-menu button:hover:not(:disabled), .more-menu button:hover:not(:disabled) { background: var(--primary-soft);
+  color: var(--ink); }
+.more-menu button[aria-current="true"] { font-weight: 600; color: var(--primary); }
+.demo-card.dark .more-menu :is(button):focus-visible { outline-color: var(--primary); }
+
 /* The chosen tile points at the card it opened */
 .ws-body .tile { position: relative; }
 .ws-body .tile-item.chosen .tile::after { content: ""; position: absolute; right: -10px; top: 50%; width: 14px; height: 14px;
@@ -479,17 +634,15 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 /* (i) next to each impact number: tap or click for how it is counted */
 .info-wrap { display: inline-flex; vertical-align: -2px; }
 .impact-tile { position: relative; }   /* the (i) panel lines up with its tile, not with the small icon */
-.impact-tile .info-btn { border: none; background: none; padding: 1px; color: #9aa0b8; border-radius: 50%; display: inline-flex; }
-.impact-tile .info-btn:hover:not(:disabled), .impact-tile .info-btn[aria-expanded="true"] { color: var(--primary); background: var(--primary-soft); }
-.impact-tile .info-pop { position: absolute; top: calc(100% + 6px); left: -10px; z-index: 30; width: min(300px, 78vw);
+.impact-band .info-btn { border: none; background: none; padding: 1px; color: #7d849e; border-radius: 50%; display: inline-flex; }
+.impact-band .info-btn:hover:not(:disabled), .impact-band .info-btn[aria-expanded="true"] { color: var(--primary); background: var(--primary-soft); }
+.impact-band .info-pop { position: absolute; top: calc(100% + 6px); left: -10px; z-index: 30; width: min(300px, 78vw);
   background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px;
   line-height: 1.45; font-weight: 400; white-space: normal; text-align: left; box-shadow: 0 8px 24px rgba(30, 33, 60, 0.16); }
 .impact-tile:nth-child(n+3) .info-pop { left: auto; right: -10px; }
 @media (max-width: 700px) { .impact-tile:nth-child(odd) .info-pop { left: -10px; right: auto; }
   .impact-tile:nth-child(even) .info-pop { left: auto; right: -10px; } }
-.impact-foot .icon { vertical-align: -2px; }
 
-.demo-view-as select { width: 84px; }
 .impact-tile .info-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 @media (max-width: 500px) { .impact-tiles { grid-template-columns: 1fr; } .impact-tile, .impact-tile:nth-child(n) { border-left: none; padding-left: 4px; } .impact-tile.hero { padding-left: 12px; } .impact-tile:nth-child(n) .info-pop { left: -10px; right: auto; } }
 

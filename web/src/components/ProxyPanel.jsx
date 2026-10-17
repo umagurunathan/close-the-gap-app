@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { prettyModel } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
@@ -18,6 +18,15 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
   const [drafting, setDrafting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // the note box fits its text, up to about 20 lines (then it scrolls)
+  const noteBox = useRef(null);
+  useLayoutEffect(() => {
+    const box = noteBox.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight + 2, 460)}px`;
+  }, [note]);
 
   const ev = item.event;
   const ai = item.ai;
@@ -110,30 +119,40 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
     }
   }
 
+  // One line says why a button is off: no proxy yet (Send and Draft both wait for one), or why no AI draft is offered.
+  const why = !pick ? "Choose a proxy first." : !canDraft && draft.reason ? draft.reason : "";
+  const whyId = `proxy-why-${item.id}`;
+  const pickReason = pick && candidates.find((c) => c.personId === pick)?.reason;
+
+  // Compact: the two ways to pick side by side, "Draft with AI" beside the note's label, Send with one reason line.
   return (
-    <div className="panel">
-      <h4>Choose a proxy for {name(item.absentPersonId)}</h4>
-      {candidates.length > 0 && (
-        <div className="pick-row">
-          <select value={candidates.some((c) => c.personId === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}
-            aria-describedby={`pick-why-${item.id}`}>
-            <option value="">From this meeting's attendees…</option>
-            {candidates.map((c) => (
-              <option key={c.personId} value={c.personId}>
-                {name(c.personId)}
-                {(c.choice || c.declined) &&
-                  ` (${[c.choice && `${c.choice} choice`, c.declined && "declined"].filter(Boolean).join(", ")})`}
-              </option>
-            ))}
-          </select>
-          {/* why this person: next to the list, not under it (so it isn't read as part of the search box) */}
-          {pick && candidates.some((c) => c.personId === pick) && (
-            <span className="pick-why" id={`pick-why-${item.id}`}>{candidates.find((c) => c.personId === pick)?.reason}</span>
-          )}
-        </div>
-      )}
-      <input type="search" value={query} placeholder="Or search the company directory by name or email…"
-        onChange={(e) => searchDirectory(e.target.value)} />
+    <div className="panel proxy-panel">
+      <div className="panel-head">
+        <h4>Choose a proxy for {name(item.absentPersonId)}</h4>
+        <button type="button" className="panel-close" aria-label="Back" title="Back" onClick={onBack}>✕</button>
+      </div>
+      <div className="pick-row">
+        {candidates.length > 0 && (
+          <>
+            <select value={candidates.some((c) => c.personId === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}
+              aria-describedby={pickReason ? `pick-why-${item.id}` : undefined}>
+              <option value="">From this meeting's attendees…</option>
+              {candidates.map((c) => (
+                <option key={c.personId} value={c.personId}>
+                  {name(c.personId)}
+                  {(c.choice || c.declined) &&
+                    ` (${[c.choice && `${c.choice} choice`, c.declined && "declined"].filter(Boolean).join(", ")})`}
+                </option>
+              ))}
+            </select>
+            <span className="pick-or">or</span>
+          </>
+        )}
+        <input type="search" className="pick-search" value={query} aria-label="Search the company directory"
+          placeholder="Search the company directory by name or email…" onChange={(e) => searchDirectory(e.target.value)} />
+      </div>
+      {/* why this person */}
+      {pickReason && <p className="pick-why" id={`pick-why-${item.id}`}>{pickReason}</p>}
       {matches.length > 0 && (
         <select value={matches.some((p) => p.id === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}>
           <option value="">Select from the directory…</option>
@@ -147,44 +166,40 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
       {pickedOutsider && (
         <p className="reason">{name(pick)} isn't on this invite. They'll be added as an optional attendee when you send the request.</p>
       )}
-      <label className="note-label">
-        Note for the proxy (optional)
-        {/* taller once an AI brief is in, so the sender can read all of it before sending */}
-        <textarea rows={fromAi ? 14 : 4} value={note}
-          placeholder={canDraft ? "Type a note, or use Draft with AI" : "Type your own note for the proxy"}
-          onChange={(e) => setNote(e.target.value)} />
-      </label>
-      <div className="actions">
-        <button disabled={!canDraft || drafting} onClick={draftWithAi} aria-describedby={`draft-why-${item.id}`}>
-          {drafting ? "Drafting…" : "Draft with AI"}
-        </button>
-        {fromAi && draftSource?.engine === "gemini" && (
-          <span className="pill src-ai" title="Written by Gemini from the summaries you and the proxy can both open.">
-            <Icon name="check" size={13} />Drafted by {prettyModel(draftSource.model)}
-          </span>
-        )}
-        {fromAi && draftSource?.engine === "rules_fallback" && (
-          <span className="pill src-rules" title="Gemini did not answer, so a simple draft was made from the summary.">
-            Simple draft · AI unavailable
-          </span>
-        )}
-        {fromAi && <span className="reason">Review and edit before sending.</span>}
+      <div className="note-head">
+        <label htmlFor={`note-${item.id}`}>Note for the proxy (optional)</label>
+        <span className="note-tools">
+          <button type="button" className="small draft-btn" disabled={!canDraft || drafting} onClick={draftWithAi}
+            aria-describedby={why ? whyId : undefined}>
+            <Icon name="spark" size={13} />{drafting ? "Drafting…" : "Draft with AI"}
+          </button>
+          {fromAi && draftSource?.engine === "gemini" && (
+            <span className="pill src-ai" title="Written by Gemini from the summaries you and the proxy can both open.">
+              <Icon name="check" size={13} />Drafted by {prettyModel(draftSource.model)}
+            </span>
+          )}
+          {fromAi && draftSource?.engine === "rules_fallback" && (
+            <span className="pill src-rules" title="Gemini did not answer, so a simple draft was made from the summary.">
+              Simple draft · AI unavailable
+            </span>
+          )}
+          {fromAi && <span className="reason">Review and edit before sending.</span>}
+        </span>
       </div>
-      {/* A disabled button always says why. */}
-      {cleared ? (
-        <p className="note warn" id={`draft-why-${item.id}`}>{cleared}</p>
-      ) : (
-        !canDraft && draft.reason && <p className="reason" id={`draft-why-${item.id}`}>{draft.reason}</p>
-      )}
+      {/* two lines to start; grows to fit the text (an AI brief shows in full, with no empty space under it) */}
+      <textarea id={`note-${item.id}`} ref={noteBox} className="note-box" rows={2} value={note}
+        placeholder={canDraft ? "Type a note, or use Draft with AI" : "Type your own note for the proxy"}
+        onChange={(e) => setNote(e.target.value)} />
+      {cleared && <p className="note warn">{cleared}</p>}
       <div className="actions">
-        <button className="primary" disabled={busy || !pick} onClick={send} aria-describedby={`send-why-${item.id}`}>
+        <button className="primary" disabled={busy || !pick} onClick={send} aria-describedby={why ? whyId : undefined}>
           {busy ? "Sending…" : !note.trim() ? "Send proxy request"
             : fromAi && draftSource?.engine === "gemini" ? <><Icon name="spark" size={15} />Send request with the AI note</>
               : "Send request with the note"}
         </button>
-        <button className="link" onClick={onBack}>Back</button>
+        {/* A disabled button always says why: one line for both */}
+        {why && <span className="reason" id={whyId}>{why}</span>}
       </div>
-      {!pick && <p className="reason" id={`send-why-${item.id}`}>Choose a proxy above to send the request.</p>}
       {error && <div className="note warn">{error}</div>}
     </div>
   );
