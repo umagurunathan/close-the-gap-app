@@ -22,7 +22,7 @@ from .models import (
     OrganizerMeeting, Person, Note, NoteCreate, ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
-from .roles import is_invited_as_optional, required_ids
+from .roles import is_invited_as_optional, key_people, required_ids
 from .scheduling import find_slot
 from .settings import settings as S
 from .store import Store
@@ -358,6 +358,8 @@ class Service:
                         item.event.title = event.title
                         item.event.instanceStart = event.start
                         item.event.start, item.event.end = event.start, event.end
+                        if item.status == ItemStatus.rescheduled:
+                            item.rescheduledTo = event.start   # moved again in Google Calendar: Google's time wins
                         item.event.organizerId = event.organizerId
                         item.event.attendees = list(event.attendees)
                         self.store.save_item(item)
@@ -462,6 +464,12 @@ class Service:
                 i.organizerAlerted = True
                 self.store.save_item(i)
         return created
+
+    def cards_on_days(self, person_id: str, start: date, end: date) -> list[MeetingItem]:
+        """This person's upcoming cards for meetings on these days. A meeting has one card per absent person, so when
+        absences overlap, the new one creates no cards of its own: these are the meetings it still affects."""
+        return [i for i in self.store.items() if i.absentPersonId == person_id and not self._is_past(i)
+                and start <= i.event.start.date() <= end]
 
     def absences_for(self, person_id: str) -> list[Absence]:
         """This person's current and upcoming absences, earliest first (an absence that has ended is not shown)."""
@@ -568,7 +576,8 @@ class Service:
             checks=[f"{first(i)}: {c}" for i in base for c in i.ai.checks],
         )
 
-    def apply_meeting_action(self, event_id: str, caller: str, action: Action) -> Optional[OrganizerMeeting]:
+    def apply_meeting_action(self, event_id: str, caller: str, action: Action,
+                             start: Optional[datetime] = None) -> Optional[OrganizerMeeting]:
         """The organizer decides for the whole meeting: reschedule (one new time when every key person
         is back), cancel (this occurrence), or go on without them (people still undecided go ahead; any proxy or
         "I'll attend" already arranged is kept). A proxy is chosen per person, on that person's line."""
@@ -596,23 +605,29 @@ class Service:
             for i in open_items:
                 self.apply_action(i.id, caller, Action.cancel)
         else:
-            slot = self.proposed_time(open_items[0].id)
-            if slot.none:
+            e = self.calendar.get(event_id)
+            # the proposed time, or a time the organizer picked (always possible, even when nothing is proposed)
+            if start:
+                new_start = self._check_picked_time(e, start, [i.absentPersonId for i in open_items])
+            else:
+                slot = self.proposed_time(open_items[0].id)
+                new_start = None if slot.none else slot.proposedStart
+            if new_start is None:
                 for i in open_items:
                     self.apply_action(i.id, caller, Action.reschedule)   # records "no suitable time found"
             else:
-                e = self.calendar.get(event_id)
-                self.calendar.move_event(e.id, slot.proposedStart)   # ONE move for everyone
+                original = e.start
+                e = self._move_meeting(e, new_start)   # ONE move for everyone, Google first
                 now = self.now()
                 for i in open_items:
                     self._withdraw_requests(i, tell_accepted=False)
-                    i.originalStart = i.originalStart or i.event.start
+                    i.originalStart = i.originalStart or original
                     i.event.start, i.event.end = e.start, e.end
-                    i.rescheduledTo, i.status, i.chosenAction = slot.proposedStart, ItemStatus.rescheduled, Action.reschedule
+                    i.rescheduledTo, i.status, i.chosenAction = e.start, ItemStatus.rescheduled, Action.reschedule
                     i.decidedBy, i.updatedAt = caller, now
                     self.store.save_item(i)
-                    self._log(i.id, caller, "action_chosen", f"reschedule (whole meeting) => rescheduled to {slot.proposedStart}",
-                              f"{self._first(caller)} rescheduled the meeting to a time when everyone is back.")
+                    self._log(i.id, caller, "action_chosen", f"reschedule (whole meeting) => rescheduled to {e.start}",
+                              f"{self._first(caller)} (organizer) moved the meeting to a time when everyone is back.")
         return next((m for m in self.organizer_meetings(caller) if m.calendarEventId == event_id), None)
 
     def past_items(self, me: str) -> list[MeetingItem]:
@@ -718,8 +733,51 @@ class Service:
         self.calendar.save_event(e)
         return note
 
+    # ---------- moving or canceling the meeting itself (the organizer side only) ----------
+    def _check_picked_time(self, e: CalEvent, start: datetime, absent_ids: list[str]) -> datetime:
+        """A time the organizer picked instead of the proposed one: in the future, not the current time, and on a day
+        when every key person (and everyone whose card this is) is back. Being free that hour is the organizer's call."""
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if start <= self.now():
+            raise ValueError("Please pick a time in the future.")
+        if start == e.start:
+            raise ValueError("That is the meeting's current time. Please pick another time.")
+        day = start.date()
+        out = [pid for pid in dict.fromkeys(key_people(e, self.people_map()) + absent_ids) if self._is_out(pid, day)]
+        if out:
+            names = ", ".join(self.person(pid).name for pid in out)
+            raise ValueError(f"{names} {'is' if len(out) == 1 else 'are'} out that day. Please pick another day.")
+        return start
+
+    def _move_meeting(self, e: CalEvent, start: datetime) -> CalEvent:
+        """ONE move for everyone: the Google event first (Google tells the guests), then the app's own copy. If Google
+        refuses, nothing in the app changes."""
+        if e.googleEventId:
+            if e.googleCalendarOwnerId != e.organizerId:
+                raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
+            if self.google_calendar is None:
+                raise ValueError("Google Calendar is not available for this event")
+            moved = e.model_copy(deep=True)
+            moved.start, moved.end = start, start + (e.end - e.start)
+            self.google_calendar.update_event(moved)
+        return self.calendar.move_event(e.id, start)
+
+    def _cancel_meeting(self, e: CalEvent) -> None:
+        """Cancel once: a meeting already canceled (another person's card did it) is not deleted from Google again."""
+        if e.cancelled:
+            return
+        if e.googleEventId:
+            if e.googleCalendarOwnerId != e.organizerId:
+                raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
+            if self.google_calendar is None:
+                raise ValueError("Google Calendar is not available for this event")
+            self.google_calendar.delete_event(e.googleCalendarOwnerId, e.googleEventId)
+        self.calendar.cancel_event(e.id)
+
     def apply_action(self, item_id: str, caller: str, action: Action, proxy_id: Optional[str] = None,
-                     note: Optional[str] = None, note_from_ai: bool = False) -> MeetingItem:
+                     note: Optional[str] = None, note_from_ai: bool = False,
+                     start: Optional[datetime] = None) -> MeetingItem:
         item = self.store.get_item(item_id)
         if not item:
             raise LookupError("This meeting card no longer exists. Please refresh the page to see the latest.")
@@ -805,35 +863,24 @@ class Service:
                                   f"{self.person(item.absentPersonId).name} suggests you {action.value} '{item.event.title}'",
                                   "Open Organizer Mode to do it in one click.", now)
             elif action == Action.cancel:
-                if e.googleEventId:
-                    if e.googleCalendarOwnerId != e.organizerId:
-                        raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
-                    if self.google_calendar is None:
-                        raise ValueError("Google Calendar is not available for this event")
-                    self.google_calendar.delete_event(e.googleCalendarOwnerId, e.googleEventId)
-                self.calendar.cancel_event(e.id)
+                self._cancel_meeting(e)
                 item.status, item.chosenAction = ItemStatus.cancelled, action
             else:
-                slot = self.proposed_time(item.id)
+                # the proposed time, or a time the organizer picked (always possible, even when nothing is proposed)
+                new_start = self._check_picked_time(e, start, [item.absentPersonId]) if start else None
+                if new_start is None:
+                    slot = self.proposed_time(item.id)
+                    new_start = None if slot.none else slot.proposedStart
                 item.chosenAction = action
-                if slot.none:
+                if new_start is None:
                     item.status = ItemStatus.no_slot_found
                 else:
-                    if e.googleEventId:
-                        if e.googleCalendarOwnerId != e.organizerId:
-                            raise ValueError("The organizer must sync their Google Calendar before changing this meeting")
-                        if self.google_calendar is None:
-                            raise ValueError("Google Calendar is not available for this event")
-                        updated = e.model_copy(deep=True)
-                        duration = e.end - e.start
-                        updated.start = slot.proposedStart
-                        updated.end = slot.proposedStart + duration
-                        self.google_calendar.update_event(updated)
-                    self.calendar.move_event(e.id, slot.proposedStart)
-                    item.originalStart = item.originalStart or item.event.start
+                    original = item.event.start
+                    e = self._move_meeting(e, new_start)   # the calendar itself notifies attendees
+                    item.originalStart = item.originalStart or original
                     item.event.start, item.event.end = e.start, e.end
-                    item.rescheduledTo = slot.proposedStart
-                    item.status = ItemStatus.rescheduled  # the calendar itself notifies attendees
+                    item.rescheduledTo = e.start
+                    item.status = ItemStatus.rescheduled
 
         if action != Action.proxy and item.status in (
                 ItemStatus.attending, ItemStatus.proceeding_without, ItemStatus.cancelled, ItemStatus.rescheduled):

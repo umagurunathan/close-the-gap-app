@@ -17,6 +17,7 @@ from .google_meet import GoogleMeetIntegration, MeetIntegrationError
 from .google_calendar import CalendarIntegrationError, GoogleCalendarIntegration
 from .firebase_auth import install_firebase_auth
 from .firestore import begin_request_reads
+from .limits import RateLimiter, visitor_key
 from .models import (
     Absence, AbsenceCreate, AbsenceReport, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DirectoryEntry, EventCreate, HistoryEvent,
     MeetingActionRequest, OrganizerMeeting,
@@ -89,6 +90,17 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     def signed_in(request: Request) -> bool:
         return bool(getattr(request.state, "person_id", None))
 
+    limiter = RateLimiter()
+
+    def limit(request: Request, action: str, message) -> None:
+        """Refuse politely (HTTP 429) once a visitor has used `action` too often (`[limits]` in settings.toml)."""
+        allowed = getattr(S.limits, action)
+        key = visitor_key(getattr(request.state, "person_id", None), request.headers.get("x-forwarded-for"),
+                          request.client.host if request.client else None)
+        wait = limiter.hit(f"{action}:{key}", allowed, S.limits.window_minutes * 60)
+        if wait is not None:
+            raise HTTPException(429, message(allowed, wait))
+
     def real_people_only(request: Request) -> None:
         if not signed_in(request):
             raise HTTPException(403, "Sign in with Google to connect your own calendar. The demo uses sample meetings.")
@@ -140,7 +152,8 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"ok": True}
+        # the store is named so a quick check shows the live site saves to the database
+        return {"ok": True, "store": type(svc.store).__name__}
 
     @app.post("/events", response_model=ScheduleResult)
     def post_event(body: EventCreate, request: Request, who: str = Depends(me)):
@@ -226,9 +239,11 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     def post_absence(body: AbsenceCreate, who: str = Depends(me)):
         """Saves the absence; the reply says how many meetings it affects (for the confirmation message)."""
         def run():
-            absence, created = svc.report_absence(body.personId, body.start, body.end, AbsenceSource.manual, who)
-            return AbsenceReport(absence=absence, affected=len(created),
-                                 needDecision=sum(1 for i in created if i.status.value == "pending_decision"))
+            absence, _ = svc.report_absence(body.personId, body.start, body.end, AbsenceSource.manual, who)
+            # every meeting on those days counts, including ones an earlier, overlapping absence already covers
+            cards = svc.cards_on_days(body.personId, body.start, body.end)
+            return AbsenceReport(absence=absence, affected=len(cards),
+                                 needDecision=sum(1 for i in cards if i.status.value == "pending_decision"))
         return guard(run)
 
     @app.get("/items", response_model=None)
@@ -244,9 +259,13 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return svc.organizer_meetings(who)
 
     @app.post("/meetings/{event_id}/action", response_model=Optional[OrganizerMeeting])
-    def post_meeting_action(event_id: str, body: MeetingActionRequest, who: str = Depends(me)):
-        """The organizer decides for the whole meeting: reschedule, cancel or proceed_without."""
-        return guard(lambda: svc.apply_meeting_action(event_id, who, body.action))
+    def post_meeting_action(event_id: str, body: MeetingActionRequest, request: Request, who: str = Depends(me)):
+        """The organizer decides for the whole meeting: reschedule (the proposed time, or `start` if they picked one),
+        cancel or proceed_without."""
+        event = svc.calendar.get(event_id)
+        if event and event.googleEventId:
+            require_calendar_request(request)
+        return guard(lambda: svc.apply_meeting_action(event_id, who, body.action, body.start))
 
     @app.post("/items/{item_id}/action", response_model=MeetingItem)
     def post_action(item_id: str, body: ActionRequest, request: Request, who: str = Depends(me)):
@@ -255,7 +274,8 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
             event = svc.calendar.get(item.event.calendarEventId)
             if event and event.googleEventId:
                 require_calendar_request(request)
-        return guard(lambda: svc.apply_action(item_id, who, body.action, body.proxyId, body.note, body.noteFromAi))
+        return guard(lambda: svc.apply_action(item_id, who, body.action, body.proxyId, body.note, body.noteFromAi,
+                                              body.start))
 
     @app.get("/items/{item_id}/notes", response_model=list[Note])
     def get_meeting_notes(item_id: str, who: str = Depends(me)):
@@ -350,7 +370,10 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return guard(lambda: svc.note_draft_available(item_id, who, proxyId))
 
     @app.post("/items/{item_id}/note-draft", response_model=NoteDraft)
-    def post_note_draft(item_id: str, proxyId: Optional[str] = None, who: str = Depends(me)):
+    def post_note_draft(item_id: str, request: Request, proxyId: Optional[str] = None, who: str = Depends(me)):
+        limit(request, "draft_with_ai",
+              lambda n, wait: f"Draft with AI was used {n} times in the last {S.limits.window_minutes} minutes. "
+                              f"Please try again in about {wait} minute{'s' if wait != 1 else ''}, or type the note yourself.")
         return guard(lambda: svc.note_draft(item_id, who, proxyId))
 
     @app.get("/items/{item_id}/proxy-candidates", response_model=list[ProxyCandidate])
@@ -413,6 +436,10 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         is never touched."""
         if signed_in(request):
             raise HTTPException(403, "Reset demo data is for the demo. Sign out to use it.")
+        limit(request, "reset_demo",
+              lambda n, wait: f"The demo was reset {'twice' if n == 2 else f'{n} times'} from here in the last "
+                              f"{S.limits.window_minutes} minutes. Please try again in about {wait} "
+                              f"minute{'s' if wait != 1 else ''}.")
         from .seed import reset_demo as reset
         reset(demo_svc)
         return {"ok": True}

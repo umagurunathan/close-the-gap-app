@@ -60,20 +60,22 @@ export default function Workspace({ groups, group, onGroup, selected, onSelect, 
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (!wide || !frame) return undefined;
-    const detail = frame.closest(".ws-body")?.querySelector(".ws-detail");
-    // As tall as the card, or as the tiles need (up to the window's bottom), whichever is taller: a short card no
-    // longer makes tiles scroll that would fit.
+    // Exactly as tall as the tiles need, so there is no empty space below the last tile; it scrolls only when the
+    // tiles don't fit above the window's bottom (never shorter than 190 px, so a short window still shows a few).
     const fit = () => {
       const top = frame.getBoundingClientRect().top;
-      const bottom = detail ? detail.getBoundingClientRect().bottom : window.innerHeight - 16;
+      // measured with the height released: a scrolling list never reports less than its current height, so after
+      // a long group a short one would keep the old, taller box
+      frame.style.height = "auto";
       const tilesNeed = (listRef.current?.scrollHeight ?? 0) + 2;   // + the frame's border
       const windowRoom = window.innerHeight - 16 - top;
-      frame.style.height = `${Math.round(Math.max(190, bottom - top, Math.min(tilesNeed, windowRoom)))}px`;
+      frame.style.height = `${Math.round(Math.min(tilesNeed, Math.max(windowRoom, 190)))}px`;
       checkMore();
     };
     fit();
-    const watch = detail && typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
-    watch?.observe(detail);
+    // tiles change height on their own (e.g. "AI analyzing…" becomes the answer): follow the list
+    const watch = listRef.current && typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    for (const tile of listRef.current?.children ?? []) watch?.observe(tile);
     window.addEventListener("resize", fit);
     return () => { watch?.disconnect(); window.removeEventListener("resize", fit); };
   }, [wide, group, current.items.length, chosenKey]);

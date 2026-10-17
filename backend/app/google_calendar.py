@@ -193,7 +193,8 @@ class GoogleCalendarIntegration:
                     f"{CALENDAR_API}/calendars/primary/events/{event_id}?sendUpdates=all",
                     headers={"Authorization": f"Bearer {token}"},
                 )
-                if response.status_code >= 400:
+                # already deleted (404 not found, 410 gone): the meeting is canceled either way
+                if response.status_code >= 400 and response.status_code not in (404, 410):
                     raise CalendarIntegrationError(f"Google Calendar API request failed (HTTP {response.status_code}).")
         except httpx.HTTPError as exc:
             raise CalendarIntegrationError("Could not reach the Google Calendar API.") from exc

@@ -46,19 +46,33 @@ export function urgencyLabel(urgency, hours) {
   return days <= 1 ? "Tomorrow" : `In ${days} days`;
 }
 
-// ONE date format everywhere, whatever the browser's language: "Tue, 27 Oct · 3:00 pm", in the viewer's own time zone
-// (the calendar's way: a meeting at 09:30 UTC shows as 3:00 pm in India).
+// ONE date format everywhere, whatever the browser's language or time zone: "Tue, 27 Oct · 3:00 pm IST". Every time
+// is shown in India Standard Time and says so (the team and the demo work in IST; a meeting at 09:30 UTC is 3:00 pm IST).
+// IST is UTC+5:30 all year (no daylight saving), so a fixed offset is exact.
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const IST_OFFSET_MS = 330 * 60000;
+const inIst = (d) => new Date(new Date(d).getTime() + IST_OFFSET_MS);   // then read with getUTC*
 
 export function fmtTime(d) {
-  const h = d.getHours();
-  return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+  const t = inIst(d);
+  const h = t.getUTCHours();
+  return `${h % 12 || 12}:${String(t.getUTCMinutes()).padStart(2, "0")} ${h < 12 ? "am" : "pm"} IST`;
 }
 
 export function fmtWhen(iso) {
-  const d = new Date(iso);
-  return `${WEEKDAY[d.getDay()]}, ${d.getDate()} ${MONTH[d.getMonth()]} · ${fmtTime(d)}`;
+  const t = inIst(iso);
+  return `${WEEKDAY[t.getUTCDay()]}, ${t.getUTCDate()} ${MONTH[t.getUTCMonth()]} · ${fmtTime(iso)}`;
+}
+
+// For date and time boxes, which hold IST: an instant as { date: "2026-11-09", time: "15:00" } in IST, and back.
+export function istFields(iso) {
+  const s = inIst(iso).toISOString();
+  return { date: s.slice(0, 10), time: s.slice(11, 16) };
+}
+
+export function fromIst(date, time) {
+  return new Date(`${date}T${time}:00+05:30`).toISOString();
 }
 
 // A calendar date ("2026-10-27") with no time: "27 Oct". Read as a plain date, so no time zone can shift it.

@@ -10,7 +10,13 @@ load_dotenv()
 
 
 def store_kind() -> str:
-    return os.getenv("STORE", "memory")
+    """Where the data lives. Locally, memory unless set (tests and quick runs). On Cloud Run (K_SERVICE is set there)
+    it must be Firestore: the backend refuses to start otherwise, so a lost setting fails the new revision (Cloud Run
+    keeps serving the last good one) instead of quietly serving data that is never saved."""
+    kind = os.getenv("STORE", "memory").strip().lower()
+    if os.getenv("K_SERVICE") and kind != "firestore":
+        raise RuntimeError(f"STORE must be 'firestore' on Cloud Run (got {kind!r}). Set it with --update-env-vars.")
+    return kind
 
 
 def llm_provider() -> str:

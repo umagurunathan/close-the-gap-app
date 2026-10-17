@@ -257,6 +257,7 @@ export default function App() {
       setNotice("Demo data reset. The AI is analyzing every card again.");
       await refresh();
     } catch (e) {
+      setNotice("");   // "Resetting…" no longer applies
       setError(e.message);
     } finally {
       setResetting(false);
@@ -329,7 +330,6 @@ export default function App() {
   // Activity log lines per meeting, shown inside the cards in Past
   const activityFor = (itemId) => history.filter((h) => h.itemId === itemId).sort((a, b) => a.at.localeCompare(b.at));
   const noAction = attendee.noActionNeeded;
-  const affectedCount = attendee.needsAction.length + noAction.teamCheckins.length + noAction.orgEvents.length;
   // Attendee Mode's three groups. Needs action: not settled yet. Settled: a person decided (a proxy accepted,
   // "I'll attend", "go on without me", rescheduled or canceled). No action needed: handled automatically (team
   // check-ins, org-wide events); if someone acts on one, it moves to Settled. Each group: soonest first.
@@ -482,14 +482,19 @@ export default function App() {
       )}
       {/* The signed-in person's situation and next step, in two lines: the first thing a visitor reads. */}
       {upcomingAbsence && (() => {
-        // With one absence: all the person's cards, as before. With several: only this absence's cards.
+        // With one absence: all the person's cards, as before. With several: the cards of meetings on this absence's
+        // days. Each meeting has one card, tied to the first absence that covered it, so when absences overlap the
+        // card is matched by its date as well (the same rule as the backend: the meeting's date within the absence).
+        // Meetings already rescheduled or canceled count too: they were affected and are now settled, so the banner
+        // says so instead of "None of your meetings is affected". A moved meeting is matched by its original date.
         const several = myAbsences.length > 1;
-        const mine = several
-          ? [...attendee.needsAction, ...noAction.teamCheckins, ...noAction.orgEvents]
-              .filter((i) => i.absenceId === upcomingAbsence.id)
-          : null;
-        const open = several ? mine.filter((i) => i.needsAttention).length : counts.attendeeOpen;
-        const total = several ? mine.length : affectedCount;
+        const { start: from, end: to } = upcomingAbsence;
+        const pool = [...attendee.needsAction, ...noAction.teamCheckins, ...noAction.orgEvents,
+          ...(noAction.rescheduledOrCancelled || [])];
+        const onDays = (i) => { const d = (i.originalStart || i.event.start).slice(0, 10); return d >= from && d <= to; };
+        const mine = several ? pool.filter((i) => i.absenceId === upcomingAbsence.id || onDays(i)) : pool;
+        const open = mine.filter((i) => i.needsAttention).length;
+        const total = mine.length;
         const firstName = (people[shownId]?.name || "").split(" ")[0];
         const days = upcomingAbsence.start === upcomingAbsence.end
           ? <b>{fmtDay(upcomingAbsence.start)}</b>
@@ -510,10 +515,12 @@ export default function App() {
                 {open ? (
                   <><span className="you-count">{open === total ? open : `${open} of ${total}`}</span>{" "}
                     affected {total === 1 ? "meeting" : "meetings"} {open === 1 ? "needs" : "need"} you.</>
-                ) : total ? "Every affected meeting has a plan." : "None of your meetings is affected."}
+                ) : total ? (
+                  <>{total === 1 ? "Your affected meeting is" : <>All <span className="you-count">{total}</span> affected meetings are</>} settled.</>
+                ) : "None of your meetings is affected."}
               </div>
               {open > 0 && <div className="you-sub">{open === 1 ? "It has" : "Each has"} an AI recommendation below, soonest first.</div>}
-              {!open && total > 0 && <div className="you-sub">You can still change any of them below.</div>}
+              {!open && total > 0 && <div className="you-sub">Nothing needs you now. You can review {total === 1 ? "it" : "them"} below.</div>}
             </div>
             {several && (
               <div className="you-pager" role="group" aria-label="Your absences">
@@ -573,7 +580,7 @@ export default function App() {
             renderTile={(i) => <AttendeeTile item={i} people={people} me={shownId} />}
             renderDetail={(i) => (i.status === "rescheduled" || i.status === "cancelled"
               ? <SettledCard title={i.event.title} start={i.event.start} originalStart={i.originalStart} status={i.status}
-                  decidedBy={i.decidedBy} people={people} />
+                  decidedBy={i.decidedBy} organizerId={i.event.organizerId} people={people} />
               : <MeetingCard item={i} people={people} me={shownId} role="attendee" refresh={refresh}
                   quiet={i.status === "auto_handled"} />)}
           />
@@ -592,7 +599,8 @@ export default function App() {
             renderTile={(m) => <OrganizerTile meeting={m} people={people} />}
             renderDetail={(m) => (m.done
               ? <SettledCard title={m.event.title} start={m.event.start} originalStart={m.absentees[0]?.originalStart}
-                  status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} people={people} />
+                  status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} organizerId={m.event.organizerId}
+                  people={people} />
               : <OrganizerCard meeting={m} people={people} me={shownId} refresh={refresh} />)}
           />
         ))}
@@ -608,7 +616,7 @@ export default function App() {
                 empty: { title: "Nothing answered yet", text: "Requests you accept or decline move here." } },
             ]}
             renderTile={(v) => <ProxyTile view={v} people={people} />}
-            renderDetail={(v) => <ProxyCard view={v} people={people} onRespond={respond} />}
+            renderDetail={(v) => <ProxyCard view={v} people={people} me={shownId} onRespond={respond} />}
           />
         ))}
 
@@ -626,7 +634,7 @@ export default function App() {
             ))}
             {pastProxy.length > 0 && <h4 className="group-title">Meetings you covered</h4>}
             {pastProxy.map((v) => (
-              <ProxyCard key={v.request.id} view={v} people={people} activity={activityFor(v.item.id)} />
+              <ProxyCard key={v.request.id} view={v} people={people} me={shownId} activity={activityFor(v.item.id)} />
             ))}
           </div>
         )}
@@ -689,15 +697,15 @@ export default function App() {
             setShowAdd(false);
             const a = report.absence;
             const person = people[a.personId]?.name ?? "";
-            const first = person.split(" ")[0];
             const mine = a.personId === personId;
             const span = a.start === a.end ? fmtDay(a.start) : `${fmtDay(a.start)} – ${fmtDay(a.end)}`;
             const n = report.affected;
             const what = n === 0 ? "No meetings are affected."
               : `${n} ${n === 1 ? "meeting is" : "meetings are"} affected${report.needDecision ? `, ${report.needDecision} need${report.needDecision === 1 ? "s" : ""} a decision` : ""}.`;
             setNotice(`Absence saved: ${mine ? "you are" : `${person} is`} out ${span}. ${what}`);
-            // reporting someone else: their new cards are in their view, one click away
-            setNoticeAction(!mine && n > 0 ? { label: `Open ${first}'s view`, onClick: () => switchPerson(a.personId) } : null);
+            // no "Open <name>'s view" shortcut: a signed-in person only ever sees their own work, and in the demo the
+            // person pills are at the top
+            setNoticeAction(null);
             await refresh();
           }}
         />
