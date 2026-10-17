@@ -303,7 +303,7 @@ class GoogleCalendarIntegration:
             raise CalendarIntegrationError("Google authorization state is invalid or expired. Try connecting again.") from exc
 
 
-# Google Calendar entries that are not meetings (U17): out-of-office, focus-time and working-location blocks, and
+# Google Calendar entries that are not meetings: out-of-office, focus-time and working-location blocks, and
 # birthdays. They are never imported as meetings. An out-of-office block is not read as an absence either: absences
 # come only from "Report an absence" (connecting a leave system or out-of-office is future scope).
 NOT_MEETINGS = {"outOfOffice", "focusTime", "workingLocation", "birthday"}

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { api } from "../api.js";
-import { statusLabel, urgencyLabel, fmtWhen } from "../format.js";
+import { statusLabel, urgencyChip, fmtWhen } from "../format.js";
 import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, declineNotice } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
@@ -8,8 +8,8 @@ import ProxyPanel from "./ProxyPanel.jsx";
 import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 // Organizer Mode: ONE card per meeting, naming everyone who is out.
-// Meeting-level actions (reschedule, go on without them, cancel) apply to everyone on the card; a proxy is chosen per
-// person, on that person's line.
+// Meeting-level actions (reschedule, go on without them, cancel) apply to everyone on the card ("For everyone who is
+// out:" when there are several); a proxy is chosen per person, on that person's line.
 const MEETING_LABEL = {
   reschedule: "Reschedule",
   proceed_without: "Go on without them",
@@ -35,7 +35,7 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
   const first = (id) => name(id).split(" ")[0];
   const terminal = people_.every((a) => a.status === "rescheduled" || a.status === "cancelled");
   const open = people_.filter((a) => a.needsAttention);
-  const urgency = urgencyLabel(meeting.urgency, meeting.hoursToStart);
+  const urgency = urgencyChip(meeting.urgency, meeting.hoursToStart);
   const attention = meeting.urgency || (meeting.needsAttention ? "open" : "settled");
   const movedTo = people_.find((a) => a.rescheduledTo)?.rescheduledTo;
 
@@ -74,7 +74,9 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
   // Meeting-level buttons; the recommended one comes first and stands out while a decision is needed.
   // after a proxy declined, no button is singled out: it is the organizer's call again
   const allDeclined = open.length > 0 && open.every((a) => a.status === "proxy_declined");
-  const highlight = meeting.needsAttention && !allDeclined ? ai.recommendation : null;
+  // while a proxy panel is open, the whole-meeting buttons stay (smaller, none singled out) after "Or instead:"
+  const choosing = Boolean(proxyFor);
+  const highlight = meeting.needsAttention && !allDeclined && !choosing ? ai.recommendation : null;
   const actions = [
     { action: "reschedule", onClick: askReschedule },
     { action: "proceed_without", onClick: () => decide("proceed_without") },
@@ -88,7 +90,11 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
   const ordered = [...actions.filter((b) => b.action === first_), ...actions.filter((b) => b.action !== first_)];
   const leads = Boolean(first_) && ordered[0]?.action === first_;   // one button leads; the rest are smaller
   // a proxy recommendation leads on the person's line, so the whole-meeting buttons are all the smaller options
-  const allSmall = !leads && highlight === "proxy";
+  const allSmall = choosing || (!leads && highlight === "proxy");
+  const several = people_.length > 1;
+  // "Or instead:" only while nothing was chosen yet; after a choice the row already reads "✓ … or change to:"
+  const actionsLabel = choosing && !goingOnWithout ? (several ? "Or instead, for everyone who is out:" : "Or instead:")
+    : several ? "For everyone who is out:" : null;
 
   return (
     <article className={`card attn-${attention}`}>
@@ -98,8 +104,9 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
           <div className="when"><Icon name="calendar" size={14} />{fmtWhen(ev.start)}</div>
         </div>
         <div className="chips">
-          {urgency && <span className={`chip urgency-${meeting.urgency}`}>{urgency}</span>}
-          <span className={`chip ${chip.cls}`}>{chip.text}</span>
+          {urgency && <span className={`chip ${urgency.cls}`}>{urgency.text}</span>}
+          {/* "Not handled yet" is not shown: the Needs action group already says so */}
+          {chip.text !== "Not handled yet" && <span className={`chip ${chip.cls}`}>{chip.text}</span>}
         </div>
       </header>
 
@@ -134,7 +141,10 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
             <div key={a.id} className="absentee">
               <div className="absentee-row">
                 <b>{name(a.absentPersonId)}</b>
-                <span className={`chip status-${a.status}`}>{statusLabel(a.status, false, first(a.absentPersonId), a.chosenAction)}</span>
+                {/* per person; "Not handled yet" only matters when several people are out */}
+                {(a.status !== "pending_decision" || people_.length > 1) && (
+                  <span className={`chip status-${a.status}`}>{statusLabel(a.status, false, first(a.absentPersonId), a.chosenAction)}</span>
+                )}
                 {!terminal && hasProxy && (
                   <button className="taken" title="Done. Click to choose someone else." onClick={() => setProxyFor(a.id)}>
                     <Icon name="check" size={15} />
@@ -143,7 +153,7 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
                 )}
                 {/* A proxy can still be chosen after "go on without them" or "they'll attend": people change their mind.
                     Only while a decision is needed does the AI's suggestion stand out. */}
-                {!terminal && !hasProxy && (
+                {!terminal && !hasProxy && proxyFor !== a.id && (
                   <button
                     className={stars ? "primary" : ""}
                     aria-label={`Choose a proxy for ${name(a.absentPersonId)}`}
@@ -170,7 +180,8 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
 
       {!terminal && !proposal && (
         <div className="actions">
-          <span className="change-label">For the whole meeting:</span>
+          {/* only with several people out does it matter that these act for all of them (a proxy is per person) */}
+          {actionsLabel && <span className="change-label">{actionsLabel}</span>}
           {ordered.map((b, n) => {
             const recommended = b.action === highlight;
             const isTaken = b.action === taken;

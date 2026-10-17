@@ -481,7 +481,8 @@ class Service:
         """The item as `viewer` sees it. Two things are added:
         - the recommendation built from the summaries THIS viewer can open, and
         - the same for everyone: does the card still need someone to act, and how close is the
-          meeting? No 'who is responsible' rule: either side can act. Urgency: amber within 3 days, red within 24 hours."""
+          meeting? No 'who is responsible' rule: either side can act. Urgency: amber within 2 days, red within 24 hours (the web
+          app shows the days left in green further out)."""
         needs = item.status in ATTENTION and not self._is_past(item)
         hours = (item.event.start - self.now()).total_seconds() / 3600
         urgency = None

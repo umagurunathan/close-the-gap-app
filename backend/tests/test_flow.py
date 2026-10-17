@@ -472,7 +472,7 @@ def test_google_calendar_oauth_and_sync_store_only_directory_people(svc, monkeyp
 
 
 def test_out_of_office_and_focus_time_are_not_imported_as_meetings(svc):
-    """U17: Google's out-of-office, focus-time and working-location entries are not meetings; one imported earlier is
+    """Google's out-of-office, focus-time and working-location entries are not meetings; one imported earlier is
     removed with its card. Out of office is not read as an absence either (absences come from "Report an absence")."""
     priya = svc.person("p_priya")
     base = {"start": {"dateTime": "2026-10-21T10:00:00Z"}, "end": {"dateTime": "2026-10-21T11:00:00Z"},
@@ -923,12 +923,12 @@ def test_settings_file_loads_and_drives_the_app(tmp_path):
     s = cfg.settings
     assert s.reminders.milestones_hours_before_meeting == [168, 72, 24, 4, 2]
     assert s.reminders.recipients == ["leaver", "organizer"] and s.reminders.send_as_digest is True
-    assert s.urgency.urgent_hours == 24 and s.urgency.soon_hours == 72
+    assert s.urgency.urgent_hours == 24 and s.urgency.soon_hours == 48
     # another file can be loaded (SETTINGS_PATH does the same at startup); a missing setting fails loudly
     f = tmp_path / "s.toml"
-    f.write_text("[urgency]\nsoon_hours = 48\n", encoding="utf-8")
+    f.write_text("[urgency]\nsoon_hours = 72\n", encoding="utf-8")
     other = cfg.load(f)
-    assert other.urgency.soon_hours == 48
+    assert other.urgency.soon_hours == 72
     with pytest.raises(AttributeError):
         other.urgency.urgent_hours
 
@@ -1591,7 +1591,7 @@ def test_absence_reply_counts_meetings_and_no_email_when_nothing_is_affected(cli
 
 
 def _kt_meeting(client):
-    """Uma's case: 'KT on existing process from Priya to Arjun', organized by Arjun, with Priya and Sam; Priya out."""
+    """A tester's case: 'KT on existing process from Priya to Arjun', organized by Arjun, with Priya and Sam; Priya out."""
     r = client.post("/events", json={"title": "KT on existing process from Priya to Arjun", "description": "",
                                       "start": "2026-10-21T06:00:00Z", "end": "2026-10-21T07:00:00Z",
                                       "attendees": [{"personId": "p_priya"}, {"personId": "p_sam"}]}, headers=H("p_arjun"))

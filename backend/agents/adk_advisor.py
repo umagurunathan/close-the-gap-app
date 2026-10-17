@@ -6,7 +6,7 @@ How it differs from recommender_ai.py (one Gemini call with everything pasted in
   ADK runs our Python function -> Gemini reads the result -> ... -> Gemini gives its final answer.
 - The answer has the same shape as before (`Recommendation`), so the card and the checks (guard.py) do not change.
 
-Boundaries (agreed with Uma, 2026-10-14):
+Boundaries:
 - The tools only ever see THIS meeting, on behalf of THIS viewer. `read_summaries` returns only the summaries the viewer
   may open; there is no tool for other meetings or other people's documents, so the agent cannot look wider, however it
   asks. Privacy is enforced by the tools (code), not by the prompt.

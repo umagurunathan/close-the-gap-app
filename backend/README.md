@@ -68,6 +68,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 
 ## Test it
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 114 tests, offline (AI off; a fake Firestore for the read cache).

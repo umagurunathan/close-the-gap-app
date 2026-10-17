@@ -35,7 +35,7 @@ organizer_alert_hours = 24
 
 # ---------------------------------------------------------------- Urgency chips (WIRED)
 [urgency]
-soon_hours = 72      # amber chip: the meeting starts within this many hours and still needs action
+soon_hours = 48      # amber chip: the meeting starts within this many hours and still needs action (further: green)
 urgent_hours = 24    # red "act now" chip
 
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { fmtDay, fmtRange, fmtTime, fmtWhen, needAction, plural } from "./format.js";
+import { onTabKey } from "./tabKeys.js";
+import MorePeople from "./components/MorePeople.jsx";
 import MeetingCard from "./components/MeetingCard.jsx";
 import OrganizerCard from "./components/OrganizerCard.jsx";
 import ProxyCard from "./components/ProxyCard.jsx";
@@ -37,8 +39,8 @@ function naturalTab(c = {}) {
 
 // One app for everyone: a guest acts as one of the demo people; after "Sign in with Google" the same
 // screens show only that person's own work (the backend picks the area from the sign-in).
-// The app lists only meetings affected by someone's absence (Uma: a tester looked for a meeting they had just created
-// with no conflict). Every message after scheduling or syncing says so.
+// The app lists only meetings affected by someone's absence (a tester looked for a meeting they had just created with
+// no conflict). Every message after scheduling or syncing says so.
 const ONLY_CONFLICTS = "Only meetings affected by someone's absence are listed here; the rest stay in your calendar.";
 
 function syncMessage(result) {
@@ -244,7 +246,7 @@ export default function App() {
   // Demo only: the demo people (everyone in the sample data) and their meetings go back to the start, and the AI's
   // cache is cleared, so every card is analysed again. Real people's data is not touched.
   async function resetDemo() {
-    // the demo is shared: say so before resetting it (Uma); the time it ran is then shown to everyone
+    // the demo is shared: say so before resetting it; the time it ran is then shown to everyone
     if (!window.confirm("Reset the demo for everyone? Anyone trying the demo right now will see it start over. "
       + "Real users' data is not touched.")) return;
     setResetting(true);
@@ -312,8 +314,16 @@ export default function App() {
   function openGuide() {
     setShowGuide(true);
   }
+  // "↻ Updated 2:20 pm": the page also refreshes by itself; this says when it last did, and refreshes now on a click.
+  // It sits at the end of the group row (Needs action · Settled · …), next to the list it describes.
+  const updated = loadedAt && (
+    <button className="link updated-at" onClick={() => refresh()}
+      title="The page refreshes by itself every few seconds. Click to refresh now.">
+      ↻ Updated {fmtTime(loadedAt)}
+    </button>
+  );
   const pick = (t) => ({ group: group[t], onGroup: (g) => setGroup((x) => ({ ...x, [t]: g })),
-    selected: chosen[t], onSelect: (k) => setChosen((x) => ({ ...x, [t]: k })) });
+    selected: chosen[t], onSelect: (k) => setChosen((x) => ({ ...x, [t]: k })), aside: updated });
 
   const counts = me?.counts || { attendee: 0, organizer: 0, proxyRequests: 0, attendeeOpen: 0, organizerOpen: 0, proxyOpen: 0 };
   // Activity log lines per meeting, shown inside the cards in Past
@@ -356,9 +366,13 @@ export default function App() {
   const guestFirst = (people[guestId]?.name || "").split(" ")[0];
   const loadingText = signedIn ? "Loading your meetings…"
     : loadedFor === "me" || !guestFirst ? "Loading the demo…" : `Loading ${guestFirst}'s meetings…`;
+  const noGroupRow = tab === "past" || (tab === "attendee" && allMine.length === 0)
+    || (tab === "organizer" && organizer.length === 0) || (tab === "proxy" && proxyReqs.length === 0);
 
   return (
     <>
+      {/* keyboard users: the first Tab offers a jump past the controls to the meetings (hidden until focused) */}
+      <a className="skip-link" href="#tab-panel">Skip to meetings</a>
       {/* The strip above the product. A guest gets the Demo controls: the guide, Reset demo data, the emails, and the
           demo people to act as. Someone signed in with Google gets only who they are, their emails and Sign out. */}
       {signedIn ? (
@@ -375,24 +389,24 @@ export default function App() {
           </div>
         </div>
       ) : (
-        // A section of its own, like the banners below (Uma): a heading so visitors know everything in it is for
+        // A section of its own, like the banners below: a heading so visitors know everything in it is for
         // trying the demo; the guide at the far right, Reset just before it; the emails at the end of the people row.
         <section className="demo-toolbar demo-panel" aria-labelledby="demo-heading">
           <div className="demo-toolbar-inner">
-           <div className="demo-card">
+           <div className="demo-card dark">
             <div className="demo-row">
               <div className="demo-title">
                 <h2 id="demo-heading">Demo controls</h2>
                 <span className="demo-sub">Explore the app as any of these sample people. No sign-in needed.</span>
-                {lastResetAt && <span className="demo-sub demo-last-reset">Demo data last reset: {fmtWhen(lastResetAt)}</span>}
               </div>
               <div className="demo-tools">
+                {lastResetAt && <span className="demo-sub demo-last-reset">Last reset: {fmtWhen(lastResetAt)}</span>}
                 <button onClick={resetDemo} disabled={resetting}
                   title={resetting ? "Resetting the demo data. This takes about a minute."
                     : "Puts the demo people's meetings back to the start, so the AI analyzes every card again. Real users' data is not touched."}>
                   {resetting ? "Resetting…" : "Reset demo data"}
                 </button>
-                {/* always highlighted (Uma): a visitor may have refreshed or missed it the first time */}
+                {/* always highlighted: a visitor may have refreshed or missed it the first time */}
                 <button onClick={openGuide} className="guide-new">
                   <Icon name="spark" size={14} className="guide-sparkle" />
                   Demo guide<span className="start-here">Start here</span>
@@ -409,14 +423,11 @@ export default function App() {
                   <b>{people[id].name.split(" ")[0]}</b><span>{role}</span>
                 </button>
               ))}
-              {/* anyone else only while they have something to do (and whoever is viewed now) */}
-              <select aria-label="More people" value={PERSONAS.some(([id]) => id === personId) ? "" : personId}
-                disabled={morePeople.length === 0}
-                title={morePeople.length === 0 ? "Nobody else has something to do right now." : undefined}
-                onChange={(e) => e.target.value && switchPerson(e.target.value)}>
-                <option value="">More…</option>
-                {morePeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              {/* anyone else only while they have something to do (and whoever is viewed now): a pill like the others
+                  that opens a short list; it shows the person's name while one of them is viewed */}
+              <MorePeople people={morePeople} current={PERSONAS.some(([id]) => id === personId) ? null : personId}
+                onPick={switchPerson} />
+
             </div>
             <div className="demo-tools">
               <button onClick={() => setShowEmails((v) => !v)} aria-pressed={showEmails}
@@ -433,11 +444,11 @@ export default function App() {
         <div className="brand-block">
           <Logo size={44} />
           <div>
-            <div className="brand">Close the <span>Gap</span></div>
+            <h1 className="brand">Close the <span>Gap</span></h1>
             <div className="tagline">Spot the gap early. Keep the meeting going.</div>
           </div>
         </div>
-        {/* The header holds only account things (Uma, option 1): Sign in, or the person's Google Calendar. The product
+        {/* The header holds only account things: Sign in, or the person's Google Calendar. The product
             actions (Schedule a meeting, Report an absence) sit next to the tabs, above the meetings they create. */}
         <div className="topbar-right">
           {/* Google Calendar belongs to real people only: the demo uses sample meetings, so guests don't see it */}
@@ -522,30 +533,31 @@ export default function App() {
       <ImpactBand today={settings?.today} tick={metrics} />
 
       <nav className="tabs">
-        <button className={tab === "attendee" ? "on" : ""} onClick={() => setTab("attendee")}>
-          Attendee Mode ({counts.attendee}){counts.attendeeOpen > 0 && <span className="open">{needAction(counts.attendeeOpen)}</span>}
-        </button>
-        <button className={tab === "organizer" ? "on" : ""} onClick={() => setTab("organizer")}>
-          Organizer Mode ({counts.organizer}){counts.organizerOpen > 0 && <span className="open">{needAction(counts.organizerOpen)}</span>}
-        </button>
-        <button className={tab === "proxy" ? "on" : ""} onClick={() => setTab("proxy")}>
-          Proxy Requests ({counts.proxyRequests}){counts.proxyOpen > 0 && <span className="open">{needAction(counts.proxyOpen)}</span>}
-        </button>
-        <button className={tab === "past" ? "on" : ""} onClick={() => setTab("past")}>Past</button>
-        <div className="tab-actions">
-          <button className="primary" onClick={() => setShowSchedule(true)}>Schedule a meeting</button>
-          <button onClick={() => setShowAdd(true)}>Report an absence</button>
-          {/* the page also refreshes by itself; this says when it last did, and refreshes now on a click */}
-          {loadedAt && (
-            <button className="link updated-at" onClick={() => refresh()}
-              title="The page refreshes by itself every few seconds. Click to refresh now.">
-              ↻ Updated {fmtTime(loadedAt)}
+        <div className="tab-list" role="tablist" aria-label="Views"
+          onKeyDown={(e) => onTabKey(e, TABS, tab, setTab, (id) => `tab-${id}`)}>
+          {/* the tab name, then only what needs action: amber, or red when one of them starts within 24 hours */}
+          {[
+            ["attendee", "Attendee Mode", counts.attendeeOpen, attNeeds.some((i) => i.urgency === "urgent")],
+            ["organizer", "Organizer Mode", counts.organizerOpen, openMeetings.some((m) => m.urgency === "urgent")],
+            ["proxy", "Proxy Requests", counts.proxyOpen, waitingReqs.some((v) => v.item.urgency === "urgent")],
+            ["past", "Past", 0, false],
+          ].map(([id, text, open, urgent]) => (
+            <button key={id} id={`tab-${id}`} role="tab" aria-selected={tab === id} aria-controls="tab-panel"
+              tabIndex={tab === id ? 0 : -1} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>
+              {text}{open > 0 && <span className={`open ${urgent ? "urgent" : ""}`.trim()}>{needAction(open)}</span>}
             </button>
-          )}
+          ))}
+        </div>
+        {/* things you can add, as one joined pill of equal buttons, apart from the tabs */}
+        <div className="tab-actions" role="group" aria-label="Add">
+          <button onClick={() => setShowSchedule(true)}><span aria-hidden="true">＋</span> Schedule a meeting</button>
+          <button onClick={() => setShowAdd(true)}><Icon name="away" size={15} /> Report an absence</button>
         </div>
       </nav>
 
-      <main>
+      <main id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} tabIndex={-1}>
+        {/* tabs without the group row (Past, or nothing to list) show "Updated" on a line of its own */}
+        {noGroupRow && updated && <div className="updated-row">{updated}</div>}
         {tab === "attendee" && (allMine.length === 0 ? (
           <EmptyState title="No gaps">None of your meetings is affected by an absence, so nothing needs your action.</EmptyState>
         ) : (

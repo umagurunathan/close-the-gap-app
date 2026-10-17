@@ -167,7 +167,7 @@ class MeetingItem(BaseModel):
     aiWhenDecided: Optional[AiResult] = None          # the whole recommendation they saw (shown on Past cards, no new AI call)
     # Computed when listing (not stored); the same for every viewer:
     needsAttention: bool = False          # still needs someone to act (not settled)
-    urgency: Optional[str] = None         # "soon" (<= 3 days) | "urgent" (<= 24 hours), only while needsAttention
+    urgency: Optional[str] = None         # "soon" (<= 2 days) | "urgent" (<= 24 hours), only while needsAttention
     hoursToStart: Optional[float] = None  # hours until the meeting starts, while needsAttention
     declinedProxyIds: list[str] = Field(default_factory=list)   # who declined to cover this card (never suggested again)
     decidedBy: Optional[str] = None       # who last chose an action (absent person or organizer side)

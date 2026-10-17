@@ -27,9 +27,16 @@ export function actionLabel(action, mine, who) {
   }
 }
 
-// Urgency chip text. `urgency` and `hoursToStart` come from the backend (same for every viewer).
+// Days-left chip on every meeting that needs action, on the tile and the card alike: green more than 2 days away,
+// amber within 2 days ("soon"), red within 24 hours ("urgent"). `urgency` and `hoursToStart` come from the backend
+// (same for every viewer; hoursToStart is set only while the meeting needs action). Returns { cls, text } or null.
+export function urgencyChip(urgency, hours) {
+  if (hours == null) return null;
+  return { cls: `urgency-${urgency || "later"}`, text: urgencyLabel(urgency, hours) };
+}
+
 export function urgencyLabel(urgency, hours) {
-  if (!urgency) return null;
+  if (hours == null) return null;
   if (urgency === "urgent") {
     if (hours <= 0) return "Already started · act now";
     if (hours < 1) return "Starts in under an hour · act now";

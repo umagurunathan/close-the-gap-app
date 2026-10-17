@@ -37,25 +37,15 @@ export function AiSource({ ai }) {
   const how = ai.engine === "gemini_adk"
     ? `Written by a Gemini agent (${prettyModel(ai.model)}, built with ADK) that looked up: ${(ai.toolsUsed || []).map(toolName).join(", ") || "nothing"}.`
     : `Written by ${prettyModel(ai.model)}.`;
-  const changed = aiChangedAnswer(ai) && (
-    <span className="pill src-changed" title="Simple rules alone would have recommended something else; see Recommendation details.">
-      AI changed the answer
-    </span>
-  );
+  // "AI changed the answer" is told once, in the callout under the reason (AgentTrail), not as another badge here
   if (isGemini(ai) && !changes) {
-    return (
-      <>
-        <span className="pill src-ai" title={`${how} Checked by our rules; no changes were needed.`}><Icon name="check" size={13} />{geminiLabel(ai)}</span>
-        {changed}
-      </>
-    );
+    return <span className="pill src-ai" title={`${how} Checked by our rules; no changes were needed.`}><Icon name="check" size={13} />{geminiLabel(ai)}</span>;
   }
   if (isGemini(ai)) {
     return (
       <>
         <span className="pill src-ai" title={how}>{geminiLabel(ai)}</span>
         <span className="pill src-adjusted" title={changes}>Adjusted by rules</span>
-        {changed}
       </>
     );
   }
@@ -163,7 +153,7 @@ export function AgentTrail({ ai, name = (id) => id }) {
       )}
       {changed && (
         <div className="without-ai">
-          Without AI, simple rules would have said: <b>{rulesSummary(ai.rulesAnswer, name)}</b>. They match words in
+          <strong>AI changed the answer.</strong> Without AI, simple rules would have said: <b>{rulesSummary(ai.rulesAnswer, name)}</b>. They match words in
           the title and summaries; Gemini reads what they mean.
         </div>
       )}
@@ -172,7 +162,7 @@ export function AgentTrail({ ai, name = (id) => id }) {
 }
 
 // The collapsed "Recommendation details" panel. The summaries and agenda themselves open from the card's
-// "Summaries & agenda" link (one way in, Uma).
+// "Summaries & agenda" link (one way in).
 export function RecommendationDetails({ ai }) {
   return (
     <details className="rec-details">

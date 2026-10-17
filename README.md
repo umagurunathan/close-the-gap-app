@@ -30,14 +30,15 @@ Good to know:
 
 - **Finds the affected meetings.** From an absence and the calendar, plain code finds every meeting where the absent person is the organizer or a required invitee. Optional invitees never trigger anything.
 - **Recommends one action per meeting**, with a one-line reason, a confidence level and what the AI read: go on without the person, ask a proxy, reschedule, cancel, or (for the person who is out) "I'll attend".
-- **Both sides can act.** The person who is out sees their meetings in **Attendee Mode**; the organizer sees one card per meeting in **Organizer Mode**, naming everyone who is out, with actions for the whole meeting. Urgency shows for everyone: amber within 3 days, red within 24 hours.
+- **Both sides can act.** The person who is out sees their meetings in **Attendee Mode**; the organizer sees one card per meeting in **Organizer Mode**, naming everyone who is out, with actions for the whole meeting. Every meeting that needs action shows the days left, the same for everyone: green, amber within 2 days, red within 24 hours.
 - **Runs the proxy flow.** The proxy can be anyone in the company directory, invited or not (someone not yet invited is added to the meeting). Covering is always the proxy's choice: they accept or decline in **Proxy Requests**; a decline sends the owner back to choose again, with the AI's second choice ready.
 - **Briefs the proxy.** Gemini drafts a short handover: what the meeting is for, what the proxy covers, what was decided and what is still open. The sender edits it before sending.
 - **Reschedules safely.** Same time of day, on a day when every required person is free and nobody is out.
 - **Handles routine meetings automatically.** Team check-ins and org-wide events go on without the person when the AI is highly confident (unless the person who is out runs them); they wait in **No action needed**, where anyone can still change them.
 - **Three groups in every tab:** **Needs action**, **Settled** (a person decided) and **No action needed** (handled automatically). **Past** keeps what was decided, with the recommendation the decider saw.
 - **Several absences:** the banner at the top pages through them (‹ 1 of 2 ›, or a swipe on a phone), each with its own count.
-- **Impact band:** team time saved, decisions kept on schedule, meetings with the gap closed, average notice and how often the AI's recommendation was accepted; **At company scale** shows an illustrative model for larger companies, with every assumption visible.
+- **Impact band:** team time saved, decisions kept on schedule, meetings with the gap closed, average notice and how often the AI's recommendation was accepted; **At company scale** shows an illustrative model for larger companies, with every assumption visible. A chevron folds it to one line (time saved, gaps closed) to give the cards more room.
+- **Accessible by default:** a visible focus ring for keyboard users, tabs that work with the arrow keys, "Skip to meetings", text contrast of at least 4.5:1, and a one-line reason on every disabled button.
 
 ## How the AI works
 
@@ -125,6 +126,7 @@ flowchart LR
 - **Database rules** that enforce the areas as well as the backend does; one area per customer company; a directory from Google Workspace or the HR system.
 - **Operations:** a least-privilege service account, rate limits and cost caps on AI calls, monitoring and alerts, Google app verification.
 - **Meeting summaries from Google Meet** transcripts, switched on in the app.
+- **Phone and tablet layouts.** The prototype is designed for office laptops; on a phone it works but is not yet designed for the small screen.
 
 ## Run it locally (two terminals)
 
@@ -156,6 +158,7 @@ Open `http://localhost:5173` (not `127.0.0.1`). A link can open the app as someo
 
 ```powershell
 cd backend
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 114 tests, with the AI switched off, so no cloud account is needed (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them and builds the web app on every pull request.

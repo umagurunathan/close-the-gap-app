@@ -1,4 +1,4 @@
-import { actionLabel, fmtWhen, statusLabel, urgencyLabel } from "../format.js";
+import { actionLabel, fmtWhen, statusLabel, urgencyChip } from "../format.js";
 import { Icon } from "./Icons.jsx";
 
 // The small tiles on the left of each tab: title, time, and one line saying where the meeting stands.
@@ -19,8 +19,6 @@ function Frame({ title, start, edge, chip, children }) {
     </span>
   );
 }
-
-const urgencyChip = (urgency, hours) => (urgency ? { cls: `urgency-${urgency}`, text: urgencyLabel(urgency, hours) } : null);
 
 // Attendee Mode: one tile per meeting the signed-in person is out for.
 export function AttendeeTile({ item, people, me }) {
