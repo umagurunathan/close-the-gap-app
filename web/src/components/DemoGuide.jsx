@@ -17,8 +17,14 @@ export default function DemoGuide({ onClose }) {
           <button className="message-close" onClick={onClose} aria-label="Close the demo guide" autoFocus>✕</button>
         </header>
         <p className="reason">
-          Pick a person in the dark bar at the top. <b>Emails</b> shows the emails the app would send. Anyone else
-          appears under <b>More…</b> only while they have something to do, for example a proxy request to answer.
+          Pick a person under <b>View as</b> in the Demo controls at the top. <b>Emails</b> shows the emails the app
+          would send. Anyone else appears under <b>More…</b> only while they have something to do, for example a proxy
+          request to answer.
+        </p>
+        <p className="guide-note">
+          <b>Only meetings affected by someone's absence are listed.</b> A meeting you schedule (or import from Google
+          Calendar) appears here only when a required person is out that day; every other meeting stays in the
+          calendar and needs nothing from you.
         </p>
         <ol className="guide-steps">
           <li>

@@ -20,6 +20,7 @@ class Store:
     def absences(self) -> list[Absence]: ...
     def add_item(self, item: MeetingItem) -> None: ...
     def save_item(self, item: MeetingItem) -> None: ...
+    def delete_item(self, item_id: str) -> None: ...
     def get_item(self, item_id: str) -> Optional[MeetingItem]: ...
     def items(self) -> list[MeetingItem]: ...
     def add_proxy_request(self, req: ProxyRequest) -> None: ...
@@ -35,6 +36,9 @@ class Store:
     def get_calendar_token(self, person_id: str) -> Optional[str]: ...
     def save_calendar_token(self, person_id: str, encrypted_token: str) -> None: ...
     def delete_calendar_token(self, person_id: str) -> None: ...
+    # When "Reset demo data" last ran (demo area only), shown in the Demo controls
+    def get_demo_reset_at(self) -> Optional[str]: ...
+    def save_demo_reset_at(self, when: str) -> None: ...
 
 
 class InMemoryStore(Store):
@@ -47,6 +51,7 @@ class InMemoryStore(Store):
         self._counters: dict[str, int] = {}
         self._meet_tokens: dict[str, str] = {}
         self._calendar_tokens: dict[str, str] = {}
+        self._demo_reset_at: Optional[str] = None
 
     def people(self):
         return list(self._people.values())
@@ -65,6 +70,9 @@ class InMemoryStore(Store):
 
     def save_item(self, item):
         self._items[item.id] = item
+
+    def delete_item(self, item_id):
+        self._items.pop(item_id, None)
 
     def get_item(self, item_id):
         return self._items.get(item_id)
@@ -111,6 +119,12 @@ class InMemoryStore(Store):
 
     def delete_calendar_token(self, person_id):
         self._calendar_tokens.pop(person_id, None)
+
+    def get_demo_reset_at(self):
+        return self._demo_reset_at
+
+    def save_demo_reset_at(self, when):
+        self._demo_reset_at = when
 
 
 class FirestoreStore(Store):
@@ -222,6 +236,11 @@ class FirestoreStore(Store):
     def save_item(self, item: MeetingItem) -> None:
         self.add_item(item)
 
+    def delete_item(self, item_id: str) -> None:
+        reference = self._document("items", item_id)
+        reference.delete()
+        self._reads.wrote("items", reference.id, None)
+
     def get_item(self, item_id: str) -> Optional[MeetingItem]:
         return self._get("items", item_id, MeetingItem)
 
@@ -286,3 +305,11 @@ class FirestoreStore(Store):
 
     def delete_calendar_token(self, person_id: str) -> None:
         self._document("calendar_connections", person_id).delete()
+
+    def get_demo_reset_at(self) -> Optional[str]:
+        # read directly (one small document), not through the request's read cache
+        snapshot = self._document("metadata", "demo_status").get()
+        return (snapshot.to_dict() or {}).get("lastResetAt") if snapshot.exists else None
+
+    def save_demo_reset_at(self, when: str) -> None:
+        self._document("metadata", "demo_status").set({"lastResetAt": when, "workspaceId": self._workspace_id})

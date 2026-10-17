@@ -303,9 +303,19 @@ class GoogleCalendarIntegration:
             raise CalendarIntegrationError("Google authorization state is invalid or expired. Try connecting again.") from exc
 
 
+# Google Calendar entries that are not meetings (U17): out-of-office, focus-time and working-location blocks, and
+# birthdays. They are never imported as meetings. An out-of-office block is not read as an absence either: absences
+# come only from "Report an absence" (connecting a leave system or out-of-office is future scope).
+NOT_MEETINGS = {"outOfOffice", "focusTime", "workingLocation", "birthday"}
+
+
+def is_not_a_meeting(event_data: dict) -> bool:
+    return event_data.get("eventType", "default") in NOT_MEETINGS
+
+
 def calendar_event(event_data: dict, owner: Person, people_by_email: dict[str, Person]) -> Optional[CalEvent]:
     """Convert one primary-calendar event to the app's directory-backed event shape."""
-    if event_data.get("status") == "cancelled" or not event_data.get("id"):
+    if event_data.get("status") == "cancelled" or not event_data.get("id") or is_not_a_meeting(event_data):
         return None
     organizer_email = event_data.get("organizer", {}).get("email", "").casefold()
     organizer = owner if organizer_email == owner.email.casefold() else people_by_email.get(organizer_email)

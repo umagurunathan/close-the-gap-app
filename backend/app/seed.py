@@ -75,6 +75,7 @@ def reset_demo(svc: Service) -> Service:
     if not isinstance(svc.store, FirestoreStore):
         build_service(into=svc, mode="memory")
         svc.google_calendar = google_calendar
+        svc.store.save_demo_reset_at(config.real_now().isoformat())
         return svc
     if getattr(svc.store, "workspace_id", None) != config.demo_workspace_id():
         # the seed belongs to the demo area only; never load it anywhere else
@@ -106,6 +107,8 @@ def reset_demo(svc: Service) -> Service:
     for a in data["absences"]:
         svc.create_absence(a["personId"], _d(a["start"]), _d(a["end"]), AbsenceSource(a["source"]), a["enteredBy"])
     notify.clear()
+    # the real time (not the demo's fixed "now"), shown to every visitor as "Demo data last reset: …"
+    store.save_demo_reset_at(config.real_now().isoformat())
     return svc
 
 

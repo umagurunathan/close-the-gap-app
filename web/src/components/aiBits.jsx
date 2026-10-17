@@ -180,8 +180,10 @@ export function RecommendationDetails({ ai }) {
       <dl>
         <dt>Recommended by</dt>
         <dd>{writtenBy(ai)}</dd>
-        <dt>Based on</dt>
-        <dd>{ai.sources.map(cap).join(" · ")}</dd>
+        {/* what the AI looked at (names only; the content opens from "Summaries & agenda" on the card). Whether
+            summaries were available is said once, in the next row. */}
+        <dt>What the AI read</dt>
+        <dd>{ai.sources.filter((s) => !s.startsWith("no summaries")).map(cap).join(" · ") || "The invite"}</dd>
         <dt>Meeting summaries</dt>
         <dd>{summariesLine(ai)}</dd>
         <dt>Adjustments by our rules</dt>

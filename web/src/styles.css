@@ -59,6 +59,34 @@ body {
 .demo-toolbar select { padding: 4px 8px; font-size: 13px; background: #fff; color: var(--ink); border: 1px solid var(--demo-line); }
 .demo-toolbar button { padding: 4px 12px; font-size: 13px; background: #fff; color: var(--ink); border: 1px solid var(--demo-line); }
 .demo-toolbar button:hover:not(:disabled), .demo-toolbar button[aria-pressed="true"] { border-color: var(--primary); }
+/* Guests: the Demo controls as a card of its own, like the banners below (Uma, 2026-10-17): a heading and a line on
+   what it is for, then Reset and the Demo guide (far right); the people to view as, with the emails at the end. */
+.demo-toolbar.demo-panel { background: none; border-bottom: none; }
+.demo-panel .demo-toolbar-inner { padding: 14px 24px 0; }
+@media (max-width: 600px) { .demo-panel .demo-toolbar-inner { padding: 10px 16px 0; } }
+.demo-card { display: flex; flex-direction: column; gap: 8px; background: var(--primary-soft);
+  border: 1px solid var(--demo-line); border-left: 4px solid var(--primary); border-radius: 14px; padding: 10px 16px;
+  box-shadow: 0 1px 2px rgba(35, 39, 56, 0.05), 0 4px 14px rgba(35, 39, 56, 0.05); }
+.demo-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.demo-title h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--primary); }
+.demo-sub { font-size: 13px; color: var(--muted); }
+.demo-last-reset::before { content: "·"; margin-right: 10px; }
+@media (max-width: 600px) { .demo-last-reset::before { content: none; } }
+.demo-people { flex-wrap: nowrap; align-items: center; }
+/* Schedule a meeting, Report an absence and "↻ Updated" at the right end of the tabs row (Uma, option 1); on a phone
+   they wrap below the tabs */
+.tab-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tab-actions > button:not(.updated-at) { border-radius: 999px; padding: 8px 16px; }
+@media (max-width: 600px) { .tab-actions { margin-left: 0; width: 100%; } }
+/* "↻ Updated 10:42 am": quiet, and a click refreshes now */
+.tabs .updated-at { align-self: center; border: none; background: none; padding: 4px 6px;
+  font-size: 12.5px; color: var(--muted); border-radius: 8px; }
+.tabs .updated-at:hover:not(:disabled) { color: var(--primary); background: none; }
+.demo-people .demo-view-as { flex: 1; min-width: 0; }
+.demo-people .demo-tools { flex: none; }
+/* phones: the people get the whole row; Emails goes below, on the right */
+@media (max-width: 600px) { .demo-people { flex-wrap: wrap; } .demo-people .demo-view-as { flex-basis: 100%; }
+  .demo-people .demo-tools { margin-left: auto; } }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 14px; gap: 16px; flex-wrap: wrap; }
 .brand-block { display: flex; align-items: center; gap: 12px; }
@@ -131,6 +159,13 @@ button.taken:hover:not(:disabled) { background: #d3eedd; border-color: var(--goo
 .you-text { flex: 1; min-width: 0; }
 .you-line { font-size: 15px; }
 .you-sub { font-size: 13.5px; color: var(--muted); }
+/* ‹ 1 of 2 ›: pages through the person's absences when there are several (a swipe also works on a phone) */
+.you-pager { display: flex; align-items: center; gap: 4px; flex: none; font-size: 13px; color: var(--muted);
+  white-space: nowrap; align-self: flex-start; }
+.you-pager button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: var(--card);
+  color: var(--primary); font-size: 17px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.you-pager button:hover:not(:disabled) { background: var(--primary-soft); }
+.you-pager button:disabled { color: var(--muted); opacity: 0.5; cursor: not-allowed; }
 .you-count { display: inline-block; background: var(--warn-soft); color: var(--warn); font-weight: 700; border-radius: 999px;
   padding: 0 10px; }
 .you > button { white-space: nowrap; }
@@ -331,6 +366,9 @@ fieldset.note-readers .note-readers-head { grid-column: 1 / -1; }
   align-self: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+/* the one thing a tester must know before trying it: which meetings the app lists */
+.guide-note { margin: 10px 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--primary-soft);
+  border-left: 3px solid var(--primary); font-size: 13.5px; line-height: 1.45; color: var(--ink); }
 .guide-steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; line-height: 1.45; }
 .guide-sub { margin: 14px 0 4px; font-size: 14px; }
 .modal .row { display: grid; grid-template-columns: 1.3fr 1fr 0.8fr; gap: 8px; }
@@ -425,7 +463,9 @@ button.small.danger { color: var(--bad); border-color: #f1c4cd; }
 .ws-body { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .ws-detail { position: sticky; top: 12px; min-width: 0; }
 .ws-detail .card { margin-bottom: 0; }
-.tile-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+/* align-content: start keeps the tiles together at the top: a grid taller than its tiles would otherwise spread them
+   out (the gaps Uma saw in every tab, U16) */
+.tile-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; align-content: start; }
 .tile-item { display: block; width: 100%; padding: 0; border: none; background: none; text-align: left; border-radius: 12px; }
 .tile-item:hover:not(:disabled) { background: none; }
 .tile { display: flex; flex-direction: column; gap: 2px; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--primary);

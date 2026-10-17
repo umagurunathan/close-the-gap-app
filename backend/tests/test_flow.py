@@ -471,6 +471,29 @@ def test_google_calendar_oauth_and_sync_store_only_directory_people(svc, monkeyp
     assert next(item for item in svc.store.items() if item.event.calendarEventId == event.id).status.value == "cancelled"
 
 
+def test_out_of_office_and_focus_time_are_not_imported_as_meetings(svc):
+    """U17: Google's out-of-office, focus-time and working-location entries are not meetings; one imported earlier is
+    removed with its card. Out of office is not read as an absence either (absences come from "Report an absence")."""
+    priya = svc.person("p_priya")
+    base = {"start": {"dateTime": "2026-10-21T10:00:00Z"}, "end": {"dateTime": "2026-10-21T11:00:00Z"},
+            "organizer": {"email": priya.email}, "attendees": [{"email": svc.person("p_sam").email}]}
+    entries = [dict(base, id="ooo-1", summary="Priya vacation OOO", eventType="outOfOffice"),
+               dict(base, id="focus-1", summary="Focus", eventType="focusTime"),
+               dict(base, id="where-1", summary="Office", eventType="workingLocation")]
+    absences_before = len(svc.store.absences())
+    assert svc.sync_google_events("p_priya", entries) == {"added": 0, "updated": 0, "skipped": 3, "affectedItems": 0}
+    assert not [e for e in svc.calendar.all_events() if e.googleEventId in ("ooo-1", "focus-1", "where-1")]
+    assert len(svc.store.absences()) == absences_before
+
+    # imported before the rule as an ordinary meeting, with a card: the next sync removes both
+    svc.sync_google_events("p_priya", [dict(base, id="ooo-2", summary="Old OOO block")])
+    old = next(e for e in svc.calendar.all_events() if e.googleEventId == "ooo-2")
+    assert any(i.event.calendarEventId == old.id for i in svc.store.items())
+    svc.sync_google_events("p_priya", [dict(base, id="ooo-2", summary="Old OOO block", eventType="outOfOffice")])
+    assert svc.calendar.get(old.id) is None
+    assert not any(i.event.calendarEventId == old.id for i in svc.store.items())
+
+
 def test_a_meeting_scheduled_in_the_app_is_not_imported_twice_by_the_calendar_sync(svc):
     """The app creates the Google event and keeps its id; the next sync updates that meeting instead of adding it again."""
     from datetime import datetime, timezone
@@ -487,6 +510,15 @@ def test_a_meeting_scheduled_in_the_app_is_not_imported_twice_by_the_calendar_sy
     assert result["added"] == 0 and result["updated"] == 1
     same = [e for e in svc.calendar.all_events() if e.googleEventId == "google-evt-7"]
     assert [e.id for e in same] == [event.id]
+
+
+def test_reset_demo_data_records_when_it_ran(client):
+    """Every visitor sees "Demo data last reset: …", so a sudden change on screen has an explanation."""
+    assert client.get("/dev/demo-status").json() == {"lastResetAt": None}
+    assert client.post("/dev/reset-demo").json() == {"ok": True}
+    when = client.get("/dev/demo-status").json()["lastResetAt"]
+    assert when and when.startswith("20")
+    assert client.get("/items?mode=attendee", headers={"X-Person-Id": "p_priya"}).status_code == 200
 
 
 def test_reset_demo_data_refuses_any_area_but_the_demo():
