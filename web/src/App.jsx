@@ -723,9 +723,9 @@ function addDays(iso, days) {
 }
 
 function AddAbsence({ people, me, onClose, onDone, suddenHours, today }) {
-  // Nobody pre-chosen (so the person is picked on purpose); dates default to two weeks from the demo's "today".
-  const base = today || "2026-10-11";
-  const [form, setForm] = useState({ personId: "", start: addDays(base, 14), end: addDays(base, 15) });
+  // People report only their own absence (the server checks it too); dates default to two weeks from today.
+  const base = today || new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({ personId: me, start: addDays(base, 14), end: addDays(base, 15) });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e) {
@@ -745,12 +745,9 @@ function AddAbsence({ people, me, onClose, onDone, suddenHours, today }) {
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <h3>Report an absence</h3>
         <label>Who is out
-          <select required value={form.personId} onChange={(e) => setForm({ ...form, personId: e.target.value })}>
-            <option value="" disabled>Choose a person…</option>
-            {Object.values(people).filter((p) => !p.isGroup).sort((a, b) => a.name.localeCompare(b.name))
-              .map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me ? " (you)" : ""}</option>)}
-          </select>
+          <input type="text" readOnly value={`${people[me]?.name ?? ""} (you)`} aria-describedby="absence-self-reason" />
         </label>
+        <p className="reason" id="absence-self-reason">You can report only your own absence.</p>
         <label>From <input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></label>
         <label>To <input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
         <p className="reason">If it starts within {suddenHours ?? 24} hours it is treated as a sudden absence; otherwise it is planned leave.</p>

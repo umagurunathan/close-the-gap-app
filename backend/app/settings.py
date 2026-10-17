@@ -22,7 +22,7 @@ def load(path: str | os.PathLike | None = None) -> SimpleNamespace:
     # utf-8-sig: some Windows editors add an invisible byte-order mark at the start of the file; accept it
     s = _namespace(tomllib.loads(p.read_text(encoding="utf-8-sig")))
     # One switch can come from the environment, so the cloud can turn the AI on without a different file:
-    # AI_ENABLED=true on Cloud Run; the file's value (false) keeps tests and local runs offline by default.
+    # The file says true (Gemini on, also set on Cloud Run); the tests set AI_ENABLED=false to run offline.
     flag = os.getenv("AI_ENABLED")
     if flag is not None and hasattr(s, "ai"):
         s.ai.enabled = flag.strip().lower() in ("1", "true", "yes", "on")

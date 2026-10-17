@@ -157,8 +157,9 @@ temperature = 0.2
 
 # ---------------------------------------------------------------- AI (WIRED; Gemini through Vertex AI)
 [ai]
-# WIRED: false = the rule-based stand-ins decide (no network, used by the tests); true = Gemini decides.
-enabled = false
+# WIRED: true = Gemini decides (the product, always on). It needs a Google Cloud project with the Vertex AI API and
+# credentials (see the README). false = the rule-based stand-ins decide with no network: the tests switch it off.
+enabled = true
 # DECIDED FOR NOW: Gemini 2.5 Flash (fast in asia-south1, low cost, answers tested for
 # consistency). The demo and the live link always use the same model. The environment variable AI_MODEL overrides this line (no file edit needed).
 model = "gemini-2.5-flash"

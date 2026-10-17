@@ -9,7 +9,7 @@ from typing import Optional
 from . import config, notify
 from .calendar import FirestoreCalendar, SimCalendar
 from .firestore import new_client
-from .models import AbsenceSource, Action, CalEvent, Person, ProxyRequestStatus
+from .models import AbsenceSource, AbsenceType, Action, CalEvent, Person, ProxyRequestStatus
 from .service import Service
 from .store import FirestoreStore, InMemoryStore
 
@@ -33,9 +33,7 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
             into.__init__(store, calendar)
             svc = into
         _replay_past_week(svc, data.get("pastWeek"))
-        for absence_data in data["absences"]:
-            svc.create_absence(absence_data["personId"], _d(absence_data["start"]), _d(absence_data["end"]),
-                               AbsenceSource(absence_data["source"]), absence_data["enteredBy"])
+        _seed_absences(svc, data["absences"])
     elif kind == "firestore":
         # The demo area, as it is in the database. Starting the backend writes nothing: the demo data is loaded only
         # by "Reset demo data" (reset_demo below), so no other code path can put data into the database.
@@ -104,8 +102,7 @@ def reset_demo(svc: Service) -> Service:
         calendar.save_event(CalEvent(**e))
     svc.__init__(store, calendar, google_calendar)
     _replay_past_week(svc, data.get("pastWeek"))
-    for a in data["absences"]:
-        svc.create_absence(a["personId"], _d(a["start"]), _d(a["end"]), AbsenceSource(a["source"]), a["enteredBy"])
+    _seed_absences(svc, data["absences"])
     notify.clear()
     # the real time (not the demo's fixed "now"), shown to every visitor as "Demo data last reset: …"
     store.save_demo_reset_at(config.real_now().isoformat())
@@ -141,6 +138,14 @@ def _replay_past_week(svc: Service, past: Optional[dict]) -> None:
     finally:
         del svc.now
         svc.replaying = False
+
+
+def _seed_absences(svc: Service, absences: list[dict]) -> None:
+    """The demo's current absences. The demo runs on the real clock and its meetings lie after the evaluation weeks,
+    so an absence that must tell the "out suddenly" story says so with "type": "sudden" instead of by its date."""
+    for a in absences:
+        svc.create_absence(a["personId"], _d(a["start"]), _d(a["end"]), AbsenceSource(a["source"]), a["enteredBy"],
+                           AbsenceType(a["type"]) if a.get("type") else None)
 
 
 def _d(s: str) -> date:

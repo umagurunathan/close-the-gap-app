@@ -238,8 +238,11 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.post("/absences", response_model=AbsenceReport)
     def post_absence(body: AbsenceCreate, who: str = Depends(me)):
-        """Saves the absence; the reply says how many meetings it affects (for the confirmation message)."""
+        """Saves the absence; the reply says how many meetings it affects (for the confirmation message).
+        People report only their own absence, in both areas (a manager or delegate reporting for someone is future scope)."""
         def run():
+            if body.personId != who:
+                raise PermissionError("You can report only your own absence.")
             absence, _ = svc.report_absence(body.personId, body.start, body.end, AbsenceSource.manual, who)
             # every meeting on those days counts, including ones an earlier, overlapping absence already covers
             cards = svc.cards_on_days(body.personId, body.start, body.end)

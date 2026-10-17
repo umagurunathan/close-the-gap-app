@@ -8,7 +8,7 @@ import { fromIst } from "../format.js";
 export default function ScheduleMeeting({ people, me, today, calendarConnected, onClose, onDone }) {
   const [title, setTitle] = useState("");
   const [agenda, setAgenda] = useState("");   // the invite body: agenda, plan, notes (the AI reads it)
-  const [date, setDate] = useState(today ? addDays(today, 10) : "2026-10-21");
+  const [date, setDate] = useState(addDays(today || new Date().toISOString().slice(0, 10), 10));
   const [time, setTime] = useState("10:00");
   const [minutes, setMinutes] = useState(60);
   const [invited, setInvited] = useState([]);   // [{ personId, optional }]

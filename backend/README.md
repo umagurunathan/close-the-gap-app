@@ -59,7 +59,7 @@ WEB_APP_URL=https://your-web-app
 - Limits: sync is on demand (no push notifications); reschedule suggestions use the meetings stored in the app, not a live free/busy query.
 
 ## Gemini through Vertex AI
-The AI is off by default (`[ai] enabled = false` in `config/settings.toml`), so the app and the tests run without a cloud account. To switch it on: set `GOOGLE_CLOUD_PROJECT`, enable the Vertex AI API, run `gcloud auth application-default login` once (on Cloud Run, the service account needs `roles/aiplatform.user`), and start with `$env:AI_ENABLED="true"`. There is no API key. The model and region are in `[ai]` (`gemini-2.5-flash`, `asia-south1`); `AI_MODEL` overrides the model.
+**Gemini is always on:** `[ai] enabled = true` in `config/settings.toml`, and `AI_ENABLED=true` on Cloud Run. It needs a Google Cloud project with the Vertex AI API enabled, set as `GOOGLE_CLOUD_PROJECT`, and credentials: on Cloud Run the service account with `roles/aiplatform.user`; locally `gcloud auth application-default login` once. There is no API key. Without a project the app still starts, but the cards keep the rules' answer and stay marked as waiting for Gemini. Only the tests switch the AI off (`AI_ENABLED=false` in `tests/conftest.py`). The model and region are in `[ai]` (`gemini-2.5-flash`, `asia-south1`); `AI_MODEL` overrides the model.
 
 An older optional proxy ranker inside the rule-based fallback (`LLM_PROVIDER=vertex`, `VERTEX_AI_LOCATION`, `GEMINI_MODEL`) is off by default and not used by the live app.
 
@@ -71,7 +71,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-114 tests, offline (AI off; a fake Firestore for the read cache).
+142 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store and fixes the clock at Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
 
 ## Where things are
 | Path | What |
@@ -82,7 +82,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 | `app/scheduling.py` | Reschedule search: plain code, same time of day ±1 h then ±2 h |
 | `app/roles.py` | Who is a key person: required invitees, large events (a list, or more than 35 required people), hosting roles, optional invitees |
 | `app/settings.py` | Reads `config/settings.toml`; `AI_ENABLED`, `AI_MODEL` and `STORE_REQUEST_CACHE` in the environment override it |
-| `app/config.py` | Environment settings: store, areas, company directory, Firebase, CORS, the demo's fixed "now" |
+| `app/config.py` | Environment settings: store, areas, company directory, Firebase, CORS, the clock (real time; `NOW` fixes it for tests and local runs only, never on Cloud Run) |
 | `app/store.py`, `app/calendar.py` | In-memory and Firestore adapters (app data; calendar events with their summaries) |
 | `app/firestore.py` | Firestore helpers and the per-request read cache |
 | `app/firebase_auth.py` | Firebase ID-token check and the match to one directory person |
@@ -101,19 +101,20 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 | `seed/seed.json` | The demo company: 26 people (some only in the directory, as outside proxies), 35 meetings with summaries, 5 absences, and a handled past week |
 
 ## Demo scenarios in the seed data
-- **Priya** (`p_priya`), planned leave 20–22 Oct: stand-ups handled automatically; Q4 Budget Review gets a proxy from shared summaries; Design Review's summaries are not shared with her.
+The demo runs on the real clock, like the company area. Its upcoming meetings are dated 9–27 Nov 2026, after the evaluation weeks (19 Oct – 6 Nov), so they stay upcoming the whole time; the handled past week (5–9 Oct) and older summaries stay in the past. To move the sample data forward later, add the same whole number of weeks to every date from 11 Oct 2026 onward in `seed/seed.json` (and in the tests), so weekdays stay.
+- **Priya** (`p_priya`), planned leave 17–19 Nov: stand-ups handled automatically; Q4 Budget Review gets a proxy from shared summaries; Design Review's summaries are not shared with her.
 - **Meena** (`p_meena`), asked to cover; **Dev** (`p_dev`), a proxy who declines.
 - **Sam** (`p_sam`), organizer: one card per meeting with everyone who is out.
 - **Arjun** (`p_arjun`), where Gemini changes the rules' answer (sign-offs, an outside customer, a presenter).
-- **Kiran** (`p_kiran`), out suddenly 12–13 Oct: the organizer is alerted at once.
+- **Kiran** (`p_kiran`), out suddenly 9–10 Nov: the organizer is alerted at once. On the real clock this absence is weeks away, so the seed marks it `"type": "sudden"`; every other absence is typed by its notice (under 24 hours = sudden).
 - **Lena** (`p_lena`), a week's vacation with a full calendar; **Ben** (`p_ben`), an organizer outside Arjun's team.
-- "Now" is fixed at 11 Oct 2026 (`NOW`) in the demo area, so the demo always tells the same story.
+- **Report an absence** is for your own absence only, in both areas (the backend refuses anyone else's with 403). The seed's own absences, such as Kiran's reported by Priya, are loaded directly.
 
 ## Cloud Run
 ```powershell
 gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unauthenticated `
   --min-instances 1 --max-instances 1 --concurrency 20 --no-cpu-throttling `
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,NOW=2026-10-11T09:00:00Z,STORE=firestore,FIRESTORE_PROJECT_ID=<firestore-project>,FIRESTORE_DATABASE=<database>,FIRESTORE_WORKSPACE_ID=company,FIRESTORE_DEMO_WORKSPACE_ID=guest,FIREBASE_AUTH_ENABLED=true,FIREBASE_PROJECT_ID=<firebase-project>,GOOGLE_CALENDAR_ENABLED=true,GOOGLE_CALENDAR_REDIRECT_URI=https://<cloud-run-url>/integrations/google-calendar/callback,WEB_APP_URL=<web-app-url>,CORS_ORIGINS=<web-app-url>" `
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=<project>,AI_ENABLED=true,STORE=firestore,FIRESTORE_PROJECT_ID=<firestore-project>,FIRESTORE_DATABASE=<database>,FIRESTORE_WORKSPACE_ID=company,FIRESTORE_DEMO_WORKSPACE_ID=guest,FIREBASE_AUTH_ENABLED=true,FIREBASE_PROJECT_ID=<firebase-project>,GOOGLE_CALENDAR_ENABLED=true,GOOGLE_CALENDAR_REDIRECT_URI=https://<cloud-run-url>/integrations/google-calendar/callback,WEB_APP_URL=<web-app-url>,CORS_ORIGINS=<web-app-url>" `
   --set-secrets "COMPANY_DIRECTORY=company-directory:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_TOKEN_ENCRYPTION_KEY=google-token-encryption-key:latest"
 ```
 - `--source .` builds the `Dockerfile` in the cloud (`.gcloudignore` keeps `.venv`, `.env` and tests out). A later redeploy keeps every setting it does not name.

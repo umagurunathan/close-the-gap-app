@@ -104,10 +104,11 @@ def scheduler_service_account() -> str:
 
 
 def now() -> datetime:
-    """Current time for the demo area. NOW env var fixes it (handy for demos and tests); the company area always
-    uses the real clock (real_now), because real people's meetings come from their real calendars."""
+    """Current time for the demo area: the real clock, like the company area. Only the tests and local runs may fix
+    it with the NOW env var; on Cloud Run (K_SERVICE is set there) NOW is ignored, so the live demo always runs on
+    today's date. The demo's meetings lie after the evaluation weeks, so they stay upcoming the whole time."""
     fixed = os.getenv("NOW")
-    if fixed:
+    if fixed and not os.getenv("K_SERVICE"):
         return datetime.fromisoformat(fixed.replace("Z", "+00:00"))
     return datetime.now(timezone.utc)
 

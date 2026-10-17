@@ -15,13 +15,15 @@ When someone goes on leave they usually tell only their manager and their report
 The app opens in a demo company with sample people and meetings. The **Demo controls** at the top let you view the app as any of eight demo people; **Demo guide** says what to try with each.
 
 A three-minute path:
-1. **Priya** (going on leave 20–22 Oct): open **Q4 Budget Review**, choose **Ask Meena to cover**, then **Draft with AI** for a handover brief, and send it.
+1. **Priya** (going on leave 17–19 Nov): open **Q4 Budget Review**, choose **Ask Meena to cover**, then **Draft with AI** for a handover brief, and send it.
 2. **Meena** (asked to cover): in **Proxy Requests**, **Accept**. Priya's card moves to **Settled**.
 3. **Arjun** (where the AI beats simple rules): open **Weekly Ops Sync**. The card shows **AI changed the answer**: simple rules saw a routine sync; Gemini read the summaries and found a sign-off that needs him.
 
 Good to know:
 - **Only meetings affected by someone's absence are listed.** A meeting with no conflict stays in the calendar and needs nothing from you, so it does not appear in the app.
 - **Emails** in the Demo controls shows the emails the app would send. No real email is sent.
+- **The demo runs on today's real date and time.** Its sample meetings are set in November (9–27 Nov), so they stay upcoming throughout the evaluation weeks. A meeting or absence you add keeps the date you give it.
+- **Report an absence** is for your own absence only: viewing as Priya, you report Priya's.
 - **Reset demo data** puts the demo back to the start for everyone (it asks first). "Demo data last reset" shows when that last happened.
 - The page refreshes by itself every 30 seconds, so changes made by others appear without a reload.
 - **Sign in with Google** is for the members of a private company directory, who then work with their own Google Calendar. Other Google accounts are told politely that they are not in the directory and can keep using the demo.
@@ -122,10 +124,12 @@ flowchart LR
 - **Meeting summaries are typed by the organizer** (Summaries & agenda on a card), choosing who may read each one. In a real deployment they would arrive on their own from the earlier occurrences of the same meeting, through the meeting platform's notes or transcripts.
 - **Google Meet transcript import** exists in the backend but is hidden in the app.
 - **The sign-in app is not yet verified by Google**, so a first-time sign-in shows an "unverified app" notice.
-- **The demo's "today" is fixed** (11 Oct 2026), so the demo always tells the same story.
+- **People report only their own absence.** A manager, an admin or a delegate reporting for someone else (for example a colleague who calls in sick) is future scope.
+- **The demo's sample meetings have fixed dates** (9–27 Nov 2026), after the evaluation weeks, so they stay upcoming while the app runs on the real clock. Kiran's absence is marked "sudden" in the sample data, because on the real clock it is weeks away. After those dates the sample data moves forward again with one edit to `backend/seed/seed.json`.
 
 ## Future scope
 
+- **Reporting for someone else:** a manager, an admin or a named delegate reports an absence for a team member (a sudden sick day, for example), with the person told and able to correct it.
 - **Absences from where people already record them:** the company's leave or HR system, and Google Calendar out-of-office entries, so nobody has to report an absence twice. A detected absence would be confirmed by the person before any card is created.
 - **Real email and chat notifications**, with the reminder milestones, run by Cloud Scheduler.
 - **Live calendar updates** (push notifications instead of sync on demand) and free/busy checks across everyone's calendar when rescheduling.
@@ -146,7 +150,11 @@ py -3.13 -m venv .venv                                          # once
 Copy-Item .env.example .env                                     # once
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
-By default the backend keeps the demo data in memory and uses the rule-based recommendations, so it runs with no cloud account. To use Gemini, set `GOOGLE_CLOUD_PROJECT` in `.env` to a project with the Vertex AI API enabled, run `gcloud auth application-default login` once, and start the backend with `$env:AI_ENABLED="true"`. Firestore, sign-in and Google Calendar are described in [backend/README.md](backend/README.md).
+**Gemini is always on** (`[ai] enabled = true` in `backend/config/settings.toml`, and `AI_ENABLED=true` on Cloud Run). This is a cloud app, built to run on Cloud Run with Vertex AI, so a local run needs the same Google Cloud setup:
+1. A Google Cloud project with the **Vertex AI API** enabled; put its ID in `.env` as `GOOGLE_CLOUD_PROJECT`.
+2. Sign in once for local credentials: `gcloud auth application-default login`. There is no API key.
+
+Without these the app still starts, but Gemini cannot be reached: the cards keep the rules' answer and stay marked as waiting for Gemini. By default a local run keeps the demo data in memory (`STORE=memory`); Firestore, sign-in and Google Calendar are described in [backend/README.md](backend/README.md).
 
 **2. Web app** (React + Vite): http://localhost:5173
 ```powershell
@@ -169,7 +177,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-114 tests, with the AI switched off, so no cloud account is needed (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them and builds the web app on every pull request.
+142 tests. The tests switch the AI off for themselves (`tests/conftest.py`) and fix the clock at Sun 8 Nov 2026, so they need no cloud account and always see the same data (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them and builds the web app on every pull request.
 
 ## Layout
 

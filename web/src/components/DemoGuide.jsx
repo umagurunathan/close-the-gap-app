@@ -87,7 +87,7 @@ export default function DemoGuide({ onClose }) {
           </p>
           <ol className="guide-steps">
             <li>
-              <b>Priya Sharma</b>, going on leave 20–22 Oct. In <b>Attendee Mode</b>, pick a meeting on the left; its
+              <b>Priya Sharma</b>, going on leave 17–19 Nov. In <b>Attendee Mode</b>, pick a meeting on the left; its
               AI recommendation opens on the right. On <b>Q4 Budget Review</b>, try <b>Ask Meena to cover</b> →
               <b> Draft with AI</b> for a handover note. Decided meetings move to <b>Settled</b>; team check-ins wait in
               <b> No action needed</b>.
@@ -108,7 +108,7 @@ export default function DemoGuide({ onClose }) {
               <b>Kiran Patel</b>, out suddenly. His organizer, Sam, is alerted straight away.
             </li>
             <li>
-              <b>Lena Fox</b>, on vacation for a week (26–30 Oct). A full calendar: daily stand-ups go on without her,
+              <b>Lena Fox</b>, on vacation for a week (23–27 Nov). A full calendar: daily stand-ups go on without her,
               and each of the other meetings gets its own recommendation.
             </li>
             <li>
