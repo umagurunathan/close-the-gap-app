@@ -22,8 +22,8 @@ milestones_hours_before_meeting = [168, 72, 24, 4, 2]   # 7 days, 3 days, 24 hou
 recipients = ["leaver", "organizer"]
 # One email per person per milestone listing everything still unresolved (true), or one email per meeting (false).
 send_as_digest = true
-# How often the scheduler runs the reminder job. Cloud Scheduler is set to this; the job is safe to run more often.
-job_interval_minutes = 15
+# How often the scheduler runs the reminder job. Cloud Scheduler is set to this (hourly, "0 * * * *"); the job is safe to run more often.
+job_interval_minutes = 60
 
 # WIRED today:
 # How many times a silent proxy is reminded before the organizer simply decides.

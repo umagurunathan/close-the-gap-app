@@ -86,6 +86,17 @@ def web_app_url() -> str:
     return os.getenv("WEB_APP_URL", "http://localhost:5173").rstrip("/")
 
 
+def run_reminders_audience() -> str:
+    """The exact URL Cloud Scheduler's OIDC token is issued for, e.g. https://<service>/jobs/run-reminders.
+    Empty means the job is not configured, and it refuses every call (fail closed)."""
+    return os.getenv("RUN_REMINDERS_AUDIENCE", "").strip()
+
+
+def scheduler_service_account() -> str:
+    """The only service account allowed to call /jobs/run-reminders. Empty means the job refuses every call."""
+    return os.getenv("REMINDERS_SCHEDULER_SA", "").strip().lower()
+
+
 def now() -> datetime:
     """Current time for the demo area. NOW env var fixes it (handy for demos and tests); the company area always
     uses the real clock (real_now), because real people's meetings come from their real calendars."""

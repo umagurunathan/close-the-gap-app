@@ -111,7 +111,7 @@ flowchart LR
 
 - **Absences come only from "Report an absence".** An out-of-office block in Google Calendar is not read as an absence (it is simply not treated as a meeting).
 - **No real email is sent.** Emails go to the in-app **Emails** list.
-- **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, but the scheduler that runs it is paused for the demo; reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
+- **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, the job is called hourly by Cloud Scheduler once it is set up, and only that scheduler's signed token is accepted (see [backend/README.md](backend/README.md)); reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
 - **Rescheduling looks only at meetings the app knows**, not at everything in a colleague's Google Calendar unless they connected it.
 - **Google Meet transcript import** exists in the backend but is hidden in the app.
 - **The sign-in app is not yet verified by Google**, so a first-time sign-in shows an "unverified app" notice.

@@ -816,11 +816,11 @@ def test_organizer_is_alerted_once_when_unattended_meeting_is_under_24_hours(cli
     from datetime import datetime, timezone
     monkeypatch.setattr(config, "now", lambda: datetime(2026, 10, 20, 18, 0, tzinfo=timezone.utc))
     notify.clear()
-    client.post("/jobs/run-reminders")
+    svc.run_reminders()   # the endpoint's own sign-in check is tested in test_run_reminders_auth.py
     alerts = [m for m in notify.OUTBOX if m["subject"].startswith("Unresolved")]
     assert any("Q4 Budget Review" in m["subject"] and m["to"] == "sam@example.com" for m in alerts)
     n = len(alerts)
-    client.post("/jobs/run-reminders")                  # second run must not repeat the alert
+    svc.run_reminders()                                 # second run must not repeat the alert
     assert len([m for m in notify.OUTBOX if m["subject"].startswith("Unresolved")]) == n
 
 
@@ -834,7 +834,7 @@ def test_silent_proxy_gets_reminders_but_nothing_is_changed(client, svc):
     item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
     client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_meena"}, headers=H("p_priya"))
     for _ in range(5):
-        client.post("/jobs/run-reminders")
+        svc.run_reminders()
     req = next(r for r in svc.store.proxy_requests() if r.itemId == item.id)
     assert req.remindersSent == 3 and req.status.value == "pending"
     assert svc.store.get_item(item.id).status.value == "proxy_requested"
