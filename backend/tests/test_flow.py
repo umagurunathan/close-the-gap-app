@@ -547,6 +547,58 @@ def test_starting_the_backend_on_firestore_writes_nothing(monkeypatch):
     assert writes == []
 
 
+def test_the_limiter_counts_per_visitor_and_frees_up_over_time():
+    from app.limits import RateLimiter, visitor_key
+    t = [0.0]
+    lim = RateLimiter(clock=lambda: t[0])
+    assert [lim.hit("a", 2, 600) for _ in range(2)] == [None, None]
+    assert lim.hit("a", 2, 600) == 10            # minutes to wait
+    assert lim.hit("b", 2, 600) is None           # someone else is not affected
+    t[0] = 301
+    assert lim.hit("a", 2, 600) == 5              # a refused try is not counted
+    t[0] = 601
+    assert lim.hit("a", 2, 600) is None           # the first use has left the window
+    assert lim.hit("a", 0, 600) is None           # 0 = no limit
+    assert visitor_key("p_sam", "1.2.3.4", "9.9.9.9") == "person:p_sam"
+    assert visitor_key(None, "1.2.3.4, 10.0.0.1", "9.9.9.9") == "guest:1.2.3.4"
+    assert visitor_key(None, None, "9.9.9.9") == "guest:9.9.9.9"
+
+
+def test_draft_with_ai_and_reset_are_limited_per_visitor(client, svc, monkeypatch):
+    from app.settings import settings as S
+    monkeypatch.setattr(S.limits, "draft_with_ai", 2)
+    monkeypatch.setattr(S.limits, "reset_demo", 1)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    url = f"/items/{item.id}/note-draft?proxyId=p_meena"
+    assert [client.post(url, headers=H("p_priya")).status_code for _ in range(2)] == [200, 200]
+    r = client.post(url, headers=H("p_priya"))
+    assert r.status_code == 429 and "Draft with AI was used 2 times" in r.json()["detail"]
+    assert "type the note yourself" in r.json()["detail"]
+    other = {**H("p_priya"), "X-Forwarded-For": "203.0.113.7"}   # another visitor's address
+    assert client.post(url, headers=other).status_code == 200
+    assert client.post("/dev/reset-demo").status_code == 200
+    r = client.post("/dev/reset-demo")
+    assert r.status_code == 429 and "Please try again in about 10 minutes" in r.json()["detail"]
+
+
+def test_on_cloud_run_the_store_must_be_firestore(monkeypatch):
+    # a settings change once removed STORE; the live site then served memory data that was never saved
+    from app import config
+    monkeypatch.setenv("K_SERVICE", "close-the-gap-api")
+    for value in ("memory", None):
+        if value is None:
+            monkeypatch.delenv("STORE", raising=False)
+        else:
+            monkeypatch.setenv("STORE", value)
+        with pytest.raises(RuntimeError, match="must be 'firestore' on Cloud Run"):
+            config.store_kind()
+    monkeypatch.setenv("STORE", "firestore")
+    assert config.store_kind() == "firestore"
+    monkeypatch.delenv("K_SERVICE")
+    monkeypatch.setenv("STORE", "memory")
+    assert config.store_kind() == "memory"   # locally, memory is still allowed (tests, quick runs)
+
+
 def test_the_backend_refuses_to_start_when_the_two_areas_share_a_name(svc, monkeypatch):
     monkeypatch.setenv("FIRESTORE_WORKSPACE_ID", "guest")
     monkeypatch.setenv("FIRESTORE_DEMO_WORKSPACE_ID", "guest")

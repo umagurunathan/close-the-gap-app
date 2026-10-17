@@ -105,6 +105,8 @@ flowchart LR
 - **Sign-in is verified on every request.** The Firebase ID token is checked by the backend; the verified email must match exactly one person in the directory, and a signed-in person can only act as themselves.
 - **Each person's AI sees only what that person may open.** Summaries are filtered per viewer before they reach the AI or the screen.
 - **Least access to Google:** each person authorises their own calendar; no domain-wide or admin access.
+- **Limits on the costly actions.** Each visitor (a signed-in person, or a guest's address) may use "Draft with AI" 10 times and "Reset demo data" twice in 10 minutes (`[limits]` in `config/settings.toml`); after that a polite message says how long to wait. Page views never call the AI again for a card it has already analysed.
+- **The backend only runs on Firestore in the cloud.** On Cloud Run it refuses to start unless `STORE=firestore`, so a lost setting fails the new revision while the last good one keeps serving.
 - **The demo holds no real data.** Demo people have sample addresses; real users' data is never touched by the demo.
 
 ## What is not built yet (honest limits)
@@ -113,6 +115,7 @@ flowchart LR
 - **No real email is sent.** Emails go to the in-app **Emails** list.
 - **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, but the scheduler that runs it is paused for the demo; reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
 - **Rescheduling looks only at meetings the app knows**, not at everything in a colleague's Google Calendar unless they connected it.
+- **A routine meeting is handled automatically only with evidence.** A stand-up or sync goes to "No action needed" only when summaries of earlier meetings show status updates only; on its title alone it stays in Needs action for a person to decide (often one click: "Go on without them"). A card is never moved down later, so a summary added after the card exists does not move it. In production the summaries of earlier occurrences arrive on their own, before anyone is out.
 - **A time the organizer picks is checked for absences only**, not for whether people are busy at that hour (that is the organizer's call; Google Calendar tells the guests).
 - **A meeting moved only in Google Calendar** (not through the app) shows its new time after **Sync Google Calendar**, but its card is not closed by itself, even when the new time is after the absence; someone settles it in the app.
 - **All times are shown in India Standard Time** and say so ("3:00 pm IST"), for every viewer. The proposed time keeps the meeting's own clock time, so a meeting saved from a Google Calendar set to another time zone (for example GMT) shows at that hour in IST.
@@ -129,7 +132,7 @@ flowchart LR
 - **More rescheduling choice:** two or three proposed times; a picked time checked against everyone's busy hours and working hours too; a meeting moved outside the absence in Google Calendar closes its card on its own; each person's own time zone instead of IST for everyone.
 - **A shared cache** between requests (for example Memorystore) and several backend instances, for company scale; indexed queries per person and date instead of whole collections.
 - **Database rules** that enforce the areas as well as the backend does; one area per customer company; a directory from Google Workspace or the HR system.
-- **Operations:** a least-privilege service account, rate limits and cost caps on AI calls, monitoring and alerts, Google app verification.
+- **Operations:** a least-privilege service account, limits shared across several instances and an overall cost cap on AI calls, monitoring and alerts, Google app verification.
 - **Meeting summaries picked up automatically** from the earlier occurrences of each meeting: Google Meet transcripts first (built, hidden), then other meeting platforms, one adapter each. Each summary keeps the platform's own permissions, so the AI still reads only what each person may open.
 - **Phone and tablet layouts.** The prototype is designed for office laptops; on a phone it works but is not yet designed for the small screen.
 

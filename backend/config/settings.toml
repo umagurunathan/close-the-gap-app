@@ -229,6 +229,15 @@ max_confidence_for_proxy_named_in_agenda = "medium"
 max_candidates = 20
 
 
+# ---------------------------------------------------------------- Limits per visitor (WIRED; app/limits.py)
+# The two actions that cost money or disturb everyone. A visitor is the signed-in person, or a guest's address.
+# Over the limit, the person is told politely how many minutes to wait. 0 = no limit.
+[limits]
+window_minutes = 10
+draft_with_ai = 10    # "Draft with AI" (one Gemini call per click)
+reset_demo = 2        # "Reset demo data" (reloads the shared demo; the AI analyses every card again)
+
+
 # ---------------------------------------------------------------- Store (WIRED; Firestore)
 [store]
 # WIRED (2026-10-17): while one request runs, read each Firestore collection and document at most once and reuse it
