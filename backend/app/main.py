@@ -14,6 +14,7 @@ from . import config, notify
 from .google_meet import GoogleMeetIntegration, MeetIntegrationError
 from .google_calendar import CalendarIntegrationError, GoogleCalendarIntegration
 from .firebase_auth import install_firebase_auth
+from .firestore import begin_request_reads
 from .models import (
     Absence, AbsenceCreate, AbsenceReport, AbsenceSource, ActionRequest, AttendeeAdd, AttendeeItems, DirectoryEntry, EventCreate, HistoryEvent,
     MeetingActionRequest, OrganizerMeeting,
@@ -62,6 +63,7 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     async def choose_area(request: Request):
         # runs before every endpoint, after the sign-in check has (or has not) set the person
         _AREA.set("company" if getattr(request.state, "person_id", None) else "demo")
+        begin_request_reads(S.store.request_cache)
 
     def signed_in(request: Request) -> bool:
         return bool(getattr(request.state, "person_id", None))

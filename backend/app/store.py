@@ -7,7 +7,7 @@ from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from google.cloud.firestore_v1 import FieldFilter
 
-from .firestore import encode_model
+from .firestore import RequestReads, encode_model
 from .models import Absence, HistoryEvent, MeetingItem, Person, ProxyRequest
 
 
@@ -119,6 +119,7 @@ class FirestoreStore(Store):
     def __init__(self, client: firestore.Client, workspace_id: str = "company"):
         self._client = client
         self._workspace_id = workspace_id
+        self._reads = RequestReads(workspace_id)
 
     @property
     def workspace_id(self) -> str:
@@ -128,35 +129,45 @@ class FirestoreStore(Store):
     def _collection(self, name: str):
         return self._client.collection(name)
 
+    def _document_id(self, document_id: str) -> str:
+        return f"{self._workspace_id}__{document_id}"
+
     def _document(self, collection: str, document_id: str):
-        return self._collection(collection).document(f"{self._workspace_id}__{document_id}")
+        return self._collection(collection).document(self._document_id(document_id))
 
     def _encode(self, model) -> dict:
         data = encode_model(model)
         data["workspaceId"] = self._workspace_id
         return data
 
-    def _decode(self, snapshot, model_type):
-        if not snapshot.exists:
+    @staticmethod
+    def _model(data: Optional[dict], model_type):
+        if data is None:
             return None
-        data = snapshot.to_dict()
-        data.pop("workspaceId", None)
-        return model_type.model_validate(data)
+        return model_type.model_validate({key: value for key, value in data.items() if key != "workspaceId"})
+
+    def _query(self, collection: str):
+        return self._collection(collection).where(filter=FieldFilter("workspaceId", "==", self._workspace_id))
+
+    def _get(self, collection: str, document_id: str, model_type):
+        reference = self._document(collection, document_id)
+        data = self._reads.get(collection, reference.id, reference.get, lambda: self._query(collection).stream())
+        return self._model(data, model_type)
+
+    def _set(self, collection: str, document_id: str, model) -> None:
+        data = self._encode(model)
+        reference = self._document(collection, document_id)
+        reference.set(data)
+        self._reads.wrote(collection, reference.id, data)
 
     def _all(self, collection: str, model_type):
-        return [
-            model_type.model_validate({key: value for key, value in doc.to_dict().items()
-                                       if key != "workspaceId"})
-            for doc in self._collection(collection).where(
-                filter=FieldFilter("workspaceId", "==", self._workspace_id)
-            ).stream()
-        ]
+        return [self._model(data, model_type) for data in self._reads.scan(collection, self._query(collection).stream)]
 
     def people(self) -> list[Person]:
         return self._all("people", Person)
 
     def get_person(self, person_id: str) -> Optional[Person]:
-        return self._decode(self._document("people", person_id).get(), Person)
+        return self._get("people", person_id, Person)
 
     def add_person_if_missing(self, person: Person) -> None:
         reference = self._document("people", person.id)
@@ -164,6 +175,7 @@ class FirestoreStore(Store):
             reference.create(self._encode(person))
         except AlreadyExists:
             pass
+        self._reads.forget("people", reference.id)
 
     def ensure_guest_person(self, person: Person) -> None:
         reference = self._document("people", person.id)
@@ -173,12 +185,12 @@ class FirestoreStore(Store):
                 reference.create(self._encode(person))
             except AlreadyExists:
                 pass
-            return
-        if (snapshot.to_dict() or {}).get("email") != person.email:
+        elif (snapshot.to_dict() or {}).get("email") != person.email:
             reference.update({"email": person.email})
+        self._reads.forget("people", reference.id)
 
     def save_person(self, person: Person) -> None:
-        self._document("people", person.id).set(self._encode(person))
+        self._set("people", person.id, person)
 
     def delete_where(self, collection: str, should_delete) -> list[str]:
         """Deletes this workspace's records in one collection for which should_delete(record_id, data) is true.
@@ -195,40 +207,41 @@ class FirestoreStore(Store):
                     batch.commit()
                     batch = self._client.batch()
         batch.commit()
+        self._reads.forget(collection)
         return deleted
 
     def add_absence(self, absence: Absence) -> None:
-        self._document("absences", absence.id).set(self._encode(absence))
+        self._set("absences", absence.id, absence)
 
     def absences(self) -> list[Absence]:
         return self._all("absences", Absence)
 
     def add_item(self, item: MeetingItem) -> None:
-        self._document("items", item.id).set(self._encode(item))
+        self._set("items", item.id, item)
 
     def save_item(self, item: MeetingItem) -> None:
         self.add_item(item)
 
     def get_item(self, item_id: str) -> Optional[MeetingItem]:
-        return self._decode(self._document("items", item_id).get(), MeetingItem)
+        return self._get("items", item_id, MeetingItem)
 
     def items(self) -> list[MeetingItem]:
         return self._all("items", MeetingItem)
 
     def add_proxy_request(self, req: ProxyRequest) -> None:
-        self._document("proxy_requests", req.id).set(self._encode(req))
+        self._set("proxy_requests", req.id, req)
 
     def save_proxy_request(self, req: ProxyRequest) -> None:
         self.add_proxy_request(req)
 
     def get_proxy_request(self, req_id: str) -> Optional[ProxyRequest]:
-        return self._decode(self._document("proxy_requests", req_id).get(), ProxyRequest)
+        return self._get("proxy_requests", req_id, ProxyRequest)
 
     def proxy_requests(self) -> list[ProxyRequest]:
         return self._all("proxy_requests", ProxyRequest)
 
     def add_history(self, event: HistoryEvent) -> None:
-        self._document("history", event.id).set(self._encode(event))
+        self._set("history", event.id, event)
 
     def history(self) -> list[HistoryEvent]:
         return self._all("history", HistoryEvent)

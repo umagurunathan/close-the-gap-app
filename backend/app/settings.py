@@ -30,6 +30,10 @@ def load(path: str | os.PathLike | None = None) -> SimpleNamespace:
     model = os.getenv("AI_MODEL")
     if model and hasattr(s, "ai"):
         s.ai.model = model.strip()
+    # STORE_REQUEST_CACHE=false switches the per-request read cache off on Cloud Run without a rebuild.
+    cache = os.getenv("STORE_REQUEST_CACHE")
+    if cache is not None and hasattr(s, "store"):
+        s.store.request_cache = cache.strip().lower() in ("1", "true", "yes", "on")
     return s
 
 
