@@ -482,11 +482,15 @@ export default function App() {
       )}
       {/* The signed-in person's situation and next step, in two lines: the first thing a visitor reads. */}
       {upcomingAbsence && (() => {
-        // With one absence: all the person's cards, as before. With several: only this absence's cards.
+        // With one absence: all the person's cards, as before. With several: the cards of meetings on this absence's
+        // days. Each meeting has one card, tied to the first absence that covered it, so when absences overlap the
+        // card is matched by its date as well (the same rule as the backend: the meeting's date within the absence).
         const several = myAbsences.length > 1;
+        const { start: from, end: to } = upcomingAbsence;
         const mine = several
           ? [...attendee.needsAction, ...noAction.teamCheckins, ...noAction.orgEvents]
-              .filter((i) => i.absenceId === upcomingAbsence.id)
+              .filter((i) => i.absenceId === upcomingAbsence.id
+                || (i.event.start.slice(0, 10) >= from && i.event.start.slice(0, 10) <= to))
           : null;
         const open = several ? mine.filter((i) => i.needsAttention).length : counts.attendeeOpen;
         const total = several ? mine.length : affectedCount;
@@ -573,7 +577,7 @@ export default function App() {
             renderTile={(i) => <AttendeeTile item={i} people={people} me={shownId} />}
             renderDetail={(i) => (i.status === "rescheduled" || i.status === "cancelled"
               ? <SettledCard title={i.event.title} start={i.event.start} originalStart={i.originalStart} status={i.status}
-                  decidedBy={i.decidedBy} people={people} />
+                  decidedBy={i.decidedBy} organizerId={i.event.organizerId} people={people} />
               : <MeetingCard item={i} people={people} me={shownId} role="attendee" refresh={refresh}
                   quiet={i.status === "auto_handled"} />)}
           />
@@ -592,7 +596,8 @@ export default function App() {
             renderTile={(m) => <OrganizerTile meeting={m} people={people} />}
             renderDetail={(m) => (m.done
               ? <SettledCard title={m.event.title} start={m.event.start} originalStart={m.absentees[0]?.originalStart}
-                  status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} people={people} />
+                  status={m.absentees[0]?.status} decidedBy={m.absentees[0]?.decidedBy} organizerId={m.event.organizerId}
+                  people={people} />
               : <OrganizerCard meeting={m} people={people} me={shownId} refresh={refresh} />)}
           />
         ))}
@@ -608,7 +613,7 @@ export default function App() {
                 empty: { title: "Nothing answered yet", text: "Requests you accept or decline move here." } },
             ]}
             renderTile={(v) => <ProxyTile view={v} people={people} />}
-            renderDetail={(v) => <ProxyCard view={v} people={people} onRespond={respond} />}
+            renderDetail={(v) => <ProxyCard view={v} people={people} me={shownId} onRespond={respond} />}
           />
         ))}
 
@@ -626,7 +631,7 @@ export default function App() {
             ))}
             {pastProxy.length > 0 && <h4 className="group-title">Meetings you covered</h4>}
             {pastProxy.map((v) => (
-              <ProxyCard key={v.request.id} view={v} people={people} activity={activityFor(v.item.id)} />
+              <ProxyCard key={v.request.id} view={v} people={people} me={shownId} activity={activityFor(v.item.id)} />
             ))}
           </div>
         )}

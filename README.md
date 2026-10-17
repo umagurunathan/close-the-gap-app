@@ -33,7 +33,7 @@ Good to know:
 - **Both sides can act.** The person who is out sees their meetings in **Attendee Mode**; the organizer sees one card per meeting in **Organizer Mode**, naming everyone who is out, with actions for the whole meeting. Every meeting that needs action shows the days left, the same for everyone: green, amber within 2 days, red within 24 hours.
 - **Runs the proxy flow.** The proxy can be anyone in the company directory, invited or not (someone not yet invited is added to the meeting). Covering is always the proxy's choice: they accept or decline in **Proxy Requests**; a decline sends the owner back to choose again, with the AI's second choice ready.
 - **Briefs the proxy.** Gemini drafts a short handover: what the meeting is for, what the proxy covers, what was decided and what is still open. The sender edits it before sending.
-- **Reschedules safely.** Same time of day, on a day when every required person is free and nobody is out.
+- **Reschedules safely.** It proposes one time: the same time of day (within 1 hour, then within 2 hours), on the first of the next 7 working days when every required person is free and nobody is out. The organizer takes it in one click ("Reschedule to Mon, 9 Nov · 3:00 pm IST") or picks another time, also when no time is found; a picked day must be one when everyone who is out is back. The Google event moves once for everyone, and Google tells the guests. The card then says the organizer moved it, from the old time to the new one.
 - **Handles routine meetings automatically.** Team check-ins and org-wide events go on without the person when the AI is highly confident (unless the person who is out runs them); they wait in **No action needed**, where anyone can still change them.
 - **Three groups in every tab:** **Needs action**, **Settled** (a person decided) and **No action needed** (handled automatically). **Past** keeps what was decided, with the recommendation the decider saw.
 - **Several absences:** the banner at the top pages through them (‹ 1 of 2 ›, or a swipe on a phone), each with its own count.
@@ -113,6 +113,10 @@ flowchart LR
 - **No real email is sent.** Emails go to the in-app **Emails** list.
 - **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, but the scheduler that runs it is paused for the demo; reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
 - **Rescheduling looks only at meetings the app knows**, not at everything in a colleague's Google Calendar unless they connected it.
+- **A time the organizer picks is checked for absences only**, not for whether people are busy at that hour (that is the organizer's call; Google Calendar tells the guests).
+- **A meeting moved only in Google Calendar** (not through the app) shows its new time after **Sync Google Calendar**, but its card is not closed by itself, even when the new time is after the absence; someone settles it in the app.
+- **All times are shown in India Standard Time** and say so ("3:00 pm IST"), for every viewer. The proposed time keeps the meeting's own clock time, so a meeting saved from a Google Calendar set to another time zone (for example GMT) shows at that hour in IST.
+- **Meeting summaries are typed by the organizer** (Summaries & agenda on a card), choosing who may read each one. In a real deployment they would arrive on their own from the earlier occurrences of the same meeting, through the meeting platform's notes or transcripts.
 - **Google Meet transcript import** exists in the backend but is hidden in the app.
 - **The sign-in app is not yet verified by Google**, so a first-time sign-in shows an "unverified app" notice.
 - **The demo's "today" is fixed** (11 Oct 2026), so the demo always tells the same story.
@@ -122,10 +126,11 @@ flowchart LR
 - **Absences from where people already record them:** the company's leave or HR system, and Google Calendar out-of-office entries, so nobody has to report an absence twice. A detected absence would be confirmed by the person before any card is created.
 - **Real email and chat notifications**, with the reminder milestones, run by Cloud Scheduler.
 - **Live calendar updates** (push notifications instead of sync on demand) and free/busy checks across everyone's calendar when rescheduling.
+- **More rescheduling choice:** two or three proposed times; a picked time checked against everyone's busy hours and working hours too; a meeting moved outside the absence in Google Calendar closes its card on its own; each person's own time zone instead of IST for everyone.
 - **A shared cache** between requests (for example Memorystore) and several backend instances, for company scale; indexed queries per person and date instead of whole collections.
 - **Database rules** that enforce the areas as well as the backend does; one area per customer company; a directory from Google Workspace or the HR system.
 - **Operations:** a least-privilege service account, rate limits and cost caps on AI calls, monitoring and alerts, Google app verification.
-- **Meeting summaries from Google Meet** transcripts, switched on in the app.
+- **Meeting summaries picked up automatically** from the earlier occurrences of each meeting: Google Meet transcripts first (built, hidden), then other meeting platforms, one adapter each. Each summary keeps the platform's own permissions, so the AI still reads only what each person may open.
 - **Phone and tablet layouts.** The prototype is designed for office laptops; on a phone it works but is not yet designed for the small screen.
 
 ## Run it locally (two terminals)

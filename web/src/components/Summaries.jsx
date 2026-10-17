@@ -25,6 +25,7 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
   const [meetUrl, setMeetUrl] = useState("");
   const [busy, setBusy] = useState("");   // "" | "save" | "link" | "import"
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");   // the confirmation after "Save summary"
   const name = (id) => people[id]?.name ?? id;
   const iAmOrganizer = event.organizerId === me;
   const invitees = [...new Set(event.attendees.map((a) => a.personId).filter((id) => id !== event.organizerId))];
@@ -58,11 +59,15 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
   }
   const addSummary = (e) => {
     e.preventDefault();
+    setSaved("");
     run("save", async () => {
-      const saved = await api(`/items/${itemId}/notes`, { method: "POST", person: me, body: { text, sharedWith: readers } });
-      setSummaries((s) => [...s, saved]);
+      const note = await api(`/items/${itemId}/notes`, { method: "POST", person: me, body: { text, sharedWith: readers } });
+      setSummaries((s) => [...s, note]);
       setText("");
-      await refresh?.();   // a new summary can change the AI's recommendation
+      setReaders([]);
+      const who = note.sharedWith.length ? note.sharedWith.map(name).join(", ") : "only you";
+      setSaved(`Summary saved. Readable by ${who}. The AI reads it on its next look at this meeting; the card updates by itself.`);
+      refresh?.();   // in the background: a new summary can change the AI's recommendation
     });
   };
   const saveMeetLink = (e) => {
@@ -135,7 +140,8 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
               <>
                 <form className="summary-form" onSubmit={addSummary}>
                   <h4 className="guide-sub">Add a summary</h4>
-                  <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} required
+                  {saved && <div className="note good" role="status">{saved}</div>}
+                  <textarea rows={4} value={text} onChange={(e) => { setText(e.target.value); setSaved(""); }} required
                     aria-label="Summary text" placeholder="What was discussed and decided, who owns what…" />
                   {readerPicker}
                   <div className="actions">

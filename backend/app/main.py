@@ -205,9 +205,11 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
     def post_absence(body: AbsenceCreate, who: str = Depends(me)):
         """Saves the absence; the reply says how many meetings it affects (for the confirmation message)."""
         def run():
-            absence, created = svc.report_absence(body.personId, body.start, body.end, AbsenceSource.manual, who)
-            return AbsenceReport(absence=absence, affected=len(created),
-                                 needDecision=sum(1 for i in created if i.status.value == "pending_decision"))
+            absence, _ = svc.report_absence(body.personId, body.start, body.end, AbsenceSource.manual, who)
+            # every meeting on those days counts, including ones an earlier, overlapping absence already covers
+            cards = svc.cards_on_days(body.personId, body.start, body.end)
+            return AbsenceReport(absence=absence, affected=len(cards),
+                                 needDecision=sum(1 for i in cards if i.status.value == "pending_decision"))
         return guard(run)
 
     @app.get("/items", response_model=None)
@@ -223,9 +225,13 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
         return svc.organizer_meetings(who)
 
     @app.post("/meetings/{event_id}/action", response_model=Optional[OrganizerMeeting])
-    def post_meeting_action(event_id: str, body: MeetingActionRequest, who: str = Depends(me)):
-        """The organizer decides for the whole meeting: reschedule, cancel or proceed_without."""
-        return guard(lambda: svc.apply_meeting_action(event_id, who, body.action))
+    def post_meeting_action(event_id: str, body: MeetingActionRequest, request: Request, who: str = Depends(me)):
+        """The organizer decides for the whole meeting: reschedule (the proposed time, or `start` if they picked one),
+        cancel or proceed_without."""
+        event = svc.calendar.get(event_id)
+        if event and event.googleEventId:
+            require_calendar_request(request)
+        return guard(lambda: svc.apply_meeting_action(event_id, who, body.action, body.start))
 
     @app.post("/items/{item_id}/action", response_model=MeetingItem)
     def post_action(item_id: str, body: ActionRequest, request: Request, who: str = Depends(me)):
@@ -234,7 +240,8 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
             event = svc.calendar.get(item.event.calendarEventId)
             if event and event.googleEventId:
                 require_calendar_request(request)
-        return guard(lambda: svc.apply_action(item_id, who, body.action, body.proxyId, body.note, body.noteFromAi))
+        return guard(lambda: svc.apply_action(item_id, who, body.action, body.proxyId, body.note, body.noteFromAi,
+                                              body.start))
 
     @app.get("/items/{item_id}/notes", response_model=list[Note])
     def get_meeting_notes(item_id: str, who: str = Depends(me)):

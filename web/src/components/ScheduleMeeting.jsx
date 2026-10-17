@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api.js";
+import { fromIst } from "../format.js";
 
 // Schedule a meeting. Invitees: type a name, pick from the matches, and each person becomes a chip; click a chip's
 // role to switch Required / Optional, ✕ to remove. If a required invitee is already out that day, the organizer is
@@ -32,7 +33,7 @@ export default function ScheduleMeeting({ people, me, today, calendarConnected, 
     setBusy(true);
     setError("");
     try {
-      const start = new Date(`${date}T${time}:00`);   // the viewer's own time zone, like every time on screen
+      const start = new Date(fromIst(date, time));   // the box holds IST, like every time on screen
       const end = new Date(start.getTime() + Number(minutes) * 60000);
       const result = await api("/events", {
         method: "POST", person: me,
@@ -57,7 +58,7 @@ export default function ScheduleMeeting({ people, me, today, calendarConnected, 
         </label>
         <div className="row">
           <label>Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></label>
-          <label>Start <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></label>
+          <label>Start (IST) <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></label>
           <label>Duration (minutes) <input type="number" min="15" step="15" value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
         </div>
 
