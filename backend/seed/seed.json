@@ -216,8 +216,8 @@
    "seriesId": "series_standup",
    "title": "Daily Stand-up",
    "description": "Quick daily status.",
-   "start": "2026-10-12T04:00:00Z",
-   "end": "2026-10-12T04:15:00Z",
+   "start": "2026-11-09T04:00:00Z",
+   "end": "2026-11-09T04:15:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -252,8 +252,8 @@
    "seriesId": "series_standup",
    "title": "Daily Stand-up",
    "description": "Quick daily status.",
-   "start": "2026-10-13T04:00:00Z",
-   "end": "2026-10-13T04:15:00Z",
+   "start": "2026-11-10T04:00:00Z",
+   "end": "2026-11-10T04:15:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -287,8 +287,8 @@
    "id": "evt_release",
    "title": "Release Readiness",
    "description": "Go/no-go review for the October release.",
-   "start": "2026-10-12T09:30:00Z",
-   "end": "2026-10-12T10:30:00Z",
+   "start": "2026-11-09T09:30:00Z",
+   "end": "2026-11-09T10:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -321,8 +321,8 @@
    "seriesId": "series_standup",
    "title": "Daily Stand-up",
    "description": "Quick daily status.",
-   "start": "2026-10-20T04:00:00Z",
-   "end": "2026-10-20T04:15:00Z",
+   "start": "2026-11-17T04:00:00Z",
+   "end": "2026-11-17T04:15:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -357,8 +357,8 @@
    "seriesId": "series_standup",
    "title": "Daily Stand-up",
    "description": "Quick daily status.",
-   "start": "2026-10-21T04:00:00Z",
-   "end": "2026-10-21T04:15:00Z",
+   "start": "2026-11-18T04:00:00Z",
+   "end": "2026-11-18T04:15:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -393,8 +393,8 @@
    "seriesId": "series_standup",
    "title": "Daily Stand-up",
    "description": "Quick daily status.",
-   "start": "2026-10-22T04:00:00Z",
-   "end": "2026-10-22T04:15:00Z",
+   "start": "2026-11-19T04:00:00Z",
+   "end": "2026-11-19T04:15:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -428,8 +428,8 @@
    "id": "evt_sprint",
    "title": "Sprint Planning",
    "description": "Plan the next sprint.",
-   "start": "2026-10-20T05:30:00Z",
-   "end": "2026-10-20T06:30:00Z",
+   "start": "2026-11-17T05:30:00Z",
+   "end": "2026-11-17T06:30:00Z",
    "organizerId": "p_priya",
    "attendees": [
     {
@@ -468,8 +468,8 @@
    "id": "evt_budget",
    "title": "Q4 Budget Review",
    "description": "Review the Q4 budget and the vendor shortlist.",
-   "start": "2026-10-21T09:30:00Z",
-   "end": "2026-10-21T10:30:00Z",
+   "start": "2026-11-18T09:30:00Z",
+   "end": "2026-11-18T10:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -505,8 +505,8 @@
    "id": "evt_techtalk",
    "title": "Site-wide Tech Talk: Cloud Cost Optimization",
    "description": "Open session for everyone on site.",
-   "start": "2026-10-21T11:30:00Z",
-   "end": "2026-10-21T12:30:00Z",
+   "start": "2026-11-18T11:30:00Z",
+   "end": "2026-11-18T12:30:00Z",
    "organizerId": "p_events",
    "inviteGroup": "site-all",
    "attendees": [
@@ -537,8 +537,8 @@
    "id": "evt_vendor",
    "title": "Vendor Contract Decision",
    "description": "Decide on the vendor contract.",
-   "start": "2026-10-22T08:30:00Z",
-   "end": "2026-10-22T09:30:00Z",
+   "start": "2026-11-19T08:30:00Z",
+   "end": "2026-11-19T09:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -562,8 +562,8 @@
    "id": "evt_design",
    "title": "Design Review",
    "description": "Review the dashboard designs.",
-   "start": "2026-10-22T11:00:00Z",
-   "end": "2026-10-22T12:00:00Z",
+   "start": "2026-11-19T11:00:00Z",
+   "end": "2026-11-19T12:00:00Z",
    "organizerId": "p_meena",
    "attendees": [
     {
@@ -597,8 +597,8 @@
    "id": "evt_leads_su",
    "title": "Finance Leads Stand-up",
    "description": "Daily stand-up for the finance leads.",
-   "start": "2026-10-26T04:00:00Z",
-   "end": "2026-10-26T04:15:00Z",
+   "start": "2026-11-23T04:00:00Z",
+   "end": "2026-11-23T04:15:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -617,7 +617,7 @@
    "notes": [
     {
      "docId": "doc_lsu_1",
-     "modifiedAt": "2026-10-23T05:00:00Z",
+     "modifiedAt": "2026-11-20T05:00:00Z",
      "text": "Leads stand-up. Status updates only. Naomi closed the September accruals. No decisions.",
      "sharedWith": [
       "p_arjun",
@@ -631,8 +631,8 @@
    "id": "evt_opssync",
    "title": "Weekly Ops Sync",
    "description": "Weekly sync on hiring and capacity.",
-   "start": "2026-10-26T06:00:00Z",
-   "end": "2026-10-26T06:30:00Z",
+   "start": "2026-11-23T06:00:00Z",
+   "end": "2026-11-23T06:30:00Z",
    "organizerId": "p_dev",
    "attendees": [
     {
@@ -651,7 +651,7 @@
    "notes": [
     {
      "docId": "doc_ops_1",
-     "modifiedAt": "2026-10-19T07:00:00Z",
+     "modifiedAt": "2026-11-16T07:00:00Z",
      "text": "Ops sync. Arjun signed off the two analyst roles; they cannot be posted without him. The November overtime budget is waiting for Arjun. Rohan shared the capacity numbers.",
      "sharedWith": [
       "p_arjun",
@@ -666,8 +666,8 @@
    "id": "evt_pricing",
    "title": "Pricing Committee",
    "description": "Monthly pricing committee.",
-   "start": "2026-10-27T05:30:00Z",
-   "end": "2026-10-27T06:30:00Z",
+   "start": "2026-11-24T05:30:00Z",
+   "end": "2026-11-24T06:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -689,7 +689,7 @@
    "notes": [
     {
      "docId": "doc_pri_1",
-     "modifiedAt": "2026-10-13T07:00:00Z",
+     "modifiedAt": "2026-11-10T07:00:00Z",
      "text": "Pricing committee summary. Tara proposed the new discount tiers and knows them best. Arjun approves any discount above 20%. Naomi checked the margin impact with Arjun.",
      "sharedWith": [
       "p_arjun",
@@ -705,8 +705,8 @@
    "id": "evt_allhands",
    "title": "All-hands: H2 plan",
    "description": "Quarterly all-hands for everyone on site. Arjun walks us through the H2 numbers, then open Q&A.",
-   "start": "2026-10-27T09:30:00Z",
-   "end": "2026-10-27T10:30:00Z",
+   "start": "2026-11-24T09:30:00Z",
+   "end": "2026-11-24T10:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -740,8 +740,8 @@
    "id": "evt_acme",
    "title": "Acme renewal escalation",
    "description": "Acme's CFO asked for this call to agree the renewal terms.",
-   "start": "2026-10-28T08:30:00Z",
-   "end": "2026-10-28T09:30:00Z",
+   "start": "2026-11-25T08:30:00Z",
+   "end": "2026-11-25T09:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -760,7 +760,7 @@
    "notes": [
     {
      "docId": "doc_acme_1",
-     "modifiedAt": "2026-10-21T10:00:00Z",
+     "modifiedAt": "2026-11-18T10:00:00Z",
      "text": "Escalation call notes. Acme's CFO will only commit to the renewal with Arjun on the call. Arjun signs the final terms. Ben prepared the contract changes.",
      "sharedWith": [
       "p_arjun",
@@ -973,8 +973,8 @@
    "id": "evt_audit_prep",
    "title": "Audit Committee Prep",
    "description": "Prepare the answers for next week's audit committee.",
-   "start": "2026-10-28T05:30:00Z",
-   "end": "2026-10-28T06:30:00Z",
+   "start": "2026-11-25T05:30:00Z",
+   "end": "2026-11-25T06:30:00Z",
    "organizerId": "p_ben",
    "attendees": [
     {
@@ -993,7 +993,7 @@
    "notes": [
     {
      "docId": "doc_audit_1",
-     "modifiedAt": "2026-10-14T06:00:00Z",
+     "modifiedAt": "2026-11-11T06:00:00Z",
      "text": "Audit prep notes. Rohan usually stands in for Arjun on audit items. Arjun owns the answers on revenue recognition. Naomi drafted the controls summary with Arjun.",
      "sharedWith": [
       "p_arjun",
@@ -1008,8 +1008,8 @@
    "id": "evt_it_su_26",
    "title": "IT Ops Stand-up",
    "description": "Daily status for the IT operations team.",
-   "start": "2026-10-26T04:30:00Z",
-   "end": "2026-10-26T04:45:00Z",
+   "start": "2026-11-23T04:30:00Z",
+   "end": "2026-11-23T04:45:00Z",
    "organizerId": "p_omar",
    "attendees": [
     {
@@ -1031,7 +1031,7 @@
    "notes": [
     {
      "docId": "doc_itsu_1",
-     "modifiedAt": "2026-10-15T05:00:00Z",
+     "modifiedAt": "2026-11-12T05:00:00Z",
      "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
      "sharedWith": [
       "p_lena",
@@ -1049,8 +1049,8 @@
    "id": "evt_it_su_27",
    "title": "IT Ops Stand-up",
    "description": "Daily status for the IT operations team.",
-   "start": "2026-10-27T04:30:00Z",
-   "end": "2026-10-27T04:45:00Z",
+   "start": "2026-11-24T04:30:00Z",
+   "end": "2026-11-24T04:45:00Z",
    "organizerId": "p_omar",
    "attendees": [
     {
@@ -1072,7 +1072,7 @@
    "notes": [
     {
      "docId": "doc_itsu_1",
-     "modifiedAt": "2026-10-15T05:00:00Z",
+     "modifiedAt": "2026-11-12T05:00:00Z",
      "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
      "sharedWith": [
       "p_lena",
@@ -1090,8 +1090,8 @@
    "id": "evt_it_su_28",
    "title": "IT Ops Stand-up",
    "description": "Daily status for the IT operations team.",
-   "start": "2026-10-28T04:30:00Z",
-   "end": "2026-10-28T04:45:00Z",
+   "start": "2026-11-25T04:30:00Z",
+   "end": "2026-11-25T04:45:00Z",
    "organizerId": "p_omar",
    "attendees": [
     {
@@ -1113,7 +1113,7 @@
    "notes": [
     {
      "docId": "doc_itsu_1",
-     "modifiedAt": "2026-10-15T05:00:00Z",
+     "modifiedAt": "2026-11-12T05:00:00Z",
      "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
      "sharedWith": [
       "p_lena",
@@ -1131,8 +1131,8 @@
    "id": "evt_it_su_29",
    "title": "IT Ops Stand-up",
    "description": "Daily status for the IT operations team.",
-   "start": "2026-10-29T04:30:00Z",
-   "end": "2026-10-29T04:45:00Z",
+   "start": "2026-11-26T04:30:00Z",
+   "end": "2026-11-26T04:45:00Z",
    "organizerId": "p_omar",
    "attendees": [
     {
@@ -1154,7 +1154,7 @@
    "notes": [
     {
      "docId": "doc_itsu_1",
-     "modifiedAt": "2026-10-15T05:00:00Z",
+     "modifiedAt": "2026-11-12T05:00:00Z",
      "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
      "sharedWith": [
       "p_lena",
@@ -1172,8 +1172,8 @@
    "id": "evt_it_su_30",
    "title": "IT Ops Stand-up",
    "description": "Daily status for the IT operations team.",
-   "start": "2026-10-30T04:30:00Z",
-   "end": "2026-10-30T04:45:00Z",
+   "start": "2026-11-27T04:30:00Z",
+   "end": "2026-11-27T04:45:00Z",
    "organizerId": "p_omar",
    "attendees": [
     {
@@ -1195,7 +1195,7 @@
    "notes": [
     {
      "docId": "doc_itsu_1",
-     "modifiedAt": "2026-10-15T05:00:00Z",
+     "modifiedAt": "2026-11-12T05:00:00Z",
      "text": "IT stand-up summary: status updates only. Sofia finished the backup tests; Kofi waiting on a test device. No decisions.",
      "sharedWith": [
       "p_lena",
@@ -1212,9 +1212,9 @@
   {
    "id": "evt_postmortem",
    "title": "Payments Outage Postmortem",
-   "description": "Root cause, customer impact and follow-ups for the 14 Oct payments outage.",
-   "start": "2026-10-26T08:30:00Z",
-   "end": "2026-10-26T09:30:00Z",
+   "description": "Root cause, customer impact and follow-ups for the 11 Nov payments outage.",
+   "start": "2026-11-23T08:30:00Z",
+   "end": "2026-11-23T09:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -1239,7 +1239,7 @@
    "notes": [
     {
      "docId": "doc_pm_1",
-     "modifiedAt": "2026-10-15T12:00:00Z",
+     "modifiedAt": "2026-11-12T12:00:00Z",
      "text": "Outage notes. Lena owns the escalation with the payment gateway vendor. Raj owns the security timeline. Sofia has the data-loss analysis. Decision needed: whether to switch to the backup gateway.",
      "sharedWith": [
       "p_lena",
@@ -1256,8 +1256,8 @@
    "id": "evt_roadmap",
    "title": "Q1 IT Roadmap Prioritization",
    "description": "Agree the Q1 priority order for IT projects. Maya presents the architecture options.",
-   "start": "2026-10-27T05:30:00Z",
-   "end": "2026-10-27T07:00:00Z",
+   "start": "2026-11-24T05:30:00Z",
+   "end": "2026-11-24T07:00:00Z",
    "organizerId": "p_lena",
    "attendees": [
     {
@@ -1279,7 +1279,7 @@
    "notes": [
     {
      "docId": "doc_rm_1",
-     "modifiedAt": "2026-10-12T10:00:00Z",
+     "modifiedAt": "2026-11-09T10:00:00Z",
      "text": "Roadmap prep. Lena decides the final priority order with the business leads. Maya prepared the architecture options. Omar has the capacity plan.",
      "sharedWith": [
       "p_lena",
@@ -1294,8 +1294,8 @@
    "id": "evt_hiring",
    "title": "Hiring Panel: Senior SRE",
    "description": "Final panel for the Senior SRE role. Lena is the hiring manager and makes the final call.",
-   "start": "2026-10-28T09:30:00Z",
-   "end": "2026-10-28T10:30:00Z",
+   "start": "2026-11-25T09:30:00Z",
+   "end": "2026-11-25T10:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -1320,8 +1320,8 @@
    "id": "evt_archboard",
    "title": "Architecture Review Board",
    "description": "Monthly review. Lena presents the data platform migration plan; Maya reviews the security design.",
-   "start": "2026-10-29T04:30:00Z",
-   "end": "2026-10-29T05:30:00Z",
+   "start": "2026-11-26T04:30:00Z",
+   "end": "2026-11-26T05:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -1350,7 +1350,7 @@
     {
      "docId": "doc_arb_1",
      "modifiedAt": "2026-10-01T09:00:00Z",
-     "text": "Board notes. The migration plan comes back on 29 Oct for approval; Lena presents it. Sofia built the cost model.",
+     "text": "Board notes. The migration plan comes back on 26 Nov for approval; Lena presents it. Sofia built the cost model.",
      "sharedWith": [
       "p_lena",
       "p_maya",
@@ -1367,8 +1367,8 @@
    "id": "evt_vendorsec",
    "title": "Cloud Vendor Security Review",
    "description": "Residual risk sign-off for the new cloud storage vendor.",
-   "start": "2026-10-29T10:30:00Z",
-   "end": "2026-10-29T11:15:00Z",
+   "start": "2026-11-26T10:30:00Z",
+   "end": "2026-11-26T11:15:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -1390,7 +1390,7 @@
    "notes": [
     {
      "docId": "doc_vs_1",
-     "modifiedAt": "2026-10-14T11:00:00Z",
+     "modifiedAt": "2026-11-11T11:00:00Z",
      "text": "Security review notes. Raj leads the review. Lena signs off on residual risk; Omar signs off when Lena is away. Ben checks the contract clauses.",
      "sharedWith": [
       "p_lena",
@@ -1406,8 +1406,8 @@
    "id": "evt_retro",
    "title": "Sprint Demo & Retro",
    "description": "Team demos and the sprint retrospective.",
-   "start": "2026-10-30T09:30:00Z",
-   "end": "2026-10-30T10:30:00Z",
+   "start": "2026-11-27T09:30:00Z",
+   "end": "2026-11-27T10:30:00Z",
    "organizerId": "p_sam",
    "attendees": [
     {
@@ -1432,7 +1432,7 @@
    "notes": [
     {
      "docId": "doc_retro_1",
-     "modifiedAt": "2026-10-16T10:00:00Z",
+     "modifiedAt": "2026-11-13T10:00:00Z",
      "text": "Retro summary: demos of the backup tooling and the test dashboard; team feedback only. No decisions.",
      "sharedWith": [
       "p_lena",
@@ -1449,36 +1449,37 @@
  "absences": [
   {
    "personId": "p_priya",
-   "start": "2026-10-20",
-   "end": "2026-10-22",
+   "start": "2026-11-17",
+   "end": "2026-11-19",
    "source": "calendar_ooo",
    "enteredBy": "p_priya"
   },
   {
    "personId": "p_kiran",
-   "start": "2026-10-12",
-   "end": "2026-10-13",
+   "start": "2026-11-09",
+   "end": "2026-11-10",
    "source": "manual",
-   "enteredBy": "p_priya"
+   "enteredBy": "p_priya",
+   "type": "sudden"
   },
   {
    "personId": "p_arjun",
-   "start": "2026-10-26",
-   "end": "2026-10-28",
+   "start": "2026-11-23",
+   "end": "2026-11-25",
    "source": "calendar_ooo",
    "enteredBy": "p_arjun"
   },
   {
    "personId": "p_rohan",
-   "start": "2026-10-28",
-   "end": "2026-10-28",
+   "start": "2026-11-25",
+   "end": "2026-11-25",
    "source": "manual",
    "enteredBy": "p_rohan"
   },
   {
    "personId": "p_lena",
-   "start": "2026-10-26",
-   "end": "2026-10-30",
+   "start": "2026-11-23",
+   "end": "2026-11-27",
    "source": "calendar_ooo",
    "enteredBy": "p_lena"
   }

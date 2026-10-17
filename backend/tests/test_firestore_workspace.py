@@ -49,8 +49,8 @@ def test_firestore_calendar_uses_common_events_collection_and_scoped_documents()
     client = Mock()
     client.collection.return_value.where.return_value.stream.return_value = []
     calendar = FirestoreCalendar(client, "guest")
-    event = CalEvent(id="evt-1", title="Planning", description="", start="2026-10-16T10:00:00Z",
-                     end="2026-10-16T11:00:00Z", organizerId="p_sam", attendees=[])
+    event = CalEvent(id="evt-1", title="Planning", description="", start="2026-11-13T10:00:00Z",
+                     end="2026-11-13T11:00:00Z", organizerId="p_sam", attendees=[])
 
     assert calendar.all_events() == []
     calendar.save_event(event)

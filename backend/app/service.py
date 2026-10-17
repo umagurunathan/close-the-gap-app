@@ -238,18 +238,19 @@ class Service:
         notice = datetime.combine(start, time.min, tzinfo=timezone.utc) - self.now()
         return AbsenceType.sudden if notice <= timedelta(hours=SUDDEN_NOTICE_HOURS) else AbsenceType.planned
 
-    def create_absence(self, person_id: str, start: date, end: date,
-                       source: AbsenceSource, entered_by: str) -> Absence:
-        return self.report_absence(person_id, start, end, source, entered_by)[0]
+    def create_absence(self, person_id: str, start: date, end: date, source: AbsenceSource, entered_by: str,
+                       type_: Optional[AbsenceType] = None) -> Absence:
+        return self.report_absence(person_id, start, end, source, entered_by, type_)[0]
 
-    def report_absence(self, person_id: str, start: date, end: date, source: AbsenceSource,
-                       entered_by: str) -> tuple[Absence, list[MeetingItem]]:
-        """Saves the absence and returns it with the cards it created (one per affected meeting)."""
+    def report_absence(self, person_id: str, start: date, end: date, source: AbsenceSource, entered_by: str,
+                       type_: Optional[AbsenceType] = None) -> tuple[Absence, list[MeetingItem]]:
+        """Saves the absence and returns it with the cards it created (one per affected meeting). `type_` is only
+        for the demo seed: its sudden absence lies weeks ahead on the real clock, yet must tell the sudden story."""
         self.person(person_id)
         if end < start:
             raise ValueError("The end date must be on or after the start date.")
         absence = Absence(
-            id=self.store.next_id("a"), personId=person_id, start=start, end=end, type=self.absence_type(start),
+            id=self.store.next_id("a"), personId=person_id, start=start, end=end, type=type_ or self.absence_type(start),
             source=source, enteredBy=entered_by, createdAt=self.now())
         self.store.add_absence(absence)
         return absence, self._scan(absence)

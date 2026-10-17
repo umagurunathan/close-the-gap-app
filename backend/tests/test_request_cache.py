@@ -142,9 +142,9 @@ def test_deleting_and_missing_documents(db):
     store = FirestoreStore(db, "guest")
     begin_request_reads(True)
     assert store.get_person("p_x") is None
-    store.add_absence(Absence(id="abs_1", personId="p_a", start="2026-10-20", end="2026-10-20",
+    store.add_absence(Absence(id="abs_1", personId="p_a", start="2026-11-17", end="2026-11-17",
                               type=AbsenceType.planned, source=AbsenceSource.manual, enteredBy="p_a",
-                              createdAt="2026-10-11T09:00:00Z"))
+                              createdAt="2026-11-08T09:00:00Z"))
     assert [a.id for a in store.absences()] == ["abs_1"]
     assert store.delete_where("absences", lambda rid, d: True) == ["abs_1"]
     assert store.absences() == []
@@ -165,7 +165,7 @@ def test_the_calendar_and_the_store_agree_on_deleted_events(db):
     from app.models import CalEvent
     store, calendar = FirestoreStore(db, "guest"), FirestoreCalendar(db, "guest")
     begin_request_reads(True)
-    start = datetime(2026, 10, 20, 9, tzinfo=timezone.utc)
+    start = datetime(2026, 11, 17, 9, tzinfo=timezone.utc)
     calendar.save_event(CalEvent(id="evt_1", title="Sync", organizerId="p_a", start=start, end=start,
                                     attendees=[]))
     assert [e.id for e in calendar.all_events()] == ["evt_1"]
