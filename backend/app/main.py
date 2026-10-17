@@ -9,6 +9,9 @@ from typing import Optional, Union
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from google.auth.exceptions import GoogleAuthError
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 
 from . import config, notify
 from .google_meet import GoogleMeetIntegration, MeetIntegrationError
@@ -42,6 +45,25 @@ class _AreaRouter:
 
 
 _AREA: contextvars.ContextVar[str] = contextvars.ContextVar("close_the_gap_area", default="demo")
+
+
+def require_scheduler(request: Request) -> None:
+    """Only the reminder scheduler may run /jobs/run-reminders. Cloud Scheduler sends a Google-signed OIDC token
+    for its service account; we check the signature, the audience (this exact URL), and the caller's email.
+    Unset config refuses every call, so a missing setting can never open the job."""
+    audience = config.run_reminders_audience()
+    expected = config.scheduler_service_account()
+    if not audience or not expected:
+        raise HTTPException(403, "The reminder job is not configured on this server.")
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    if scheme.casefold() != "bearer" or not token:
+        raise HTTPException(401, "Missing scheduler token.")
+    try:
+        claims = id_token.verify_oauth2_token(token, google_requests.Request(), audience=audience)
+    except (ValueError, GoogleAuthError):   # GoogleAuthError: e.g. Google's keys could not be fetched
+        raise HTTPException(401, "Invalid or expired scheduler token.")
+    if (claims.get("email") or "").casefold() != expected or claims.get("email_verified") is not True:
+        raise HTTPException(403, "Not the reminder scheduler.")
 
 
 def create_app(service: Optional[Service] = None) -> FastAPI:
@@ -432,12 +454,12 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
             return {"lastResetAt": None}
 
     @app.post("/jobs/run-reminders")
-    def run_reminders():
-        """Cloud Scheduler calls this on a schedule; both areas get their reminders."""
-        sent = demo_svc.run_reminders()
-        if company_svc is not demo_svc:
-            sent += company_svc.run_reminders()
-        return {"reminders_sent": sent}
+    def run_reminders(request: Request):
+        """Cloud Scheduler calls this on a schedule. Only the scheduler's service account may call it (see
+        require_scheduler). Real people only: the demo runs on a fixed clock, so reminders there would only pile up
+        demo emails and change the shared demo while people look at it."""
+        require_scheduler(request)
+        return {"reminders_sent": company_svc.run_reminders()}
 
     return app
 

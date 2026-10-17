@@ -21,6 +21,9 @@ PUBLIC_PATHS = {
     "/health",
     "/integrations/google-calendar/callback",
     "/integrations/google-meet/callback",
+    # Cloud Scheduler sends a Google-signed OIDC token here, not a Firebase ID token. The endpoint checks it itself
+    # (main.py require_scheduler), so this middleware must not try to read it as a Firebase sign-in.
+    "/jobs/run-reminders",
 }
 
 

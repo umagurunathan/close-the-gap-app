@@ -117,5 +117,45 @@ gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unau
   --set-secrets "COMPANY_DIRECTORY=company-directory:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_TOKEN_ENCRYPTION_KEY=google-token-encryption-key:latest"
 ```
 - `--source .` builds the `Dockerfile` in the cloud (`.gcloudignore` keeps `.venv`, `.env` and tests out). A later redeploy keeps every setting it does not name.
+- **`--set-env-vars` only on the very first deploy.** It replaces the whole list, so any setting it doesn't name disappears (CORS, the store, the clock…): the site then cannot be reached. To add or change a setting later, use `--update-env-vars` (only the named ones change). On Cloud Run the backend refuses to start without `STORE=firestore`, so a wiped list fails the new revision and the last good one keeps serving.
 - **One instance, CPU always on:** background AI analysis keeps running between requests, and the AI's answers and the demo email outbox live in the instance's memory. **20 requests at a time** with the per-request read cache.
 - The service account needs `roles/aiplatform.user`, `roles/datastore.user` (in the database's project) and `roles/secretmanager.secretAccessor` on the secrets. Keep secret values in Secret Manager versions, never in deployment arguments, source control or the web app.
+
+## Reminder job (Cloud Scheduler)
+
+`POST /jobs/run-reminders` is public on the network (the web app needs the service public), but it refuses every call that does not carry a Google-signed token for the scheduler service account. Cloud Scheduler sends that token; the endpoint checks its signature, its audience (this exact URL) and the caller's email. No shared secret is stored anywhere.
+
+Setup (PowerShell; replace the placeholders):
+```powershell
+gcloud services enable cloudscheduler.googleapis.com iamcredentials.googleapis.com --project <project>
+gcloud iam service-accounts create reminder-scheduler --display-name "Reminder scheduler" --project <project>
+
+# your user can impersonate it for local tests; the Scheduler service agent can mint its tokens
+gcloud iam service-accounts add-iam-policy-binding reminder-scheduler@<project>.iam.gserviceaccount.com `
+  --member "user:<your-email>" --role roles/iam.serviceAccountTokenCreator --project <project>
+gcloud iam service-accounts add-iam-policy-binding reminder-scheduler@<project>.iam.gserviceaccount.com `
+  --member "serviceAccount:service-<project-number>@gcp-sa-cloudscheduler.iam.gserviceaccount.com" `
+  --role roles/iam.serviceAccountTokenCreator --project <project>
+
+# after the first deploy, the service URL is the audience; ADD these two (--update-env-vars keeps every other
+# setting; --set-env-vars would delete them all)
+gcloud run services update close-the-gap-api --region asia-south1 `
+  --update-env-vars "RUN_REMINDERS_AUDIENCE=https://<cloud-run-url>/jobs/run-reminders,REMINDERS_SCHEDULER_SA=reminder-scheduler@<project>.iam.gserviceaccount.com"
+
+# hourly job
+gcloud scheduler jobs create http close-the-gap-reminders --location asia-south1 --schedule "0 * * * *" --time-zone "Asia/Kolkata" `
+  --uri https://<cloud-run-url>/jobs/run-reminders --http-method POST `
+  --oidc-service-account-email reminder-scheduler@<project>.iam.gserviceaccount.com `
+  --oidc-token-audience https://<cloud-run-url>/jobs/run-reminders
+```
+
+Test it locally by impersonating the scheduler account (your user needs the `serviceAccountTokenCreator` binding above):
+```powershell
+# backend running with RUN_REMINDERS_AUDIENCE=http://localhost:8000/jobs/run-reminders and REMINDERS_SCHEDULER_SA set
+$TOKEN = gcloud auth print-identity-token --impersonate-service-account=reminder-scheduler@<project>.iam.gserviceaccount.com `
+  --audiences=http://localhost:8000/jobs/run-reminders --include-email
+curl.exe -X POST http://localhost:8000/jobs/run-reminders -H "Authorization: Bearer $TOKEN"
+```
+Without the token the call returns 401; with your own user's token it returns 403.
+
+Test it in the cloud: `gcloud scheduler jobs run close-the-gap-reminders --location asia-south1`, then `gcloud run services logs read close-the-gap-api --region asia-south1 --limit 50`.

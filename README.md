@@ -113,7 +113,7 @@ flowchart LR
 
 - **Absences come only from "Report an absence".** An out-of-office block in Google Calendar is not read as an absence (it is simply not treated as a meeting).
 - **No real email is sent.** Emails go to the in-app **Emails** list.
-- **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, but the scheduler that runs it is paused for the demo; reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
+- **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, the job is called hourly by Cloud Scheduler once it is set up, and only that scheduler's signed token is accepted (see [backend/README.md](backend/README.md)); reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
 - **Rescheduling looks only at meetings the app knows**, not at everything in a colleague's Google Calendar unless they connected it.
 - **A routine meeting is handled automatically only with evidence.** A stand-up or sync goes to "No action needed" only when summaries of earlier meetings show status updates only; on its title alone it stays in Needs action for a person to decide (often one click: "Go on without them"). A card is never moved down later, so a summary added after the card exists does not move it. In production the summaries of earlier occurrences arrive on their own, before anyone is out.
 - **A time the organizer picks is checked for absences only**, not for whether people are busy at that hour (that is the organizer's call; Google Calendar tells the guests).
