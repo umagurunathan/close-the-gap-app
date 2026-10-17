@@ -97,6 +97,7 @@ class OrganizerMeeting(BaseModel):
 class MeetingActionRequest(BaseModel):
     """An organizer's decision for the whole meeting: reschedule, cancel or proceed_without (go on without them)."""
     action: "Action"
+    start: Optional[datetime] = None   # reschedule only: a time the organizer picked instead of the proposed one
 
 
 class Absence(BaseModel):
@@ -281,6 +282,7 @@ class ActionRequest(BaseModel):
     proxyId: Optional[str] = None
     note: Optional[str] = None          # optional note to the proxy (only used with action = proxy)
     noteFromAi: bool = False            # the note started as an AI draft (recorded in the history)
+    start: Optional[datetime] = None    # reschedule only: a time the organizer picked instead of the proposed one
 
 
 class NoteDraftAvailable(BaseModel):

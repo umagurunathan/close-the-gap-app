@@ -547,6 +547,58 @@ def test_starting_the_backend_on_firestore_writes_nothing(monkeypatch):
     assert writes == []
 
 
+def test_the_limiter_counts_per_visitor_and_frees_up_over_time():
+    from app.limits import RateLimiter, visitor_key
+    t = [0.0]
+    lim = RateLimiter(clock=lambda: t[0])
+    assert [lim.hit("a", 2, 600) for _ in range(2)] == [None, None]
+    assert lim.hit("a", 2, 600) == 10            # minutes to wait
+    assert lim.hit("b", 2, 600) is None           # someone else is not affected
+    t[0] = 301
+    assert lim.hit("a", 2, 600) == 5              # a refused try is not counted
+    t[0] = 601
+    assert lim.hit("a", 2, 600) is None           # the first use has left the window
+    assert lim.hit("a", 0, 600) is None           # 0 = no limit
+    assert visitor_key("p_sam", "1.2.3.4", "9.9.9.9") == "person:p_sam"
+    assert visitor_key(None, "1.2.3.4, 10.0.0.1", "9.9.9.9") == "guest:1.2.3.4"
+    assert visitor_key(None, None, "9.9.9.9") == "guest:9.9.9.9"
+
+
+def test_draft_with_ai_and_reset_are_limited_per_visitor(client, svc, monkeypatch):
+    from app.settings import settings as S
+    monkeypatch.setattr(S.limits, "draft_with_ai", 2)
+    monkeypatch.setattr(S.limits, "reset_demo", 1)
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    url = f"/items/{item.id}/note-draft?proxyId=p_meena"
+    assert [client.post(url, headers=H("p_priya")).status_code for _ in range(2)] == [200, 200]
+    r = client.post(url, headers=H("p_priya"))
+    assert r.status_code == 429 and "Draft with AI was used 2 times" in r.json()["detail"]
+    assert "type the note yourself" in r.json()["detail"]
+    other = {**H("p_priya"), "X-Forwarded-For": "203.0.113.7"}   # another visitor's address
+    assert client.post(url, headers=other).status_code == 200
+    assert client.post("/dev/reset-demo").status_code == 200
+    r = client.post("/dev/reset-demo")
+    assert r.status_code == 429 and "Please try again in about 10 minutes" in r.json()["detail"]
+
+
+def test_on_cloud_run_the_store_must_be_firestore(monkeypatch):
+    # a settings change once removed STORE; the live site then served memory data that was never saved
+    from app import config
+    monkeypatch.setenv("K_SERVICE", "close-the-gap-api")
+    for value in ("memory", None):
+        if value is None:
+            monkeypatch.delenv("STORE", raising=False)
+        else:
+            monkeypatch.setenv("STORE", value)
+        with pytest.raises(RuntimeError, match="must be 'firestore' on Cloud Run"):
+            config.store_kind()
+    monkeypatch.setenv("STORE", "firestore")
+    assert config.store_kind() == "firestore"
+    monkeypatch.delenv("K_SERVICE")
+    monkeypatch.setenv("STORE", "memory")
+    assert config.store_kind() == "memory"   # locally, memory is still allowed (tests, quick runs)
+
+
 def test_the_backend_refuses_to_start_when_the_two_areas_share_a_name(svc, monkeypatch):
     monkeypatch.setenv("FIRESTORE_WORKSPACE_ID", "guest")
     monkeypatch.setenv("FIRESTORE_DEMO_WORKSPACE_ID", "guest")
@@ -892,6 +944,17 @@ def test_proxy_who_is_out_that_day_is_refused(client, svc):
     assert flagged[0]["out"] is True
 
 
+def test_an_overlapping_absence_reports_the_meetings_it_covers(client, svc):
+    # Priya is already out Oct 20-22; a second absence on Oct 21 makes no new cards but still affects those meetings
+    before = len(svc.store.items())
+    r = client.post("/absences", json={"personId": "p_priya", "start": "2026-10-21", "end": "2026-10-21"},
+                    headers=H("p_priya"))
+    assert r.status_code == 200 and len(svc.store.items()) == before
+    on_21 = [i for i in svc.store.items() if i.absentPersonId == "p_priya" and i.event.start.date().isoformat() == "2026-10-21"]
+    assert on_21 and r.json()["affected"] == len(on_21)
+    assert r.json()["needDecision"] == sum(1 for i in on_21 if i.status.value == "pending_decision")
+
+
 def _org_event(**kw):
     from datetime import datetime, timezone
     from app.models import CalEvent, EventAttendee
@@ -1142,6 +1205,154 @@ def test_meeting_level_reschedule_moves_once_and_settles_everyone(client, svc):
     assert after.date().isoformat() == "2026-10-23" and after.hour == before.hour      # first day both are back, same time
     assert {a["status"] for a in card["absentees"]} == {"rescheduled"}
     assert client.post(f"/meetings/{event_id}/action", json={"action": "reschedule"}, headers=H("p_priya")).status_code == 403
+
+
+class _GoogleWrites:
+    """Stands in for Google Calendar and records what the app asked it to do."""
+    def __init__(self, fail=False):
+        self.updates, self.deletes, self.fail = [], [], fail
+
+    def update_event(self, event):
+        from app.google_calendar import CalendarIntegrationError
+        if self.fail:
+            raise CalendarIntegrationError("Google Calendar API request failed (HTTP 503).")
+        self.updates.append((event.googleEventId, event.start, event.end))
+
+    def delete_event(self, person_id, event_id):
+        self.deletes.append((person_id, event_id))
+
+
+def _from_google(svc, event_id):
+    e = svc.calendar.get(event_id)
+    e.googleEventId, e.googleCalendarOwnerId = "google-1", e.organizerId
+    svc.google_calendar = _GoogleWrites()
+    return e
+
+
+def test_the_organizer_reschedule_moves_the_google_event_once(client, svc):
+    # found in a manual test: the whole-meeting reschedule moved only the app's copy, so the next sync put
+    # the old time back ("6 Nov 8:30 pm -> 6 Nov 8:30 pm")
+    from app.models import Action
+    event_id = _two_out_meeting(client)
+    e = _from_google(svc, event_id)
+    before = e.start
+    svc.apply_meeting_action(event_id, "p_sam", Action.reschedule)
+    after = svc.calendar.get(event_id).start
+    assert svc.google_calendar.updates == [("google-1", after, after + (e.end - e.start))]   # once, for everyone
+    items = [i for i in svc.store.items() if i.event.calendarEventId == event_id]
+    assert {i.status.value for i in items} == {"rescheduled"}
+    assert all(i.originalStart == before and i.rescheduledTo == after and i.event.start == after for i in items)
+    assert after != before
+
+
+def test_if_google_refuses_the_move_nothing_changes(client, svc):
+    from app.google_calendar import CalendarIntegrationError
+    from app.models import Action
+    event_id = _two_out_meeting(client)
+    before = _from_google(svc, event_id).start
+    svc.google_calendar = _GoogleWrites(fail=True)
+    with pytest.raises(CalendarIntegrationError):
+        svc.apply_meeting_action(event_id, "p_sam", Action.reschedule)
+    assert svc.calendar.get(event_id).start == before
+    assert all(i.status.value == "pending_decision" for i in svc.store.items() if i.event.calendarEventId == event_id)
+
+
+def test_the_organizer_can_pick_another_time(client, svc):
+    event_id = _two_out_meeting(client)
+    r = client.post(f"/meetings/{event_id}/action", json={"action": "reschedule", "start": "2026-10-27T05:30:00Z"},
+                    headers=H("p_sam"))
+    assert r.status_code == 200
+    assert svc.calendar.get(event_id).start.isoformat().startswith("2026-10-27T05:30")
+    assert {a["status"] for a in r.json()["absentees"]} == {"rescheduled"}
+    assert all(a["rescheduledTo"].startswith("2026-10-27T05:30") for a in r.json()["absentees"])
+
+
+def test_a_picked_time_is_checked(client, svc):
+    event_id = _two_out_meeting(client)   # Priya is out Oct 20-22, Dev Oct 21
+    current = svc.calendar.get(event_id).start.isoformat()
+    for start, words in (("2026-10-01T05:30:00Z", "in the future"),         # the demo's today is Oct 11
+                         ("2026-10-22T05:30:00Z", "Priya Sharma is out that day"),
+                         (current, "current time")):
+        r = client.post(f"/meetings/{event_id}/action", json={"action": "reschedule", "start": start}, headers=H("p_sam"))
+        assert r.status_code == 400 and words in r.json()["detail"], (start, r.json())
+    assert svc.calendar.get(event_id).start.isoformat() == current   # nothing moved
+
+
+def test_the_organizer_can_still_reschedule_when_no_time_is_found(client, svc, monkeypatch):
+    from app.models import ProposedTime
+    event_id = _two_out_meeting(client)
+    monkeypatch.setattr(svc, "proposed_time", lambda *a, **k: ProposedTime(none=True))
+    r = client.post(f"/meetings/{event_id}/action", json={"action": "reschedule"}, headers=H("p_sam"))
+    assert {a["status"] for a in r.json()["absentees"]} == {"no_slot_found"}
+    r = client.post(f"/meetings/{event_id}/action", json={"action": "reschedule", "start": "2026-10-27T05:30:00Z"},
+                    headers=H("p_sam"))
+    assert {a["status"] for a in r.json()["absentees"]} == {"rescheduled"}
+
+
+def test_a_person_card_reschedule_by_the_organizer_can_pick_a_time_too(client, svc):
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")   # Priya out, Sam organizes
+    r = client.post(f"/items/{item.id}/action", json={"action": "reschedule", "start": "2026-10-27T09:30:00Z"},
+                    headers=H("p_sam"))
+    assert r.status_code == 400 and "Arjun Rao is out that day" in r.json()["detail"]   # a required invitee is out
+    r = client.post(f"/items/{item.id}/action", json={"action": "reschedule", "start": "2026-11-02T09:30:00Z"},
+                    headers=H("p_sam"))
+    assert r.status_code == 200 and r.json()["status"] == "rescheduled"
+    assert r.json()["rescheduledTo"].startswith("2026-11-02T09:30")
+    assert r.json()["originalStart"] != r.json()["rescheduledTo"]
+
+
+def test_canceling_with_two_people_out_deletes_the_google_event_once(client, svc):
+    # found in a manual test: each person's card asked Google to delete the event; the second got "Gone" (HTTP 410)
+    from app.models import Action
+    event_id = _two_out_meeting(client)
+    _from_google(svc, event_id)
+    svc.apply_meeting_action(event_id, "p_sam", Action.cancel)
+    assert svc.google_calendar.deletes == [("p_sam", "google-1")]
+    assert {i.status.value for i in svc.store.items() if i.event.calendarEventId == event_id} == {"cancelled"}
+
+
+def test_google_delete_of_an_already_deleted_event_is_done(svc, monkeypatch):
+    from app.google_calendar import CalendarIntegrationError, GoogleCalendarIntegration
+    integration = GoogleCalendarIntegration(svc.store)
+    monkeypatch.setattr(integration, "_access_token", lambda person_id: "token")
+    status = {"code": 410}
+
+    class Client:
+        def __init__(self, timeout):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def delete(self, url, headers):
+            return type("R", (), {"status_code": status["code"]})()
+
+    monkeypatch.setattr("app.google_calendar.httpx.Client", Client)
+    integration.delete_event("p_sam", "google-1")          # 410 gone: canceled either way
+    status["code"] = 404
+    integration.delete_event("p_sam", "google-1")
+    status["code"] = 503
+    with pytest.raises(CalendarIntegrationError):
+        integration.delete_event("p_sam", "google-1")
+
+
+def test_a_sync_after_a_reschedule_follows_google(client, svc):
+    from app.models import Action
+    event_id = _two_out_meeting(client)
+    e = _from_google(svc, event_id)
+    svc.apply_meeting_action(event_id, "p_sam", Action.reschedule)
+    sam = svc.person("p_sam")
+    raw = {"id": "google-1", "summary": e.title, "description": e.description,
+           "start": {"dateTime": "2026-10-28T06:00:00Z"}, "end": {"dateTime": "2026-10-28T07:00:00Z"},
+           "organizer": {"email": sam.email},
+           "attendees": [{"email": svc.person(a.personId).email} for a in e.attendees]}
+    svc.sync_google_events("p_sam", [raw])   # the organizer moved it again in Google Calendar
+    items = [i for i in svc.store.items() if i.event.calendarEventId == event_id]
+    assert all(i.rescheduledTo.isoformat().startswith("2026-10-28T06:00") for i in items)
+    assert all(i.event.start == i.rescheduledTo != i.originalStart for i in items)
 
 
 def test_rescheduled_meeting_moves_to_no_action_needed_and_leaves_the_counts(client):

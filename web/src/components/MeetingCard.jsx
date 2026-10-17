@@ -5,6 +5,7 @@ import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, dec
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
+import ReschedulePanel from "./ReschedulePanel.jsx";
 import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 // One card per (meeting, absent person). Used in Attendee Mode and Past. The organizer sees OrganizerCard instead.
@@ -69,6 +70,8 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
   // After a proxy declined, it is the person's call again: a general "Choose another proxy", no star, all buttons equal.
   const declined = item.declinedProxyIds || [];
   const afterDecline = item.status === "proxy_declined" && declined.length > 0;
+  const proxyNow = Boolean(item.chosenProxyId) && ["proxy_requested", "proxy_accepted"].includes(item.status);
+  const declinedLine = declined.length > 0 && !afterDecline ? `${declined.map(name).join(", ")} declined to cover` : null;
   const buttons = [
     mine && item.ownerRole === "leaver" && { action: "attend", text: label("attend"), onClick: () => act("attend") },
     { action: "proceed_without", text: label("proceed_without"), onClick: () => act("proceed_without") },
@@ -138,9 +141,11 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
         <RecommendationDetails ai={ai} />
       </section>
 
-      {((item.chosenProxyId && !afterDecline) || item.decidedBy) && (
+      {/* The proxy is named only while they are asked or have accepted; after a decline the card says who declined,
+          so "go on without" is not shown next to the proxy who said no. */}
+      {(proxyNow || item.decidedBy) && (
         <div className="note">
-          {[item.chosenProxyId && !afterDecline && `Proxy: ${name(item.chosenProxyId)}`, item.decidedBy && `Decided by ${name(item.decidedBy)}`]
+          {[proxyNow && `Proxy: ${name(item.chosenProxyId)}`, declinedLine, item.decidedBy && `Decided by ${name(item.decidedBy)}`]
             .filter(Boolean).join(" · ")}
         </div>
       )}
@@ -200,22 +205,8 @@ export default function MeetingCard({ item, people, me, role, refresh, quiet = f
       )}
 
       {mode === "confirm" && proposal && (
-        <div className="panel">
-          {proposal.none ? (
-            <p>No suitable time was found in the next working days. You'll need to pick one yourself.</p>
-          ) : (
-            <p>
-              Move to <b>{fmtWhen(proposal.proposedStart)}</b>
-              {proposal.flagged ? " (a little off the original time of day)" : ""}? Everyone required is free, and nobody is on leave.
-            </p>
-          )}
-          <div className="actions">
-            <button className="primary" disabled={busy} onClick={() => act("reschedule")}>
-              {proposal.none ? "Note that no time works" : "Confirm reschedule"}
-            </button>
-            <button className="link" onClick={() => setMode("idle")}>Back</button>
-          </div>
-        </div>
+        <ReschedulePanel proposal={proposal} currentStart={ev.start} busy={busy}
+          onConfirm={(start) => act("reschedule", undefined, start ? { start } : {})} onBack={() => setMode("idle")} />
       )}
 
       {activity.length > 0 && (

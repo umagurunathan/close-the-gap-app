@@ -5,6 +5,7 @@ import { AgentTrail, AiSource, ProxySuggestions, RecommendationDetails, cap, dec
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
 import ProxyPanel from "./ProxyPanel.jsx";
+import ReschedulePanel from "./ReschedulePanel.jsx";
 import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 // Organizer Mode: ONE card per meeting, naming everyone who is out.
@@ -47,11 +48,11 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
         ? { cls: "status-pending_decision", text: "Not handled yet" }
         : { cls: "status-proxy_requested", text: `${open.length} of ${people_.length} need a decision` };
 
-  async function decide(action) {
+  async function decide(action, start = null) {
     setBusy(true);
     setError("");
     try {
-      await api(`/meetings/${ev.calendarEventId}/action`, { method: "POST", person: me, body: { action } });
+      await api(`/meetings/${ev.calendarEventId}/action`, { method: "POST", person: me, body: { action, start } });
       setProposal(null);
       await refresh();
     } catch (e) {
@@ -166,7 +167,12 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
               </div>
               {!terminal && <ProxySuggestions ai={a.ai} declined={declined} name={name} />}
               {afterDecline && <div className="note warn">{declineNotice(a.ai, declined, name)}</div>}
-              {a.decidedBy && <div className="absentee-note">Decided by {name(a.decidedBy)}</div>}
+              {a.decidedBy && (
+                <div className="absentee-note">
+                  {declined.length > 0 && !afterDecline && `${declined.map(name).join(", ")} declined to cover · `}
+                  Decided by {name(a.decidedBy)}
+                </div>
+              )}
               {proxyFor === a.id && (
                 <ProxyPanel item={a} me={me} people={people}
                   onSent={async () => { setProxyFor(null); await refresh(); }} onBack={() => setProxyFor(null)} />
@@ -204,23 +210,8 @@ export default function OrganizerCard({ meeting, people, me, refresh }) {
       )}
 
       {proposal && (
-        <div className="panel">
-          {proposal.none ? (
-            <p>No time works for everyone in the next few working days. Please pick a time yourself.</p>
-          ) : (
-            <p>
-              Move to <b>{fmtWhen(proposal.proposedStart)}</b>
-              {proposal.flagged ? " (a little off the original time of day)" : ""}? Everyone who is out will be back,
-              and every key person is free.
-            </p>
-          )}
-          <div className="actions">
-            <button className="primary" disabled={busy} onClick={() => decide("reschedule")}>
-              {proposal.none ? "Note that no time works" : "Confirm reschedule"}
-            </button>
-            <button className="link" onClick={() => setProposal(null)}>Back</button>
-          </div>
-        </div>
+        <ReschedulePanel proposal={proposal} currentStart={ev.start} busy={busy}
+          onConfirm={(start) => decide("reschedule", start)} onBack={() => setProposal(null)} />
       )}
 
       {error && <div className="note warn">{error}</div>}

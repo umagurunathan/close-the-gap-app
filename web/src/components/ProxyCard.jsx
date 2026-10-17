@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { fmtWhen, urgencyChip } from "../format.js";
 import { Icon } from "./Icons.jsx";
 import Invitees from "./Invitees.jsx";
+import SummariesDialog, { SummariesLink } from "./Summaries.jsx";
 
 const STATUS = {
   pending: { text: "Waiting for your answer", cls: "status-proxy_requested" },
@@ -12,9 +13,13 @@ const STATUS = {
 
 // A proxy request, as the person asked to cover sees it. It stays visible after they answer, until the meeting
 // has passed; then it moves to Past. `onRespond` is null on finished meetings (read-only).
-export default function ProxyCard({ view, people, onRespond = null, activity = [] }) {
+export default function ProxyCard({ view, people, me, onRespond = null, activity = [] }) {
   const { request: r, item, notesAvailable } = view;
   const [busy, setBusy] = useState(false);   // locked while the answer is being sent: no double answers
+  const [showSummaries, setShowSummaries] = useState(false);
+  const closeSummaries = useCallback(() => setShowSummaries(false), []);
+  // The proxy reads the agenda and the summaries shared with them, like any invitee (read-only)
+  const invited = item.event.organizerId === me || item.event.attendees.some((a) => a.personId === me);
   async function answer(response) {
     setBusy(true);
     try {
@@ -43,7 +48,10 @@ export default function ProxyCard({ view, people, onRespond = null, activity = [
         </div>
       </header>
 
-      <Invitees event={item.event} absentId={item.absentPersonId} people={people} />
+      <Invitees event={item.event} absentId={item.absentPersonId} people={people}
+        extra={invited && <SummariesLink onOpen={() => setShowSummaries(true)} />} />
+      {showSummaries && <SummariesDialog itemId={item.id} event={item.event} people={people} me={me} readOnly
+        onClose={closeSummaries} />}
 
       <p className="reason">
         {r.requestedBy === item.absentPersonId
