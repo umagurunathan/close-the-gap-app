@@ -9,6 +9,7 @@ from typing import Optional, Union
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
@@ -59,7 +60,7 @@ def require_scheduler(request: Request) -> None:
         raise HTTPException(401, "Missing scheduler token.")
     try:
         claims = id_token.verify_oauth2_token(token, google_requests.Request(), audience=audience)
-    except ValueError:
+    except (ValueError, GoogleAuthError):   # GoogleAuthError: e.g. Google's keys could not be fetched
         raise HTTPException(401, "Invalid or expired scheduler token.")
     if (claims.get("email") or "").casefold() != expected or claims.get("email_verified") is not True:
         raise HTTPException(403, "Not the reminder scheduler.")
@@ -454,13 +455,11 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
 
     @app.post("/jobs/run-reminders")
     def run_reminders(request: Request):
-        """Cloud Scheduler calls this on a schedule; both areas get their reminders. Only the scheduler's
-        service account may call it (see require_scheduler)."""
+        """Cloud Scheduler calls this on a schedule. Only the scheduler's service account may call it (see
+        require_scheduler). Real people only: the demo runs on a fixed clock, so reminders there would only pile up
+        demo emails and change the shared demo while people look at it."""
         require_scheduler(request)
-        sent = demo_svc.run_reminders()
-        if company_svc is not demo_svc:
-            sent += company_svc.run_reminders()
-        return {"reminders_sent": sent}
+        return {"reminders_sent": company_svc.run_reminders()}
 
     return app
 
