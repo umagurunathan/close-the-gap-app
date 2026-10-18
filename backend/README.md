@@ -71,7 +71,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-142 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store and fixes the clock at Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
+149 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store and fixes the clock at Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
 
 ## Where things are
 | Path | What |
@@ -109,6 +109,7 @@ The demo runs on the real clock, like the company area. Its upcoming meetings ar
 - **Kiran** (`p_kiran`), out suddenly 9–10 Nov: the organizer is alerted at once. On the real clock this absence is weeks away, so the seed marks it `"type": "sudden"`; every other absence is typed by its notice (under 24 hours = sudden).
 - **Lena** (`p_lena`), a week's vacation with a full calendar; **Ben** (`p_ben`), an organizer outside Arjun's team.
 - **Report an absence** is for your own absence only, in both areas (the backend refuses anyone else's with 403). The seed's own absences, such as Kiran's reported by Priya, are loaded directly.
+- **Typed input is checked** (`[input]` in `config/settings.toml`): title 150 characters, agenda 3,000, proxy note 2,000, summary 5,000; a meeting must start in the future and an absence must not be over already. The web forms stop at the same numbers (`web/src/limits.js`), and the server answers in plain words if anything gets past them.
 
 ## Cloud Run
 ```powershell
@@ -123,6 +124,12 @@ gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unau
 - The service account needs `roles/aiplatform.user`, `roles/datastore.user` (in the database's project) and `roles/secretmanager.secretAccessor` on the secrets. Keep secret values in Secret Manager versions, never in deployment arguments, source control or the web app.
 
 ## Reminder job (Cloud Scheduler)
+
+What one run does (`Service.run_reminders`, company area only, hourly):
+- **Silent proxy:** a proxy request still unanswered is reminded, at most `proxy_max_reminders` (3) times; the organizer is copied. Nothing is decided for anyone.
+- **Milestones** (`[reminders] milestones_hours_before_meeting`: 168, 72, 24, 4, 2): an undecided key meeting that has passed a milestone sends one digest per person (`recipients`: the person who is out and the organizer side), listing every such meeting with the time left. Each milestone is sent once per card (`milestonesSent`); a card created after a milestone never gets it (no backfill); after missed runs only one reminder goes out. At 24 hours the organizer gets the alert below instead, so nobody is emailed twice.
+- **Organizer alert:** once per meeting, when an undecided meeting is under `organizer_alert_hours` (24) away.
+- **Invitee alert:** only the organizer can move or cancel a meeting (nobody decides for them, not even their manager). If the organizer and another key person are both out that day and the meeting is still on, everyone invited who is not out gets one email within `invitee_alert_hours` (2, so 1–2 hours before with the hourly job): who is out, any proxy who agreed to cover (someone who chose "go ahead without me" is not mentioned), and a request to agree by email how to proceed. Nothing is sent when the absence is reported, and nothing if only the organizer is out (the key people run the meeting).
 
 `POST /jobs/run-reminders` is public on the network (the web app needs the service public), but it refuses every call that does not carry a Google-signed token for the scheduler service account. Cloud Scheduler sends that token; the endpoint checks its signature, its audience (this exact URL) and the caller's email. No shared secret is stored anywhere.
 

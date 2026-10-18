@@ -6,7 +6,7 @@ Close the Gap keeps meetings productive when someone is out of office. It finds 
 
 Built for the Google Cloud AI Builder Cup 2026. Category: **Future of Work & Enterprise Productivity**.
 
-When someone goes on leave they usually tell only their manager and their reports. Colleagues on other teams find out at the last minute: meetings are canceled after people have joined, or run without a decision and need a second meeting. Close the Gap acts before that happens, in both directions: when an absence is reported, and when someone schedules a meeting on a day a key person is already out.
+When someone goes on leave they usually tell only their manager and their reports. Colleagues on other teams find out at the last minute: meetings are canceled after people have joined, or run without a decision and need a second meeting. People who cut short focused work, a break or another discussion to be on time lose that momentum as well. Close the Gap acts before that happens, in both directions: when an absence is reported, and when someone schedules a meeting on a day a key person is already out.
 
 ## Try it (no sign-in needed)
 
@@ -39,7 +39,7 @@ Good to know:
 - **Handles routine meetings automatically.** Team check-ins and org-wide events go on without the person when the AI is highly confident (unless the person who is out runs them); they wait in **No action needed**, where anyone can still change them.
 - **Three groups in every tab:** **Needs action**, **Settled** (a person decided) and **No action needed** (handled automatically). **Past** keeps what was decided, with the recommendation the decider saw.
 - **Several absences:** the banner at the top pages through them (‹ 1 of 2 ›, or a swipe on a phone), each with its own count.
-- **Impact band:** team time saved, decisions kept on schedule, meetings with the gap closed, average notice and how often the AI's recommendation was accepted; **At company scale** shows an illustrative model for larger companies, with every assumption visible. A chevron folds it to one line (time saved, gaps closed) to give the cards more room.
+- **Impact band:** team time saved, decisions kept on schedule, meetings with the gap closed, average notice and how often the AI's recommendation was accepted; **At company scale** starts from one meeting's saving (about 5 minutes for each person in it, when it is covered, moved or canceled in time) and then shows an illustrative model for larger companies, with every assumption visible. A chevron folds it to one line (time saved, gaps closed) to give the cards more room.
 - **Accessible by default:** a visible focus ring for keyboard users, tabs that work with the arrow keys, "Skip to meetings", text contrast of at least 4.5:1, and a one-line reason on every disabled button.
 
 ## How the AI works
@@ -98,7 +98,7 @@ flowchart LR
 - **One app, two areas.** Every visitor lands in the **demo area** (sample people, no sign-in). Someone who signs in with Google and is in the private company directory works in the **company area**, with only their own meetings. Each request is routed to exactly one area, every record carries its area, and the two never mix: the backend refuses to start if both areas have the same name, and Reset demo data refuses to run anywhere but the demo area.
 - **Only two things write data:** Reset demo data (demo area only) and real people's own actions, including their Google Calendar sync (company area). Starting the backend writes nothing.
 - **Google Calendar** (company area only): each person connects their own account (scope `calendar.events`, primary calendar only). Sync imports meetings from 30 days back to a year ahead; scheduling in the app creates a real invitation that Google sends to the guests. Out-of-office, focus-time and working-location entries are not meetings and are not imported.
-- **Speed:** each request reads a Firestore collection at most once and keeps nothing afterwards, so data is never stale; Cloud Run handles 20 requests at a time. A page loads in about 1 second, and about 3 seconds with four visitors at once.
+- **Speed:** each request reads a Firestore collection at most once and keeps nothing afterwards, so data is never stale; Cloud Run handles 20 requests at a time. A page loads in about 1 second, and in about 2 seconds with four visitors at once (1.9 s measured on the live site; 34 s before these changes).
 - **One instance**, kept warm and with the CPU always on, so background AI analysis continues between requests and the AI's answers stay in memory.
 
 ## Security and privacy
@@ -115,7 +115,7 @@ flowchart LR
 
 - **Absences come only from "Report an absence".** An out-of-office block in Google Calendar is not read as an absence (it is simply not treated as a meeting).
 - **No real email is sent.** Emails go to the in-app **Emails** list.
-- **Reminders:** proxy reminders and the under-24-hour alert to the organizer exist in the backend job, the job is called hourly by Cloud Scheduler once it is set up, and only that scheduler's signed token is accepted (see [backend/README.md](backend/README.md)); reminders at fixed milestones (24 h, 4 h, 2 h before) are designed, not built.
+- **Reminders run hourly on Cloud Scheduler, for the company area.** Each run: a proxy who has not answered is reminded (up to 3 times); an undecided meeting that passes 7 days, 3 days, 24, 4 or 2 hours before it starts sends one digest each to the person who is out and the organizer (each milestone once, never late for a card created after it); and the organizer is alerted once when an undecided meeting is under 24 hours away. Only the organizer can move or cancel a meeting, so if the organizer and another key person are both out and nothing was decided, everyone invited who is not out is emailed once, 1–2 hours before it starts (naming any proxy who agreed to cover), so they can agree by email what to do; nothing goes out earlier, because until then it is the organizer's to fix. The job accepts only the scheduler's Google-signed token (see [backend/README.md](backend/README.md)). Like every email in the prototype, reminders go to the in-app Emails list. The demo area has no reminders, because its sample meetings lie weeks ahead.
 - **Rescheduling looks only at meetings the app knows**, not at everything in a colleague's Google Calendar unless they connected it.
 - **A routine meeting is handled automatically only with evidence.** A stand-up or sync goes to "No action needed" only when summaries of earlier meetings show status updates only; on its title alone it stays in Needs action for a person to decide (often one click: "Go on without them"). A card is never moved down later, so a summary added after the card exists does not move it. In production the summaries of earlier occurrences arrive on their own, before anyone is out.
 - **A time the organizer picks is checked for absences only**, not for whether people are busy at that hour (that is the organizer's call; Google Calendar tells the guests).
@@ -124,6 +124,7 @@ flowchart LR
 - **Meeting summaries are typed by the organizer** (Summaries & agenda on a card), choosing who may read each one. In a real deployment they would arrive on their own from the earlier occurrences of the same meeting, through the meeting platform's notes or transcripts.
 - **Google Meet transcript import** exists in the backend but is hidden in the app.
 - **The sign-in app is not yet verified by Google**, so a first-time sign-in shows an "unverified app" notice.
+- **The impact numbers are estimates from sample data.** The impact band counts the demo's own 35 sample meetings, and "team time saved" uses a stated number of minutes per person. **At company scale** is an illustrative model, not a forecast. It assumes a typical meeting has about 6 people, and that when a key person is missing everyone loses at least 5 minutes (a couple of minutes to join, then waiting and pinging the missing person before giving up). Each person has about 25 days of leave a year and is the key person in about 1 meeting per day of leave (senior roles have more). Time is valued at $50 an hour, an average cost rather than a billing rate. It counts only the minutes lost waiting, not the cost of breaking off focused work or another meeting to join. The shares handled in time and the people per meeting come from the meetings decided in the app so far (the panel shows how many), so the figures change as people decide; until 5 are decided, typical values are used (60% handled in time, 6 people). With those typical values, a 1,000-person company would save about 7,500 hours a year (about 9 minutes per employee per week), worth about $375,000. Every assumption is shown on screen and is a setting in `[metrics.projection]` in `config/settings.toml`; in production the rates would come from the company's own meetings.
 - **People report only their own absence.** A manager, an admin or a delegate reporting for someone else (for example a colleague who calls in sick) is future scope.
 - **The demo's sample meetings have fixed dates** (9–27 Nov 2026), after the evaluation weeks, so they stay upcoming while the app runs on the real clock. Kiran's absence is marked "sudden" in the sample data, because on the real clock it is weeks away. After those dates the sample data moves forward again with one edit to `backend/seed/seed.json`.
 
@@ -131,14 +132,16 @@ flowchart LR
 
 - **Reporting for someone else:** a manager, an admin or a named delegate reports an absence for a team member (a sudden sick day, for example), with the person told and able to correct it.
 - **Absences from where people already record them:** the company's leave or HR system, and Google Calendar out-of-office entries, so nobody has to report an absence twice. A detected absence would be confirmed by the person before any card is created.
-- **Real email and chat notifications**, with the reminder milestones, run by Cloud Scheduler.
+- **Real email and chat notifications** (the reminders and alerts already run on Cloud Scheduler; today they land in the in-app Emails list).
+- **Phone and tablet layouts.** The prototype is built for office laptops; a layout for small screens is future scope.
 - **Live calendar updates** (push notifications instead of sync on demand) and free/busy checks across everyone's calendar when rescheduling.
 - **More rescheduling choice:** two or three proposed times; a picked time checked against everyone's busy hours and working hours too; a meeting moved outside the absence in Google Calendar closes its card on its own; each person's own time zone instead of IST for everyone.
 - **A shared cache** between requests (for example Memorystore) and several backend instances, for company scale; indexed queries per person and date instead of whole collections.
 - **Database rules** that enforce the areas as well as the backend does; one area per customer company; a directory from Google Workspace or the HR system.
 - **Operations:** a least-privilege service account, limits shared across several instances and an overall cost cap on AI calls, monitoring and alerts, Google app verification.
 - **Meeting summaries picked up automatically** from the earlier occurrences of each meeting: Google Meet transcripts first (built, hidden), then other meeting platforms, one adapter each. Each summary keeps the platform's own permissions, so the AI still reads only what each person may open.
-- **Phone and tablet layouts.** The prototype is designed for office laptops; on a phone it works but is not yet designed for the small screen.
+- **Changing or canceling an absence** after it is reported: open cards close as "no longer affected", open proxy requests are withdrawn and the proxy told, and meetings already moved or canceled stay as they are, with a history line.
+- **Tidier edge cases:** the same absence reported twice is merged into one; a proxy who declined is not suggested again for that meeting.
 
 ## Run it locally (two terminals)
 
@@ -177,7 +180,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-142 tests. The tests switch the AI off for themselves (`tests/conftest.py`) and fix the clock at Sun 8 Nov 2026, so they need no cloud account and always see the same data (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them and builds the web app on every pull request.
+149 tests. The tests switch the AI off for themselves (`tests/conftest.py`) and fix the clock at Sun 8 Nov 2026, so they need no cloud account and always see the same data (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them, builds the web app and runs a browser smoke test (`web/e2e/smoke.py`: the demo loads, a card recommends a proxy, the main panels open, no console errors) on every pull request.
 
 ## Layout
 
@@ -189,9 +192,13 @@ web/       React app: Attendee Mode, Organizer Mode, Proxy Requests, Past
 ## Built with
 
 - **AI:** Gemini 2.5 Flash on Vertex AI; Agent Development Kit (ADK) for the meeting advisor agent; Google Gen AI SDK (`google-genai`) with structured output for the single-call fallback and the handover brief
-- **Google Cloud:** Cloud Run, Firestore, Secret Manager, Cloud Build and Artifact Registry, Cloud Logging
+- **Google Cloud:** Cloud Run, Firestore, Cloud Scheduler, Secret Manager, Cloud Build and Artifact Registry, Cloud Logging
 - **Firebase:** Hosting, Authentication (Google sign-in)
 - **Google Workspace APIs:** Google Calendar API
 - **Backend:** Python 3.13, FastAPI, pydantic, pytest; GitHub Actions for CI
 - **Web app:** React 19, Vite
 - **Development tools:** Google Antigravity, Claude Code (AI coding assistants), Visual Studio Code, Git
+
+## License
+
+Copyright (c) 2026 The Close the Gap team (Uma Maheswari Guga Gurunathan, Kamalakar Polavarapu, Palanivel Sundara Rajan G). All rights reserved. The hackathon's organizers and judges may view, run and test it to evaluate the entry; any other use needs our written permission. See [LICENSE](LICENSE).

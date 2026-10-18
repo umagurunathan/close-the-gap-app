@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { fromIst } from "../format.js";
+import { LIMITS } from "../limits.js";
 
 // Schedule a meeting. Invitees: type a name, pick from the matches, and each person becomes a chip; click a chip's
 // role to switch Required / Optional, ✕ to remove. If a required invitee is already out that day, the organizer is
@@ -51,13 +52,13 @@ export default function ScheduleMeeting({ people, me, today, calendarConnected, 
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal wide" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <h3>Schedule a meeting</h3>
-        <label>Title <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Vendor kickoff" required /></label>
+        <label>Title <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Vendor kickoff" required maxLength={LIMITS.title} /></label>
         <label><span>Agenda / notes <span className="optional-tag">(optional)</span></span>
-          <textarea rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)}
+          <textarea rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} maxLength={LIMITS.agenda}
             placeholder="What is this meeting for? Agenda, plan, decisions needed, who presents what…" />
         </label>
         <div className="row">
-          <label>Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></label>
+          <label>Date <input type="date" value={date} min={today || undefined} onChange={(e) => setDate(e.target.value)} required /></label>
           <label>Start (IST) <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></label>
           <label>Duration (minutes) <input type="number" min="15" step="15" value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
         </div>

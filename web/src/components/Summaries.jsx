@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api.js";
 import { fmtWhen } from "../format.js";
+import { LIMITS } from "../limits.js";
 
 // "Summaries & agenda": what the invite says, and the summaries of earlier meetings this person may open (the same
 // summaries the AI reads). The organizer can add a summary and choose who reads it (or import one from Google Meet,
@@ -141,7 +142,7 @@ export default function SummariesDialog({ itemId, event, people, me, readOnly = 
                 <form className="summary-form" onSubmit={addSummary}>
                   <h4 className="guide-sub">Add a summary</h4>
                   {saved && <div className="note good" role="status">{saved}</div>}
-                  <textarea rows={4} value={text} onChange={(e) => { setText(e.target.value); setSaved(""); }} required
+                  <textarea rows={4} value={text} onChange={(e) => { setText(e.target.value); setSaved(""); }} required maxLength={LIMITS.summary}
                     aria-label="Summary text" placeholder="What was discussed and decided, who owns what…" />
                   {readerPicker}
                   <div className="actions">

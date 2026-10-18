@@ -173,6 +173,8 @@ class MeetingItem(BaseModel):
     declinedProxyIds: list[str] = Field(default_factory=list)   # who declined to cover this card (never suggested again)
     decidedBy: Optional[str] = None       # who last chose an action (absent person or organizer side)
     organizerAlerted: bool = False        # the under-24-hour alert has been sent once
+    milestonesSent: list[int] = Field(default_factory=list)   # reminder milestones already sent (hours before start)
+    inviteesAlerted: bool = False         # organizer and another key person out: invitees were told once
     createdAt: datetime
     updatedAt: datetime
 

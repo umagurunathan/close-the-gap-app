@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { prettyModel } from "./aiBits.jsx";
 import { Icon } from "./Icons.jsx";
+import { LIMITS } from "../limits.js";
 
 // Choose a proxy for ONE absent person's item: from the meeting's attendees or anyone in the directory, with an
 // optional note (Draft with AI only when allowed). Used on the person's card and on each line of the organizer's card.
@@ -187,7 +188,7 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
         </span>
       </div>
       {/* two lines to start; grows to fit the text (an AI brief shows in full, with no empty space under it) */}
-      <textarea id={`note-${item.id}`} ref={noteBox} className="note-box" rows={2} value={note}
+      <textarea id={`note-${item.id}`} ref={noteBox} className="note-box" rows={2} value={note} maxLength={LIMITS.proxyNote}
         placeholder={canDraft ? "Type a note, or use Draft with AI" : "Type your own note for the proxy"}
         onChange={(e) => setNote(e.target.value)} />
       {cleared && <p className="note warn">{cleared}</p>}
