@@ -13,7 +13,7 @@ Copy-Item .env.example .env                                     # once
 - Live API docs (every endpoint and its shapes; try them in the browser): http://localhost:8000/docs
 - Without sign-in, a request acts as a demo person named in the header `X-Person-Id: p_priya` (the demo people are in `seed/seed.json`).
 - Emails are not sent; the ones the app would send are listed at `GET /dev/outbox`.
-- By default (`STORE=memory`) the demo data lives in memory and is loaded from the seed at start; **Reset demo data** (`POST /dev/reset-demo`) loads it again.
+- The app always runs on Firestore (`STORE=firestore`, the default; see below). Starting the backend writes nothing: **Reset demo data** (`POST /dev/reset-demo`) loads the demo from the seed into the demo area. Only the tests and CI use the in-memory store, and they set it themselves.
 
 ## The two areas
 One backend serves two areas, never mixed:
@@ -30,7 +30,7 @@ FIRESTORE_DATABASE=your-database-id
 # only when the database is in another project than Cloud Run:
 FIRESTORE_PROJECT_ID=your-firestore-project-id
 ```
-Locally, sign in once with `gcloud auth application-default login`. On Cloud Run, grant the service account `roles/datastore.user` in the project that holds the database. Collections: `people`, `events` (with their meeting summaries), `absences`, `items` (one card per affected meeting and absent person), `proxy_requests`, `history`, `metadata`, `calendar_connections`, `meet_connections`. Firestore permissions are project-wide here, so the area boundary is enforced by the backend; database credentials are never given to the web app.
+Locally, sign in once with `gcloud auth application-default login`. On Cloud Run, grant the service account `roles/datastore.user` in the project that holds the database. Collections: `people`, `events` (with their meeting summaries), `absences`, `items` (one card per affected meeting and absent person), `proxy_requests`, `history`, `metadata`, `calendar_connections`. Firestore permissions are project-wide here, so the area boundary is enforced by the backend; database credentials are never given to the web app.
 
 **Read cache for one request** (`[store] request_cache`, environment `STORE_REQUEST_CACHE=false` to switch off): while one request runs, each collection is read at most once and the request's own writes update what it has read; nothing is kept after the request, so data is never stale. Background AI threads read Firestore directly.
 
@@ -71,7 +71,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-150 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store and fixes the clock at Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
+150 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store (so a test can never write to the real database) and gives the tests a fixed clock, Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
 
 ## Where things are
 | Path | What |
@@ -82,7 +82,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 | `app/scheduling.py` | Reschedule search: plain code, same time of day ±1 h then ±2 h |
 | `app/roles.py` | Who is a key person: required invitees, large events (a list, or more than 35 required people), hosting roles, optional invitees |
 | `app/settings.py` | Reads `config/settings.toml`; `AI_ENABLED`, `AI_MODEL` and `STORE_REQUEST_CACHE` in the environment override it |
-| `app/config.py` | Environment settings: store, areas, company directory, Firebase, CORS, the clock (real time; `NOW` fixes it for tests and local runs only, never on Cloud Run) |
+| `app/config.py` | Environment settings: store, areas, company directory, Firebase, CORS, the clock (always real time; there is no setting to fix it, and only the tests use a fixed clock of their own) |
 | `app/store.py`, `app/calendar.py` | In-memory and Firestore adapters (app data; calendar events with their summaries) |
 | `app/firestore.py` | Firestore helpers and the per-request read cache |
 | `app/firebase_auth.py` | Firebase ID-token check and the match to one directory person |
@@ -119,7 +119,7 @@ gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unau
   --set-secrets "COMPANY_DIRECTORY=company-directory:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_TOKEN_ENCRYPTION_KEY=google-token-encryption-key:latest"
 ```
 - `--source .` builds the `Dockerfile` in the cloud (`.gcloudignore` keeps `.venv`, `.env` and tests out). A later redeploy keeps every setting it does not name.
-- **`--set-env-vars` only on the very first deploy.** It replaces the whole list, so any setting it doesn't name disappears (CORS, the store, the clock…): the site then cannot be reached. To add or change a setting later, use `--update-env-vars` (only the named ones change). On Cloud Run the backend refuses to start without `STORE=firestore`, so a wiped list fails the new revision and the last good one keeps serving.
+- **`--set-env-vars` only on the very first deploy.** It replaces the whole list, so any setting it doesn't name disappears (CORS, the store, the clock…): the site then cannot be reached. To add or change a setting later, use `--update-env-vars` (only the named ones change). Firestore is the default store, and on Cloud Run any other `STORE` value is refused at startup, so the last good revision keeps serving instead of a revision that would lose data.
 - **One instance, CPU always on:** background AI analysis keeps running between requests, and the AI's answers and the demo email outbox live in the instance's memory. **20 requests at a time** with the per-request read cache.
 - The service account needs `roles/aiplatform.user`, `roles/datastore.user` (in the database's project) and `roles/secretmanager.secretAccessor` on the secrets. Keep secret values in Secret Manager versions, never in deployment arguments, source control or the web app.
 

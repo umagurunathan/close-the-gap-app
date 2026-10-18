@@ -2,11 +2,11 @@
 
 **Spot the gap early. Keep the meeting going.**
 
-Close the Gap keeps meetings productive when someone is out of office. It finds every meeting affected by an absence, early, and recommends the most efficient way forward: go on without the person, go on with a briefed proxy, or, only when nothing better exists, reschedule. A person always decides; the AI proposes.
+Close the Gap makes sure that when a key person is out, the meeting still decides. It finds every meeting affected by an absence, early, and recommends the most efficient way forward: go on without the person, go on with a briefed stand-in (the app calls them a proxy) who arrives with the context and the responsibility to decide, or, only when nothing better exists, reschedule. The recommendation is confirmed with one click, saving everybody's time. A person always decides; the AI proposes.
 
 Built for the Google Cloud AI Builder Cup 2026. Category: **Future of Work & Enterprise Productivity**.
 
-When someone goes on leave they usually tell only their manager and their reports. Colleagues on other teams find out at the last minute: meetings are canceled after people have joined, or run without a decision and need a second meeting. People who cut short focused work, a break or another discussion to be on time lose that momentum as well. Close the Gap acts before that happens, in both directions: when an absence is reported, and when someone schedules a meeting on a day a key person is already out.
+When someone goes on leave they usually tell only their manager and their reports. Colleagues on other teams find out at the last minute: meetings are canceled after people have joined, or run without a decision and need a second meeting. People who cut short focused work, a break or another discussion to be on time lose that momentum as well. Even a colleague put in at the last minute as a stand-in often lacks the context to decide, so some gap remains. Close the Gap acts before that happens, in both directions: when an absence is reported, and when someone schedules a meeting on a day a key person is already out.
 
 ## Try it (no sign-in needed)
 
@@ -108,7 +108,7 @@ flowchart LR
 - **Each person's AI sees only what that person may open.** Summaries are filtered per viewer before they reach the AI or the screen.
 - **Least access to Google:** each person authorises their own calendar; no domain-wide or admin access.
 - **Limits on the costly actions.** Each visitor (a signed-in person, or a guest's address) may use "Draft with AI" 10 times and "Reset demo data" twice in 10 minutes (`[limits]` in `config/settings.toml`); after that a polite message says how long to wait. Page views never call the AI again for a card it has already analysed.
-- **The backend only runs on Firestore in the cloud.** On Cloud Run it refuses to start unless `STORE=firestore`, so a lost setting fails the new revision while the last good one keeps serving.
+- **The backend only runs on Firestore in the cloud.** Firestore is the default store, and on Cloud Run anything else is refused at startup, so the live site can never quietly serve data that is not saved.
 - **The demo holds no real data.** Demo people have sample addresses; real users' data is never touched by the demo.
 
 ## What is not built yet (honest limits)
@@ -157,7 +157,7 @@ Copy-Item .env.example .env                                     # once
 1. A Google Cloud project with the **Vertex AI API** enabled; put its ID in `.env` as `GOOGLE_CLOUD_PROJECT`.
 2. Sign in once for local credentials: `gcloud auth application-default login`. There is no API key.
 
-Without these the app still starts, but Gemini cannot be reached: the cards keep the rules' answer and stay marked as waiting for Gemini. By default a local run keeps the demo data in memory (`STORE=memory`); Firestore, sign-in and Google Calendar are described in [backend/README.md](backend/README.md).
+The app always runs on Firestore (`STORE=firestore` in `.env`, the default), so the same project also needs a Firestore database and your login needs access to it (`roles/datastore.user`). Without the Google Cloud setup, Gemini cannot be reached and the data cannot be stored. After the first start, press **Reset demo data** to load the sample data into the demo area. Only the automated tests use an in-memory store. Firestore, sign-in and Google Calendar are described in [backend/README.md](backend/README.md).
 
 **2. Web app** (React + Vite): http://localhost:5173
 ```powershell

@@ -1,7 +1,6 @@
 """Basic checks of the rules we agreed on. Run from backend/: python -m pytest"""
 import os
 
-os.environ["NOW"] = "2026-11-08T09:00:00Z"
 os.environ["STORE"] = "memory"
 
 import pytest
@@ -582,16 +581,15 @@ def test_draft_with_ai_and_reset_are_limited_per_visitor(client, svc, monkeypatc
 
 
 def test_on_cloud_run_the_store_must_be_firestore(monkeypatch):
-    # a settings change once removed STORE; the live site then served memory data that was never saved
+    # a settings change once removed STORE and the live site served memory data that was never saved: now a lost
+    # STORE means Firestore, and an explicit anything-else is refused on Cloud Run
     from app import config
     monkeypatch.setenv("K_SERVICE", "close-the-gap-api")
-    for value in ("memory", None):
-        if value is None:
-            monkeypatch.delenv("STORE", raising=False)
-        else:
-            monkeypatch.setenv("STORE", value)
-        with pytest.raises(RuntimeError, match="must be 'firestore' on Cloud Run"):
-            config.store_kind()
+    monkeypatch.setenv("STORE", "memory")
+    with pytest.raises(RuntimeError, match="must be 'firestore' on Cloud Run"):
+        config.store_kind()
+    monkeypatch.delenv("STORE", raising=False)
+    assert config.store_kind() == "firestore"
     monkeypatch.setenv("STORE", "firestore")
     assert config.store_kind() == "firestore"
     monkeypatch.delenv("K_SERVICE")
@@ -599,13 +597,11 @@ def test_on_cloud_run_the_store_must_be_firestore(monkeypatch):
     assert config.store_kind() == "memory"   # locally, memory is still allowed (tests, quick runs)
 
 
-def test_on_cloud_run_the_demo_uses_the_real_clock(monkeypatch):
+def test_the_product_clock_is_always_the_real_clock(monkeypatch):
     from datetime import datetime, timedelta, timezone
-    from app import config
-    monkeypatch.setenv("NOW", "2026-11-08T09:00:00Z")
-    assert config.now().isoformat() == "2026-11-08T09:00:00+00:00"   # tests and local runs may fix it
-    monkeypatch.setenv("K_SERVICE", "close-the-gap-api")
-    assert abs(config.now() - datetime.now(timezone.utc)) < timedelta(seconds=5)
+    from conftest import REAL_NOW
+    monkeypatch.setenv("NOW", "2026-11-08T09:00:00Z")   # a leftover setting must change nothing
+    assert abs(REAL_NOW() - datetime.now(timezone.utc)) < timedelta(seconds=5)
 
 
 def test_seed_meetings_stay_upcoming_through_the_evaluation_and_kiran_stays_sudden(monkeypatch):
@@ -618,7 +614,9 @@ def test_seed_meetings_stay_upcoming_through_the_evaluation_and_kiran_stays_sudd
     upcoming = [e for e in _load_seed()["events"] if e["start"] >= "2026-10-11"]
     assert upcoming and all(datetime.fromisoformat(e["start"].replace("Z", "+00:00")).isoformat() > last_day
                             for e in upcoming)
-    monkeypatch.setenv("NOW", "2026-10-19T03:00:00Z")
+    from datetime import timezone
+    from app import config
+    monkeypatch.setattr(config, "now", lambda: datetime(2026, 10, 19, 3, 0, tzinfo=timezone.utc))
     fresh = build_service()
     kinds = {a.personId: a.type for a in fresh.store.absences() if a.createdAt.isoformat().startswith("2026-10-19")}
     assert kinds["p_kiran"] == AbsenceType.sudden and kinds["p_priya"] == AbsenceType.planned

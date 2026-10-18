@@ -10,10 +10,11 @@ load_dotenv()
 
 
 def store_kind() -> str:
-    """Where the data lives. Locally, memory unless set (tests and quick runs). On Cloud Run (K_SERVICE is set there)
-    it must be Firestore: the backend refuses to start otherwise, so a lost setting fails the new revision (Cloud Run
-    keeps serving the last good one) instead of quietly serving data that is never saved."""
-    kind = os.getenv("STORE", "memory").strip().lower()
+    """Where the data lives: Firestore, locally and on Cloud Run. Only the tests and CI set STORE=memory, so they can
+    never write to the real database. On Cloud Run (K_SERVICE is set there) anything but Firestore is refused at
+    startup (Cloud Run keeps serving the last good revision), so the live site can never quietly serve data that is
+    never saved. A lost STORE setting simply means Firestore."""
+    kind = os.getenv("STORE", "firestore").strip().lower()
     if os.getenv("K_SERVICE") and kind != "firestore":
         raise RuntimeError(f"STORE must be 'firestore' on Cloud Run (got {kind!r}). Set it with --update-env-vars.")
     return kind
@@ -104,12 +105,9 @@ def scheduler_service_account() -> str:
 
 
 def now() -> datetime:
-    """Current time for the demo area: the real clock, like the company area. Only the tests and local runs may fix
-    it with the NOW env var; on Cloud Run (K_SERVICE is set there) NOW is ignored, so the live demo always runs on
-    today's date. The demo's meetings lie after the evaluation weeks, so they stay upcoming the whole time."""
-    fixed = os.getenv("NOW")
-    if fixed and not os.getenv("K_SERVICE"):
-        return datetime.fromisoformat(fixed.replace("Z", "+00:00"))
+    """Current time for the demo area: always the real clock, like the company area. There is no setting that fixes
+    it (the tests replace this function with a fixed clock of their own). The demo's meetings lie after the
+    evaluation weeks, so they stay upcoming the whole time."""
     return datetime.now(timezone.utc)
 
 
