@@ -184,7 +184,10 @@ cd backend
 ```
 backend/   FastAPI app, AI agents, settings, demo seed data, tests   (see backend/README.md)
 web/       React app: Attendee Mode, Organizer Mode, Proxy Requests, Past
+docs/      Knowledge base in Open Knowledge Format, for people and AI agents (start at docs/index.md)
 ```
+
+**Knowledge base:** [docs/index.md](docs/index.md) explains the product, architecture, AI pipeline, configuration, API, demo data and operations, one concept per file.
 
 ## Built with
 
