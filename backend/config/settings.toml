@@ -168,9 +168,11 @@ temperature = 0.2
 # WIRED: true = Gemini decides (the product, always on). It needs a Google Cloud project with the Vertex AI API and
 # credentials (see the README). false = the rule-based stand-ins decide with no network: the tests switch it off.
 enabled = true
-# DECIDED FOR NOW: Gemini 2.5 Flash (fast in asia-south1, low cost, answers tested for
-# consistency). The demo and the live link always use the same model. The environment variable AI_MODEL overrides this line (no file edit needed).
-model = "gemini-2.5-flash"
+# Gemini 3.5 Flash: Google retires Gemini 2.5 Flash on Vertex AI on 20 Oct 2026. 3.5 Flash is generally available in
+# asia-south1 (retirement 19 May 2027 or later), works with the same settings, and was tested on the sample data
+# (same speed, same answers on the main stories). The demo and the live link always use the same model.
+# The environment variable AI_MODEL overrides this line (no file edit needed).
+model = "gemini-3.5-flash"
 # Where Vertex AI serves the model from. Measured 2026-10-14 from India, same prompt, 6 calls each:
 # asia-south1 (Mumbai) median 0.8 s, global median 2.9 s. Our Cloud Run backend is also in asia-south1.
 # "global" is the fallback if a newer model is not offered in Mumbai.
