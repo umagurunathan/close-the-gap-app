@@ -467,7 +467,7 @@
   {
    "id": "evt_budget",
    "title": "Q4 Budget Review",
-   "description": "Review the Q4 budget and the vendor shortlist.",
+   "description": "Review the Q4 budget and the vendor shortlist. Meena presents the cost comparison.",
    "start": "2026-11-18T09:30:00Z",
    "end": "2026-11-18T10:30:00Z",
    "organizerId": "p_sam",
@@ -492,7 +492,7 @@
     {
      "docId": "doc_bud_1",
      "modifiedAt": "2026-10-02T18:00:00Z",
-     "text": "Q3 budget review summary. Decision: vendor shortlist approved. Priya owns the final vendor decision and sign-off. Meena to prepare the cost comparison. Action item: Priya to confirm contract terms.",
+     "text": "Q3 budget review summary. Decision: vendor shortlist approved. Priya owns the final vendor decision and sign-off; Meena is her named backup and signs off in her place when Priya is away. Meena ran the vendor negotiations with Priya and prepared the cost comparison. Action item: Priya and Meena to confirm contract terms. Arjun is consulted only if the spend goes over budget.",
      "sharedWith": [
       "p_priya",
       "p_meena",

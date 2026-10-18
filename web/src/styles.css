@@ -674,6 +674,8 @@ button.danger:hover:not(:disabled) { color: var(--bad); }
 .scale-table td { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .scale-table tr.scale-key td { color: var(--primary); font-size: 15px; }
 .scale-note { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.5; }
+/* "Start with one meeting": the believable unit, read before the company-size table */
+.scale-one { font-size: 14px; margin: 0 0 12px; line-height: 1.5; }
 
 /* Suggested proxies stand out: their names in green (the same on the tile and on the card) */
 .proxy-name { color: var(--good-text); font-weight: 600; }

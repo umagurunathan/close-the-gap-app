@@ -749,7 +749,8 @@ function AddAbsence({ people, me, onClose, onDone, suddenHours, today }) {
         </label>
         <p className="reason" id="absence-self-reason">You can report only your own absence.</p>
         <label>From <input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></label>
-        <label>To <input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
+        <label>To <input type="date" value={form.end} min={form.start > base ? form.start : base}
+          onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
         <p className="reason">If it starts within {suddenHours ?? 24} hours it is treated as a sudden absence; otherwise it is planned leave.</p>
         {error && <div className="note warn">{error}</div>}
         <div className="actions">

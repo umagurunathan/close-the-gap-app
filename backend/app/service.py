@@ -51,6 +51,27 @@ def _either(words: list[str]) -> str:
     return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} or {words[-1]}"
 
 
+def _ist_time(when: datetime) -> str:
+    """'3:00 pm IST': every time the app shows or sends is in India Standard Time."""
+    t = when.astimezone(timezone(timedelta(hours=5, minutes=30)))
+    return f"{t.hour % 12 or 12}:{t.minute:02d} {'am' if t.hour < 12 else 'pm'} IST"
+
+
+def _time_left(hours: float) -> str:
+    """'in 3 days', 'in 5 hours', 'in under an hour': for the reminder emails."""
+    if hours >= 48:
+        return f"in {round(hours / 24)} days"
+    if hours >= 1.5:
+        return f"in {round(hours)} hours"
+    return "in about an hour" if hours >= 0.75 else "in under an hour"
+
+
+def _check_length(text: str, most: int, what: str) -> None:
+    """The limits in [input] in config/settings.toml, said in plain words."""
+    if len(text) > most:
+        raise ValueError(f"{what} is {len(text):,} characters long. Please keep it to {most:,}.")
+
+
 def _people(item: MeetingItem) -> int:
     """Everyone in the meeting: the organizer and the invitees."""
     return len({item.event.organizerId} | {a.personId for a in item.event.attendees})
@@ -221,12 +242,11 @@ class Service:
         return f"{who} updated the plan for this meeting."
 
     def organizer_decider(self, item: MeetingItem) -> str:
-        """Who decides an organizer-owned item. Normally the organizer; if the organizer is the absent
-        person, it escalates to their manager."""
-        org = item.event.organizerId
-        if org == item.absentPersonId:
-            return self.person(org).managerId or org
-        return org
+        """Who decides an organizer-owned item: always the organizer, also when they are the one who is out (they see
+        it among their own cards). Nobody else, not even their manager, moves or cancels someone's meeting; when the
+        organizer and another key person are both out and nothing was decided, the invitees are told shortly before
+        it starts (_send_invitee_alerts)."""
+        return item.event.organizerId
 
     def _decider(self, item: MeetingItem) -> str:
         return item.absentPersonId if item.ownerRole == "leaver" else self.organizer_decider(item)
@@ -249,6 +269,8 @@ class Service:
         self.person(person_id)
         if end < start:
             raise ValueError("The end date must be on or after the start date.")
+        if end < self.now().date():
+            raise ValueError("That absence is already over. Please choose dates from today onward.")
         absence = Absence(
             id=self.store.next_id("a"), personId=person_id, start=start, end=end, type=type_ or self.absence_type(start),
             source=source, enteredBy=entered_by, createdAt=self.now())
@@ -294,6 +316,10 @@ class Service:
         self.person(organizer_id)
         if end <= start:
             raise ValueError("The meeting must end after it starts. Please check the times.")
+        if start <= self.now():
+            raise ValueError("Please choose a start time in the future.")
+        _check_length(title, S.input.title_max_chars, "The title")
+        _check_length(description, S.input.agenda_max_chars, "The agenda")
         for a in attendees:
             self.person(a.personId)
         event = CalEvent(id=self.store.next_id("evt"), title=title.strip() or "Untitled meeting", description=description,
@@ -457,7 +483,7 @@ class Service:
         if absence.type == AbsenceType.sudden:
             # Sudden absence: organizers are told right away. (Planned leave: no email at creation; they see the
             # items in Organizer Mode and get the under-24-hour alert if nobody has acted.)
-            for org_id in {self._decider(i) for i in needs if i.ownerRole == "organizer"}:
+            for org_id in {self._decider(i) for i in needs if i.ownerRole == "organizer"} - {absent.id}:
                 notify.send_email(self.person(org_id).email,
                                   f"{absent.name} is out suddenly: meetings you organize are affected",
                                   "Open Organizer Mode to decide what to do for each meeting.", now)
@@ -655,7 +681,7 @@ class Service:
 
     # ---------- actions ----------
     def _organizer_side(self, item: MeetingItem) -> set[str]:
-        """The organizer, or their manager when the organizer is the absent person."""
+        """The organizer's side of a card: the organizer, also when they are the one who is out."""
         side = {item.event.organizerId}
         if item.ownerRole == "organizer":
             side.add(self.organizer_decider(item))
@@ -725,6 +751,7 @@ class Service:
         text = text.strip()
         if not text:
             raise ValueError("note text cannot be empty")
+        _check_length(text, S.input.summary_max_chars, "The summary")
         invitees = self._invitee_ids(item)
         readers = list(dict.fromkeys(shared_with))
         if not set(readers) <= invitees:
@@ -815,6 +842,7 @@ class Service:
         elif action == Action.proxy:
             if not proxy_id:
                 raise ValueError("Please choose who should cover the meeting.")
+            _check_length(note or "", S.input.proxy_note_max_chars, "The note")
             # The proxy can be anyone in the company directory, invited or not. No organizer permission is needed
             # (forwarding an invite is allowed); the history log records who brought them in. Covering is still the
             # proxy's own choice: they are on the invite either way and may decline the proxy role.
@@ -1086,7 +1114,89 @@ class Service:
                 i.organizerAlerted = True
                 self.store.save_item(i)
             sent += 1
-        # TODO: leaver prompt cadence (weekly, then daily within 3 days).
+        return sent + self._send_milestone_reminders(now) + self._send_invitee_alerts(now)
+
+    def _send_invitee_alerts(self, now: datetime) -> int:
+        """The organizer and another key person are both out, and the meeting is still on (nobody moved or canceled
+        it): shortly before it starts ([reminders] invitee_alert_hours), everyone invited who is not out is told
+        once, so they can agree by email what to do. Only the organizer can move or cancel a meeting, so nobody in
+        the app can. Nothing is sent when the absence is reported: until then it is the organizer's to fix. Someone
+        out who chose "go ahead without me" is not mentioned; an accepted proxy is."""
+        by_event: dict[str, list[MeetingItem]] = {}
+        for i in self.store.items():
+            if i.kind == ItemKind.key_meeting and not self._is_past(i):
+                by_event.setdefault(i.event.calendarEventId, []).append(i)
+        sent = 0
+        for event_id, items in by_event.items():
+            e = self.calendar.get(event_id)
+            if (e is None or e.cancelled or any(i.inviteesAlerted or i.status in TERMINAL for i in items)
+                    or not timedelta(0) < e.start - now <= timedelta(hours=S.reminders.invitee_alert_hours)
+                    or not self._is_out(e.organizerId, e.start.date())):
+                continue
+            others = [i for i in items if i.absentPersonId != e.organizerId]
+            if not others:
+                continue                    # only the organizer is out: the key people run the meeting
+            lines = []
+            for i in sorted(others, key=lambda i: self.person(i.absentPersonId).name):
+                name = self.person(i.absentPersonId).name
+                if i.status == ItemStatus.proxy_accepted and i.chosenProxyId:
+                    lines.append(f"- {name} is out; {self.person(i.chosenProxyId).name} has agreed to cover.")
+                elif i.status != ItemStatus.proceeding_without:
+                    lines.append(f"- {name} is also out.")
+            body = (f"The organizer, {self.person(e.organizerId).name}, is out today, so nobody can reschedule or "
+                    f"cancel this meeting.\n" + "".join(line + "\n" for line in lines) +
+                    "Please agree among yourselves by email how to proceed: for example, go ahead, or treat it as "
+                    "canceled and meet another time.")
+            out_today = {a.personId for a in self.store.absences() if a.start <= e.start.date() <= a.end}
+            for pid in sorted(self._invitee_ids(items[0]) - out_today):
+                notify.send_email(self.person(pid).email,
+                                  f"'{e.title}' starts at {_ist_time(e.start)}: the organizer is out", body, now)
+                sent += 1
+            for i in items:
+                i.inviteesAlerted = True
+                self.store.save_item(i)
+        return sent
+
+    def _send_milestone_reminders(self, now: datetime) -> int:
+        """[reminders] milestones: when an undecided key meeting passes 7 days, 3 days, 24, 4 or 2 hours before it
+        starts, the person who is out and the organizer side are reminded, one digest each per run. Each milestone
+        is sent once per card; a card created after a milestone never gets it (no backfill); if runs were missed,
+        only one reminder goes out for the milestones passed meanwhile. The organizer's 24-hour reminder is the
+        alert above, so it is not sent twice."""
+        due: dict[str, list[tuple[MeetingItem, float]]] = {}
+        for i in self.store.items():
+            if i.kind != ItemKind.key_meeting or i.status not in ATTENTION:
+                continue
+            hours_left = (i.event.start - now).total_seconds() / 3600
+            if hours_left <= 0:
+                continue
+            passed = [h for h in S.reminders.milestones_hours_before_meeting
+                      if hours_left <= h and h not in i.milestonesSent and i.createdAt <= i.event.start - timedelta(hours=h)]
+            if not passed:
+                continue
+            latest = min(passed)
+            recipients = set()
+            if "leaver" in S.reminders.recipients:
+                recipients.add(i.absentPersonId)
+            if "organizer" in S.reminders.recipients and latest != S.reminders.organizer_alert_hours:
+                recipients.add(self.organizer_decider(i))
+            for pid in recipients:
+                due.setdefault(pid, []).append((i, hours_left))
+            i.milestonesSent = sorted(set(i.milestonesSent) | set(passed), reverse=True)
+            self.store.save_item(i)
+        sent = 0
+        for pid, rows in due.items():
+            rows.sort(key=lambda r: r[1])
+            groups = [rows] if S.reminders.send_as_digest else [[r] for r in rows]
+            for group in groups:
+                lines = [f"- '{i.event.title}' starts {_time_left(h)} and "
+                         f"{'you are' if i.absentPersonId == pid else self._first(i.absentPersonId) + ' is'} out."
+                         for i, h in group]
+                subject = (f"Reminder: '{group[0][0].event.title}' still needs a decision" if len(group) == 1
+                           else f"Reminder: {len(group)} meetings still need a decision")
+                notify.send_email(self.person(pid).email, subject,
+                                  "\n".join(lines) + "\nOpen Close the Gap to decide.", now)
+                sent += 1
         return sent
 
     # ---------- history and metrics ----------

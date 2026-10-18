@@ -4,6 +4,7 @@
 !/.gitignore
 !/README.md
 !/docs/
+!/LICENSE
 !/.github/
 !/backend/
 !/web/
