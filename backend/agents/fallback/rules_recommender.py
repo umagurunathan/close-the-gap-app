@@ -22,7 +22,7 @@ import logging
 
 from app import config
 from app.models import AiResult, Action, CalEvent, Confidence, ItemKind, Note, Person
-from app.roles import has_hosting_role, is_large_meeting, organizer_is_counterpart
+from app.roles import counterparts, has_hosting_role, is_large_meeting, is_one_to_one
 from app.settings import settings as S
 from .candidate_order import rank_proxies
 from ..vertex_proxy_ranker import suggest_proxy
@@ -92,8 +92,17 @@ def recommend(
 
     # 3) Normal meetings: does the absent person own a decision?
     ranked = rank_proxies(event, absent, people, notes)
-    if organizer_is_counterpart(event, absent.id):   # small meeting: the organizer is the other side, never suggested
-        ranked = [r for r in ranked if r["personId"] != event.organizerId]
+    other_side = counterparts(event, absent.id)   # one-to-one or small meeting: the other side is never suggested
+    ranked = [r for r in ranked if r["personId"] not in other_side]
+    if is_one_to_one(event) and not ranked:
+        other = people.get(next(iter(other_side), ""))
+        with_whom = f" with {other.name}" if other else ""
+        return ItemKind.key_meeting, AiResult(
+            recommendation=Action.reschedule,
+            reason=(f"A one-to-one{with_whom}: nobody else is in it to stand in for {absent.name.split()[0]}, "
+                    "so it needs a new time, or to be canceled."),
+            confidence=Confidence.high, sources=sources, summariesAvailable=bool(notes),
+            fingerprint=fingerprint)
     # second choice for a proxy recommendation: the next-ranked person, only if they have some supporting link
     backup = ranked[1]["personId"] if len(ranked) > 1 and ranked[1]["score"] > 0 else None
     if notes and ranked and config.llm_provider() == "vertex":
