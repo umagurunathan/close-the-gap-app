@@ -901,6 +901,117 @@ def test_organizer_is_alerted_once_when_unattended_meeting_is_under_24_hours(cli
     assert len([m for m in notify.OUTBOX if m["subject"].startswith("Unresolved")]) == n
 
 
+def test_milestone_reminders_go_once_each_to_the_person_out_and_the_organizer(client, svc, monkeypatch):
+    # Q4 Budget Review: 18 Nov 09:30 UTC, Priya out (planned), Sam organizes, nobody has decided yet
+    from app import config, notify
+    from datetime import datetime, timezone
+    clock = {"now": datetime(2026, 11, 11, 12, 0, tzinfo=timezone.utc)}          # 7 days and a bit before: 168 h passed
+    monkeypatch.setattr(config, "now", lambda: clock["now"])
+
+    def reminders_about_q4():
+        notify.clear()
+        svc.run_reminders()
+        return {m["to"] for m in notify.OUTBOX if m["subject"].startswith("Reminder:") and "'Q4 Budget Review' starts" in m["body"]}
+
+    assert reminders_about_q4() == {"priya@example.com", "sam@example.com"}
+    q4 = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review" and i.absentPersonId == "p_priya")
+    assert svc.store.get_item(q4.id).milestonesSent == [168]
+    assert reminders_about_q4() == set()                                          # once per milestone
+    clock["now"] = datetime(2026, 11, 15, 12, 0, tzinfo=timezone.utc)             # 3 days before
+    assert reminders_about_q4() == {"priya@example.com", "sam@example.com"}
+    body = next(m["body"] for m in notify.OUTBOX if m["to"] == "priya@example.com" and m["subject"].startswith("Reminder:"))
+    assert "'Q4 Budget Review' starts in 3 days and you are out." in body
+    clock["now"] = datetime(2026, 11, 17, 18, 0, tzinfo=timezone.utc)             # under 24 hours: Sam gets the alert instead
+    assert reminders_about_q4() == {"priya@example.com"}
+    assert any(m["subject"].startswith("Unresolved: 'Q4 Budget Review'") and m["to"] == "sam@example.com" for m in notify.OUTBOX)
+
+
+def test_milestone_reminders_never_backfill_and_stop_once_decided(client, svc, monkeypatch):
+    from app import config, notify
+    from datetime import datetime, timezone
+    q4 = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review" and i.absentPersonId == "p_priya")
+    q4.createdAt = datetime(2026, 11, 16, 0, 0, tzinfo=timezone.utc)              # card made inside the 3-day window
+    svc.store.save_item(q4)
+    monkeypatch.setattr(config, "now", lambda: datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc))
+    notify.clear()
+    svc.run_reminders()
+    assert not any("'Q4 Budget Review' starts" in m["body"] for m in notify.OUTBOX)   # 168 and 72 are not sent late
+    client.post(f"/items/{q4.id}/action", json={"action": "proceed_without"}, headers=H("p_priya"))
+    monkeypatch.setattr(config, "now", lambda: datetime(2026, 11, 18, 6, 0, tzinfo=timezone.utc))   # 3.5 h before
+    notify.clear()
+    svc.run_reminders()
+    assert not any("'Q4 Budget Review' starts" in m["body"] for m in notify.OUTBOX)   # decided: no more reminders
+
+
+def _organizer_and_key_person_out(client, monkeypatch, *, dev_too=True):
+    """Sam organizes 'Supplier QBR' on Fri 20 Nov 10:00 UTC with Dev, Meena and Rohan; Sam (and Dev) report leave that day."""
+    from app import notify
+    event_id = client.post("/events", json={"title": "Supplier QBR", "description": "Quarterly supplier review.",
+                                             "start": "2026-11-20T10:00:00Z", "end": "2026-11-20T11:00:00Z",
+                                             "attendees": [{"personId": "p_dev"}, {"personId": "p_meena"},
+                                                           {"personId": "p_rohan"}]}, headers=H("p_sam")).json()["eventId"]
+    for pid in ("p_sam", "p_dev") if dev_too else ("p_sam",):
+        assert client.post("/absences", json={"personId": pid, "start": "2026-11-20", "end": "2026-11-20"},
+                           headers=H(pid)).status_code == 200
+    assert not any("the organizer is out" in m["subject"] for m in notify.OUTBOX)   # nothing when the absence is reported
+    return event_id
+
+
+def _alerts_at(svc, monkeypatch, when):
+    from app import config, notify
+    monkeypatch.setattr(config, "now", lambda: when)
+    notify.clear()
+    svc.run_reminders()
+    return [m for m in notify.OUTBOX if m["subject"].endswith("the organizer is out")]
+
+
+def test_invitees_are_told_once_shortly_before_when_the_organizer_and_a_key_person_are_out(client, svc, monkeypatch):
+    from datetime import datetime, timezone
+    _organizer_and_key_person_out(client, monkeypatch)
+    assert _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 7, 0, tzinfo=timezone.utc)) == []      # 3 hours before: not yet
+    alerts = _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc))         # 1.5 hours before
+    assert {m["to"] for m in alerts} == {"meena@example.com", "rohan@example.com"}                   # not the two who are out
+    assert alerts[0]["subject"] == "'Supplier QBR' starts at 3:30 pm IST: the organizer is out"
+    assert "The organizer, Sam Wilson, is out today, so nobody can reschedule or cancel this meeting." in alerts[0]["body"]
+    assert "- Dev Nair is also out." in alerts[0]["body"]
+    assert _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 9, 30, tzinfo=timezone.utc)) == []      # once only
+
+
+def test_invitee_alert_names_an_accepted_proxy_and_skips_go_ahead_without(client, svc, monkeypatch):
+    from datetime import datetime, timezone
+    event_id = _organizer_and_key_person_out(client, monkeypatch)
+    dev = next(i for i in svc.store.items() if i.event.calendarEventId == event_id and i.absentPersonId == "p_dev")
+    client.post(f"/items/{dev.id}/action", json={"action": "proxy", "proxyId": "p_naomi"}, headers=H("p_dev"))
+    req = next(r for r in svc.store.proxy_requests() if r.itemId == dev.id)
+    client.post(f"/proxy-requests/{req.id}/respond", json={"response": "accepted"}, headers=H("p_naomi"))
+    body = _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc))[0]["body"]
+    assert "- Dev Nair is out; Naomi Fischer has agreed to cover." in body
+    # the same meeting where Dev chose "go ahead without me": Dev is not mentioned, the organizer still is
+    event_id2 = client.post("/events", json={"title": "Supplier QBR 2", "description": "",
+                                              "start": "2026-11-20T10:30:00Z", "end": "2026-11-20T11:00:00Z",
+                                              "attendees": [{"personId": "p_dev"}, {"personId": "p_meena"}]},
+                            headers=H("p_sam")).json()["eventId"]
+    dev2 = next(i for i in svc.store.items() if i.event.calendarEventId == event_id2 and i.absentPersonId == "p_dev")
+    client.post(f"/items/{dev2.id}/action", json={"action": "proceed_without"}, headers=H("p_dev"))
+    alert = next(m for m in _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc))
+                 if "Supplier QBR 2" in m["subject"])
+    assert "Dev Nair" not in alert["body"] and "The organizer, Sam Wilson, is out today" in alert["body"]
+
+
+def test_no_invitee_alert_when_only_the_organizer_is_out_or_the_meeting_was_moved(client, svc, monkeypatch):
+    from datetime import datetime, timezone
+    _organizer_and_key_person_out(client, monkeypatch, dev_too=False)          # the key people run it themselves
+    assert _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc)) == []
+
+
+def test_no_invitee_alert_once_the_organizer_canceled(client, svc, monkeypatch):
+    from datetime import datetime, timezone
+    event_id = _organizer_and_key_person_out(client, monkeypatch)
+    item = next(i for i in svc.store.items() if i.event.calendarEventId == event_id and i.absentPersonId == "p_dev")
+    assert client.post(f"/items/{item.id}/action", json={"action": "cancel"}, headers=H("p_sam")).status_code == 200
+    assert _alerts_at(svc, monkeypatch, datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc)) == []
+
+
 def test_unrelated_person_has_nothing_to_do(client):
     me = client.get("/me", headers=H("p_neha")).json()
     assert me["counts"] == {"attendee": 0, "organizer": 0, "proxyRequests": 0,
@@ -1833,6 +1944,24 @@ def test_people_report_only_their_own_absence(client, svc):
     assert len(svc.store.absences()) == before
 
 
+def test_typed_input_has_limits_and_no_past_dates(client, svc):
+    # today is 8 Nov (conftest): an absence that is over, or a meeting in the past, is turned down in plain words
+    r = client.post("/absences", json={"personId": "p_sam", "start": "2026-11-01", "end": "2026-11-07"}, headers=H("p_sam"))
+    assert r.status_code == 400 and r.json()["detail"] == "That absence is already over. Please choose dates from today onward."
+    r = client.post("/absences", json={"personId": "p_sam", "start": "2026-11-07", "end": "2026-11-09"}, headers=H("p_sam"))
+    assert r.status_code == 200                                   # started yesterday, still going: fine
+    meeting = {"description": "", "attendees": [{"personId": "p_meena"}]}
+    r = client.post("/events", json={**meeting, "title": "Old", "start": "2026-11-07T06:00:00Z", "end": "2026-11-07T07:00:00Z"},
+                    headers=H("p_arjun"))
+    assert r.status_code == 400 and r.json()["detail"] == "Please choose a start time in the future."
+    r = client.post("/events", json={**meeting, "title": "x" * 151, "start": "2026-11-20T06:00:00Z", "end": "2026-11-20T07:00:00Z"},
+                    headers=H("p_arjun"))
+    assert r.status_code == 400 and r.json()["detail"] == "The title is 151 characters long. Please keep it to 150."
+    item = next(i for i in svc.store.items() if i.event.title == "Q4 Budget Review")
+    r = client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_meena", "note": "n" * 2001}, headers=H("p_priya"))
+    assert r.status_code == 400 and r.json()["detail"].startswith("The note is 2,001 characters long.")
+
+
 def _kt_meeting(client):
     """A tester's case: 'KT on existing process from Priya to Arjun', organized by Arjun, with Priya and Sam; Priya out."""
     r = client.post("/events", json={"title": "KT on existing process from Priya to Arjun", "description": "",
@@ -2006,7 +2135,8 @@ def test_company_scale_projection_uses_the_measured_rates_and_the_config(client)
     P = S.metrics.projection
     assert [r["employees"] for r in p["rows"]] == list(P.company_sizes) and p["leaveDaysPerYear"] == 25
     row = p["rows"][1]
-    assert row["affectedMeetings"] == 5000 * 25 * P.key_meetings_per_leave_day
+    assert row["affectedMeetings"] == P.company_sizes[1] * 25 * P.key_meetings_per_leave_day
+    assert p["keyMeetingsPerLeaveDay"] == 1 and p["hourlyCost"] == 50 and P.company_sizes[0] == 1000   # decided 2026-10-18
     hours = row["affectedMeetings"] * p["shareClosedEarly"] * p["peoplePerMeeting"] * 5 / 60
     assert abs(row["hoursSaved"] - hours) <= hours * 0.02 + 1          # the shown rates are rounded
     assert row["value"] == round(row["hoursSaved"] * P.hourly_cost, -0) or abs(row["value"] - row["hoursSaved"] * P.hourly_cost) <= P.hourly_cost
