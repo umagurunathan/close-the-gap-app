@@ -4,7 +4,7 @@ import { setAuthTokenProvider } from "./api.js";
 import { firebaseAuth, firebaseAuthEnabled, firebaseConfigError, signInWithGoogle, signOutGoogle } from "./firebase.js";
 
 // One app for everyone: without signing in you are a guest in the demo; "Sign in with Google" (in the
-// Demo controls) turns you into yourself, and the backend then shows only your own work. This wrapper never blocks
+// header) turns you into yourself, and the backend then shows only your own work. This wrapper never blocks
 // the app: it only tells it who is signed in, and adds the sign-in token to every request.
 const AuthContext = createContext({ enabled: false, ready: true, user: null, signIn: async () => {}, signOut: async () => {} });
 
