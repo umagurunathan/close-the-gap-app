@@ -54,6 +54,20 @@ def organizer_is_counterpart(event: CalEvent, absent_id: str) -> bool:
     return event.organizerId != absent_id and people_count(event) <= S.recommendation.small_meeting_max_people
 
 
+def is_one_to_one(event: CalEvent) -> bool:
+    """Exactly two people, the organizer included."""
+    return people_count(event) == 2
+
+
+def counterparts(event: CalEvent, absent_id: str) -> set[str]:
+    """People on the other side of the meeting from the absent person, who therefore cannot stand in for them.
+    In a one-to-one that is the other person, whoever organized it (Priya's 1:1 with Dev: Dev can't cover for Priya).
+    In another small meeting it is the organizer, unless the organizer is the one who is out."""
+    if is_one_to_one(event):
+        return {event.organizerId, *(a.personId for a in event.attendees)} - {absent_id}
+    return {event.organizerId} if organizer_is_counterpart(event, absent_id) else set()
+
+
 def is_invited_as_optional(event: CalEvent, person_id: str) -> bool:
     """Only optional on this invite (not the organizer, not required): such a person never triggers anything."""
     if person_id == event.organizerId:

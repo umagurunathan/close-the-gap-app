@@ -22,7 +22,7 @@ from .models import (
     OrganizerMeeting, Person, Note, NoteCreate, ProposedTime, ProxyCandidate,
     ProxyRequest, ProxyRequestStatus, ProxyRequestView,
 )
-from .roles import is_invited_as_optional, key_people, required_ids
+from .roles import counterparts, is_invited_as_optional, is_one_to_one, key_people, required_ids
 from .scheduling import find_slot
 from .settings import settings as S
 from .store import Store
@@ -851,6 +851,11 @@ class Service:
                 raise ValueError("Please choose one person from the company directory, other than the person who is out.")
             if self._is_out(proxy_id, item.event.start.date()):
                 raise ValueError(f"{proxy_person.name} is out of office that day. Please choose someone else.")
+            event = self.calendar.get(item.event.calendarEventId)
+            if event and is_one_to_one(event) and proxy_id in counterparts(event, item.absentPersonId):
+                first = proxy_person.name.split()[0]
+                raise ValueError(f"This is a one-to-one with {first}, so {first} can't stand in for the person who is "
+                                 "out. Please choose someone else, or reschedule or cancel the meeting.")
             invited = proxy_id in self._invitee_ids(item)
             if note_from_ai:
                 _, shared, reason = self._draft_notes(item, caller, proxy_id)
@@ -998,7 +1003,9 @@ class Service:
         e = self.calendar.get(item.event.calendarEventId)
         notes = self.calendar.visible_notes(e, caller)
         ranked = rank_proxies(e, self.person(item.absentPersonId), self.people_map(), notes)
-        ai = self._view(item, caller).ai            # the recommendation this caller sees (cached; no new AI call)
+        if is_one_to_one(e):                        # the other person can't cover a meeting with themselves
+            ranked = [r for r in ranked if r["personId"] not in counterparts(e, item.absentPersonId)]
+        ai = self._view(item, caller).ai           # the recommendation this caller sees (cached; no new AI call)
         choice = {ai.suggestedProxyId: "first", ai.backupProxyId: "second"}
         declined = set(self._declined(item.id))
         return [ProxyCandidate(personId=r["personId"], rank=r["rank"], reason=r["reason"],

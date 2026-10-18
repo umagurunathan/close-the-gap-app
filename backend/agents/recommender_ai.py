@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional
 from pydantic import BaseModel, Field
 
 from app.models import Action, AiResult, CalEvent, Confidence, ItemKind, Note, Person
-from app.roles import organizer_is_counterpart
+from app.roles import counterparts
 from app.settings import settings as S
 from . import untrusted
 
@@ -93,9 +93,9 @@ def candidates_for(event: CalEvent, absent: Person, people: dict[str, Person], n
     line, then the organizer, then the rest."""
     ids = [a.personId for a in event.attendees] + [event.organizerId]
     day = event.start.date()
-    counterpart = event.organizerId if organizer_is_counterpart(event, absent.id) else None   # small meeting
+    other_side = counterparts(event, absent.id)   # one-to-one or small meeting: the other side can't stand in
     cands = [people[i] for i in dict.fromkeys(ids) if i != absent.id and i in people and not people[i].isGroup
-             and i != counterpart and not (is_out and is_out(i, day))]
+             and i not in other_side and not (is_out and is_out(i, day))]
     if limit is None or len(cands) <= limit:
         return cands
     text = " ".join(n.text.lower() for n in (notes or []))
