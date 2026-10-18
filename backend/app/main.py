@@ -199,7 +199,7 @@ def create_app(service: Optional[Service] = None) -> FastAPI:
                 "messageHideSeconds": S.ui.message_hide_seconds,
                 "autoRefreshSeconds": getattr(S.ui, "auto_refresh_seconds", 30),
                 "theme": getattr(S.ui, "theme", "purple"),
-                "today": svc.now().date().isoformat()}   # the demo's "today" (fixed by NOW), for form defaults
+                "today": svc.now().date().isoformat()}   # today (the real date), for form defaults
 
     @app.get("/metrics/projection", response_model=Projection)
     def get_projection():
