@@ -18,6 +18,9 @@ Rules:
 9. In a small meeting (`[recommendation] small_meeting_max_people`), the organizer is the other side and is never the
    absent person's proxy (found 2026-10-15: "KT from Priya to Arjun", organized by Arjun, suggested Arjun). Part of
    rule 1's check; the reason says why and asks the person to reschedule or choose someone else.
+   In a one-to-one the other person is never the proxy, whoever organized it (found 2026-10-18: Priya's 1:1 with
+   Dev, organized by Priya, suggested Dev). With nobody left to cover, a proxy answer becomes the rule-based one
+   (reschedule).
 8. A routine kind (team check-in, org-wide event) must come with "go on without them"; any other recommendation means a
    person must decide, so it becomes a key meeting (found 2026-10-15: "org-wide event" + "reschedule" for an all-hands
    the absent person presents at).
@@ -42,7 +45,8 @@ from typing import Callable
 from app.models import Action, AiResult, CalEvent, Confidence, ItemKind, Note, Person
 from app.settings import settings as S
 from app.roles import has_hosting_role as _has_hosting_role
-from app.roles import organizer_is_counterpart as _organizer_is_counterpart
+from app.roles import counterparts as _counterparts
+from app.roles import is_one_to_one as _is_one_to_one
 from .recommender_ai import candidates_for
 from .untrusted import looks_like_injection
 
@@ -77,8 +81,12 @@ def check(
     candidate_ids = {c.id for c in candidates_for(event, absent, people)}
     day = event.start.date()
 
+    other_side = _counterparts(event, absent.id)
+
     def problem(pid: str) -> str | None:
-        if pid == event.organizerId and _organizer_is_counterpart(event, absent.id):
+        if pid in other_side and _is_one_to_one(event):
+            return "this is a one-to-one with them, so they're on the other side of it"
+        if pid in other_side:
             return "they organize this small meeting, so they're on the other side of it"
         if pid not in candidate_ids:
             return "not one of the candidates"
@@ -102,8 +110,11 @@ def check(
             fixes.append(f"lowered confidence from {ai.confidence.value} to low: the AI named someone who was not offered")
             ai.confidence = Confidence.low
         first = dropped.split()[0]
-        organizer_side = why.startswith("they organize")
-        if organizer_side:              # small meeting: the organizer is the other side
+        organizer_side = why.startswith(("they organize", "this is a one-to-one"))
+        if why.startswith("this is a one-to-one"):     # nobody else is in the meeting, so nobody can cover
+            ai.reason += (f" (This is a one-to-one with {first}, so {first} can't stand in for "
+                          f"{absent.name.split()[0]}. Please reschedule or cancel.)")
+        elif organizer_side:              # small meeting: the organizer is the other side
             ai.reason += (f" ({first} organizes this meeting, so {first} can't stand in for {absent.name.split()[0]}. "
                           f"Please reschedule or choose someone else.)")
         if ai.backupProxyId:                         # the valid second choice moves up
@@ -117,6 +128,14 @@ def check(
             ai.reason += f" (But {dropped} is also out that day, so please choose a proxy.)"
         elif not organizer_side:
             ai.reason += " (The suggested person is not invited to this meeting, so please choose a proxy.)"
+
+    # 9. nobody else in the meeting can stand in (a one-to-one): a proxy answer can't be acted on, so use the rules'
+    if ai.recommendation == Action.proxy and not ai.suggestedProxyId and not candidate_ids:
+        dropped_fixes = list(fixes)
+        kind, ai = rule_based()
+        ai = ai.model_copy()
+        ai.engine = "rules_override"
+        fixes = dropped_fixes + ["recommended a proxy, but nobody else in the meeting can stand in; used the rule-based answer"]
 
     # 2. a proxy recommendation must name someone, or ask a person to choose
     if ai.recommendation == Action.proxy and not ai.suggestedProxyId and not ai.needsHumanChoice:

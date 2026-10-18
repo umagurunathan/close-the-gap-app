@@ -1990,6 +1990,37 @@ def test_the_organizer_of_a_small_meeting_is_never_the_proxy(client, svc):
     assert "p_arjun" in [c["personId"] for c in client.get(f"/items/{item.id}/proxy-candidates", headers=H("p_priya")).json()]
 
 
+def test_in_a_one_to_one_the_other_person_is_never_the_proxy(client, svc):
+    """A tester's case: Priya's 1:1 with Dev, organized by Priya; Priya out. Dev can't cover a meeting with himself."""
+    from agents import guard
+    from agents.fallback.rules_recommender import recommend
+    from agents.recommender_ai import candidates_for
+    from app.models import Action, AiResult, Confidence, ItemKind
+    client.post("/absences", json={"personId": "p_priya", "start": "2026-11-18", "end": "2026-11-18"}, headers=H("p_priya"))
+    r = client.post("/events", json={"title": "1:1 Priya / Dev", "description": "",
+                                      "start": "2026-11-18T08:00:00Z", "end": "2026-11-18T08:30:00Z",
+                                      "attendees": [{"personId": "p_dev"}]}, headers=H("p_priya"))
+    people = svc.people_map()
+    e = svc.calendar.get(r.json()["eventId"])
+    priya = people["p_priya"]
+    assert candidates_for(e, priya, people) == []                                     # not offered to the AI
+    _, rules = recommend(e, priya, people, [])
+    assert rules.recommendation == Action.reschedule and rules.suggestedProxyId is None
+    assert "one-to-one with Dev Nair" in rules.reason
+    _, ai = guard.check(ItemKind.key_meeting, AiResult(recommendation=Action.proxy, confidence=Confidence.high,
+                        reason="Dev can cover.", suggestedProxyId="p_dev"), e, priya, people, [],
+                        svc._is_out, lambda: recommend(e, priya, people, []))
+    assert ai.recommendation == Action.reschedule and ai.suggestedProxyId is None     # the AI's pick is replaced
+    assert any("one-to-one" in c for c in ai.checks)
+    item = next(i for i in svc.store.items() if i.event.calendarEventId == e.id)
+    panel = client.get(f"/items/{item.id}/proxy-candidates", headers=H("p_priya")).json()
+    assert "p_dev" not in [c["personId"] for c in panel]                              # not listed in the panel
+    r = client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_dev"}, headers=H("p_priya"))
+    assert r.status_code == 400 and "one-to-one with Dev" in r.json()["detail"]       # nor accepted by hand
+    r = client.post(f"/items/{item.id}/action", json={"action": "proxy", "proxyId": "p_arjun"}, headers=H("p_priya"))
+    assert r.status_code == 200                                                       # someone else still can be
+
+
 def test_ai_answers_carry_what_simple_rules_would_have_said(monkeypatch, svc):
     from agents import recommender_ai
     from agents.recommender_ai import Recommendation

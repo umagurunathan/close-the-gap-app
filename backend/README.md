@@ -71,7 +71,7 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-149 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store and fixes the clock at Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
+150 tests, offline: `tests/conftest.py` switches the AI off, uses the in-memory store and fixes the clock at Sun 8 Nov 2026, 9:00 UTC (a fake Firestore checks the read cache).
 
 ## Where things are
 | Path | What |

@@ -180,7 +180,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-149 tests. The tests switch the AI off for themselves (`tests/conftest.py`) and fix the clock at Sun 8 Nov 2026, so they need no cloud account and always see the same data (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them, builds the web app and runs a browser smoke test (`web/e2e/smoke.py`: the demo loads, a card recommends a proxy, the main panels open, no console errors) on every pull request.
+150 tests. The tests switch the AI off for themselves (`tests/conftest.py`) and fix the clock at Sun 8 Nov 2026, so they need no cloud account and always see the same data (a fake Firestore checks the read cache). GitHub Actions (`.github/workflows/ci.yml`) runs them, builds the web app and runs a browser smoke test (`web/e2e/smoke.py`: the demo loads, a card recommends a proxy, the main panels open, no console errors) on every pull request.
 
 ## Layout
 

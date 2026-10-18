@@ -136,6 +136,8 @@ large_meeting_required_threshold = 35   # was 15
 # A meeting with this many people or fewer (organizer and all invitees) is small: the organizer is the other side of
 # it, so the organizer is never suggested as the absent person's proxy (e.g. a "KT from Priya to
 # Arjun" organized by Arjun must not suggest Arjun). The person can still reschedule or pick anyone from the directory.
+# A one-to-one (two people) is always handled this way, whoever organized it: the other person is never the proxy,
+# not even by hand, and with nobody else in it the card recommends reschedule.
 small_meeting_max_people = 3
 # A proxy suggestion needs at least this score to be called "high confidence" (see proxy_ranking below)
 min_proxy_score_for_high_confidence = 10
