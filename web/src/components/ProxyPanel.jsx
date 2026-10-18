@@ -86,6 +86,8 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
   }
 
   const invitedIds = new Set([ev.organizerId, ...ev.attendees.map((a) => a.personId)]);
+  // In a one-to-one the other person can't stand in for the absent one (the server refuses them too)
+  const otherSide = (id) => invitedIds.size === 2 && invitedIds.has(id) && id !== item.absentPersonId;
   const pickedOutsider = pick && !invitedIds.has(pick);
   const canDraft = draft.available;
 
@@ -158,8 +160,10 @@ export default function ProxyPanel({ item, me, people, onSent, onBack }) {
         <select value={matches.some((p) => p.id === pick) ? pick : ""} onChange={(e) => setPick(e.target.value)}>
           <option value="">Select from the directory…</option>
           {matches.map((p) => (
-            <option key={p.id} value={p.id} disabled={p.out}>
-              {p.email} · {p.name} · {p.title}{p.out ? " (out of office that day)" : invitedIds.has(p.id) ? "" : " (not invited)"}
+            <option key={p.id} value={p.id} disabled={p.out || otherSide(p.id)}>
+              {p.email} · {p.name} · {p.title}{p.out ? " (out of office that day)"
+                : otherSide(p.id) ? " (it's a one-to-one with them, so they can't stand in)"
+                  : invitedIds.has(p.id) ? "" : " (not invited)"}
             </option>
           ))}
         </select>

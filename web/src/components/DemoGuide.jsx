@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Icon } from "./Icons.jsx";
 
-// "Demo guide": the main story as four steps in a row (a reviewer said the text was too long to read), the rule about
+// "Demo guide": the main story as four steps in a row, the rule about
 // which meetings are listed first and plainly, a few more people to try, and the full text behind "Detailed
 // instructions". Pure explanation: nothing here changes who is viewed (pick each person under View as).
 const STORY = [
@@ -46,6 +46,18 @@ export default function DemoGuide({ onClose }) {
           </div>
         </div>
 
+        <div className="guide-rule" role="note">
+          <span className="guide-rule-icon" aria-hidden="true">i</span>
+          <div>
+            <b>Want to try your own scenario?</b>
+            <div>
+              The sample people and meetings are just here to get you started. The <b>Report an absence</b> feature lets
+              you add your own leave, and the <b>Schedule a meeting</b> feature lets you add your own meeting. Either one
+              takes you through the full flow, from the AI's recommendation to the final decision.
+            </div>
+          </div>
+        </div>
+
         <h4 className="guide-story-title">The main story: pick each person under <b>View as</b>, in order</h4>
         <ol className="guide-flow">
           {STORY.map((s, n) => (
@@ -83,7 +95,9 @@ export default function DemoGuide({ onClose }) {
           <p className="reason">
             Pick a person under <b>View as</b> in the Demo controls at the top. <b>Emails</b> shows the emails the app
             would send. Anyone else appears under <b>More…</b> only while they have something to do, for example a proxy
-            request to answer.
+            request to answer. The people below are only a suggested path. At any time you can use <b>Report an
+            absence</b> or <b>Schedule a meeting</b> to add your own, and follow it from the recommendation to the proxy
+            request to the decision.
           </p>
           <ol className="guide-steps">
             <li>

@@ -1,4 +1,4 @@
-// Small per-browser conveniences (who you're viewing as, whether the guide was opened). Some browsers block site
+// Small per-browser conveniences (who you're viewing as). Some browsers block site
 // storage (privacy settings, private windows), and then any access throws: here that just means "not remembered".
 export function remember(key, value) {
   try { localStorage.setItem(key, value); } catch { /* not essential */ }

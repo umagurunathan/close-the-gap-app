@@ -39,8 +39,8 @@ function naturalTab(c = {}) {
 
 // One app for everyone: a guest acts as one of the demo people; after "Sign in with Google" the same
 // screens show only that person's own work (the backend picks the area from the sign-in).
-// The app lists only meetings affected by someone's absence (a tester looked for a meeting they had just created with
-// no conflict). Every message after scheduling or syncing says so.
+// The app lists only meetings affected by someone's absence: a meeting with no conflict stays in the calendar and is
+// not shown. Every message after scheduling or syncing says so.
 const ONLY_CONFLICTS = "Only meetings affected by someone's absence are listed here; the rest stay in your calendar.";
 
 function syncMessage(result) {

@@ -508,7 +508,7 @@ button.danger:hover:not(:disabled) { color: var(--bad); }
 .empty-state h4 { margin: 0 0 4px; font-size: 16px; }
 .empty-state p { margin: 0; color: var(--muted); font-size: 13.5px; }
 
-/* Demo guide: filled purple with a twinkling sparkle and "Start here" until it has been opened once */
+/* Demo guide: filled purple with a twinkling sparkle and a "Start here" badge, always shown */
 .demo-toolbar .demo-tools button.guide-new { background: var(--primary); border-color: var(--primary); color: #fff;
   display: inline-flex; align-items: center; gap: 5px; }
 .guide-sparkle { color: #ffd166; flex: none; }
