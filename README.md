@@ -14,7 +14,9 @@ When someone goes on leave they usually tell only their manager and their report
 
 The app opens in a demo company with sample people and meetings. The **Demo controls** at the top let you view the app as any of eight demo people; **Demo guide** says what to try with each.
 
-A three-minute path:
+The sample data is just here to get you started, not the only way through. The **Report an absence** feature lets you add your own leave, and the **Schedule a meeting** feature lets you add your own meeting, as any of the people you view as. Either one takes you through the full flow, from the recommendation to the proxy request to the decision.
+
+A three-minute path through the sample data:
 1. **Priya** (going on leave 17–19 Nov): open **Q4 Budget Review**, choose **Ask Meena to cover**, then **Draft with AI** for a handover brief, and send it.
 2. **Meena** (asked to cover): in **Proxy Requests**, **Accept**. Priya's card moves to **Settled**.
 3. **Arjun** (where the AI beats simple rules): open **Weekly Ops Sync**. The card shows **AI changed the answer**: simple rules saw a routine sync; Gemini read the summaries and found a sign-off that needs him.
@@ -24,7 +26,7 @@ Good to know:
 - **Emails** in the Demo controls shows the emails the app would send. No real email is sent.
 - **The demo runs on today's real date and time.** Its sample meetings are set in November (9–27 Nov), so they stay upcoming throughout the evaluation weeks. A meeting or absence you add keeps the date you give it.
 - **Report an absence** is for your own absence only: viewing as Priya, you report Priya's.
-- **Reset demo data** puts the demo back to the start for everyone (it asks first). "Demo data last reset" shows when that last happened.
+- **Reset demo data** puts the demo back to the start for everyone (it asks first). "Last reset" shows when that last happened.
 - The page refreshes by itself every 30 seconds, so changes made by others appear without a reload.
 - **Sign in with Google** is for the members of a private company directory, who then work with their own Google Calendar. Other Google accounts are told politely that they are not in the directory and can keep using the demo.
 
@@ -33,12 +35,12 @@ Good to know:
 - **Finds the affected meetings.** From an absence and the calendar, plain code finds every meeting where the absent person is the organizer or a required invitee. Optional invitees never trigger anything.
 - **Recommends one action per meeting**, with a one-line reason, a confidence level and what the AI read: go on without the person, ask a proxy, reschedule, cancel, or (for the person who is out) "I'll attend".
 - **Both sides can act.** The person who is out sees their meetings in **Attendee Mode**; the organizer sees one card per meeting in **Organizer Mode**, naming everyone who is out, with actions for the whole meeting. Every meeting that needs action shows the days left, the same for everyone: green, amber within 2 days, red within 24 hours.
-- **Runs the proxy flow.** The proxy can be anyone in the company directory, invited or not (someone not yet invited is added to the meeting). Covering is always the proxy's choice: they accept or decline in **Proxy Requests**; a decline sends the owner back to choose again, with the AI's second choice ready.
+- **Runs the proxy flow.** The proxy can be anyone in the company directory, invited or not (someone not yet invited is added to the meeting), except the other person in a one-to-one: nobody else is in it to stand in, so it needs a new time or to be canceled. Covering is always the proxy's choice: they accept or decline in **Proxy Requests**; a decline sends the owner back to choose again, with the AI's second choice ready.
 - **Briefs the proxy.** Gemini drafts a short handover: what the meeting is for, what the proxy covers, what was decided and what is still open. The sender edits it before sending.
 - **Reschedules safely.** It proposes one time: the same time of day (within 1 hour, then within 2 hours), on the first of the next 7 working days when every required person is free and nobody is out. The organizer takes it in one click ("Reschedule to Mon, 9 Nov · 3:00 pm IST") or picks another time, also when no time is found; a picked day must be one when everyone who is out is back. The Google event moves once for everyone, and Google tells the guests. The card then says the organizer moved it, from the old time to the new one.
 - **Handles routine meetings automatically.** Team check-ins and org-wide events go on without the person when the AI is highly confident (unless the person who is out runs them); they wait in **No action needed**, where anyone can still change them.
 - **Three groups in every tab:** **Needs action**, **Settled** (a person decided) and **No action needed** (handled automatically). **Past** keeps what was decided, with the recommendation the decider saw.
-- **Several absences:** the banner at the top pages through them (‹ 1 of 2 ›, or a swipe on a phone), each with its own count.
+- **Several absences:** the banner at the top pages through them (‹ 1 of 2 ›), each with its own count.
 - **Impact band:** team time saved, decisions kept on schedule, meetings with the gap closed, average notice and how often the AI's recommendation was accepted; **At company scale** starts from one meeting's saving (about 5 minutes for each person in it, when it is covered, moved or canceled in time) and then shows an illustrative model for larger companies, with every assumption visible. A chevron folds it to one line (time saved, gaps closed) to give the cards more room.
 - **Accessible by default:** a visible focus ring for keyboard users, tabs that work with the arrow keys, "Skip to meetings", text contrast of at least 4.5:1, and a one-line reason on every disabled button.
 
@@ -46,8 +48,8 @@ Good to know:
 
 - **A meeting advisor agent built with Google's Agent Development Kit (ADK)**, running Gemini 2.5 Flash on Vertex AI (asia-south1). It has tools bound to one meeting and one viewer: the summaries this viewer may open, the people who could cover (never anyone out that day), and "is this person out that day?". Gemini decides which tools to use and when to stop, and returns a structured answer: action, reason, confidence and, when useful, a first and second choice of proxy.
 - **Privacy is enforced by the tools.** The agent can only read what the person it advises may open, so it cannot reveal more than that person could see.
-- **Pages never wait for the AI.** A card first shows the rule-based suggestion marked "AI analysing…"; the agent works on a few cards at a time in the background, and the card updates by itself.
-- **Plain-code checks run on every answer** before anyone sees it: a suggested proxy must be a real candidate and not out that day; a proxy chosen without summaries cannot be high confidence; only high-confidence answers are handled automatically. If a check changes the answer, the card says so.
+- **Pages never wait for the AI.** A card first shows the rule-based suggestion marked "AI analyzing…"; the agent works on a few cards at a time in the background, and the card updates by itself.
+- **Plain-code checks run on every answer** before anyone sees it: a suggested proxy must be a real candidate and not out that day, and never the other side of the meeting (the other person in a one-to-one, or the organizer of a small meeting); a proxy chosen without summaries cannot be high confidence; only high-confidence answers are handled automatically. If a check changes the answer, the card says so.
 - **The app never depends on the AI to work.** If the agent fails, a single Gemini call answers; if that fails too, the rule-based recommendation is shown and labelled. Answers are cached until the meeting or its summaries change.
 - **Every card is transparent:** who wrote the recommendation ("Gemini · ADK agent", "Adjusted by our rules" or "Rule-based"), the agent's steps ("Read past summaries → Listed proxy candidates → Checked by our rules") and, under **Recommendation details**, what the AI read.
 
@@ -60,7 +62,6 @@ Finding the affected meetings is deliberately plain code: an absence and a calen
 | Title "Weekly Ops Sync"; notes: *"Arjun signed off the two analyst roles; they cannot be posted without him"* | Routine sync → go on without him | A sign-off depends on him → needs a decision |
 | Notes: *"status updates only, no decisions"* | Sees the word "decisions" | Reads the negation → routine, go ahead |
 | *"Acme's CFO will only commit to the renewal with Arjun on the call"* | Suggests a proxy | Someone outside insists on him → reschedule |
-| *"KT on existing process from Priya to Arjun"* (organized by Arjun) | Suggests Arjun, her manager | Priya gives it; Arjun receives it → reschedule |
 | *"Rohan usually stands in for Arjun on audit items"*, Rohan out that day | Cannot connect the two facts | Checks Rohan is out, suggests someone else, and says why |
 | An all-hands where *"Arjun walks us through the H2 numbers"* | No hosting keyword → ignored | He presents → needs a decision |
 | A proxy is asked to cover | Sentences that contain a keyword | A short handover brief: purpose, what to cover, decided, still open |
@@ -122,7 +123,7 @@ flowchart LR
 - **A meeting moved only in Google Calendar** (not through the app) shows its new time after **Sync Google Calendar**, but its card is not closed by itself, even when the new time is after the absence; someone settles it in the app.
 - **All times are shown in India Standard Time** and say so ("3:00 pm IST"), for every viewer. The proposed time keeps the meeting's own clock time, so a meeting saved from a Google Calendar set to another time zone (for example GMT) shows at that hour in IST.
 - **Meeting summaries are typed by the organizer** (Summaries & agenda on a card), choosing who may read each one. In a real deployment they would arrive on their own from the earlier occurrences of the same meeting, through the meeting platform's notes or transcripts.
-- **Google Meet transcript import** exists in the backend but is hidden in the app.
+- **Google Meet transcript import is built but not tested**, so it is hidden in the app and kept as it is. It is not part of the prototype.
 - **The sign-in app is not yet verified by Google**, so a first-time sign-in shows an "unverified app" notice.
 - **The impact numbers are estimates from sample data.** The impact band counts the demo's own 35 sample meetings, and "team time saved" uses a stated number of minutes per person. **At company scale** is an illustrative model, not a forecast. It assumes a typical meeting has about 6 people, and that when a key person is missing everyone loses at least 5 minutes (a couple of minutes to join, then waiting and pinging the missing person before giving up). Each person has about 25 days of leave a year and is the key person in about 1 meeting per day of leave (senior roles have more). Time is valued at $50 an hour, an average cost rather than a billing rate. It counts only the minutes lost waiting, not the cost of breaking off focused work or another meeting to join. The shares handled in time and the people per meeting come from the meetings decided in the app so far (the panel shows how many), so the figures change as people decide; until 5 are decided, typical values are used (60% handled in time, 6 people). With those typical values, a 1,000-person company would save about 7,500 hours a year (about 9 minutes per employee per week), worth about $375,000. Every assumption is shown on screen and is a setting in `[metrics.projection]` in `config/settings.toml`; in production the rates would come from the company's own meetings.
 - **People report only their own absence.** A manager, an admin or a delegate reporting for someone else (for example a colleague who calls in sick) is future scope.
@@ -139,7 +140,7 @@ flowchart LR
 - **A shared cache** between requests (for example Memorystore) and several backend instances, for company scale; indexed queries per person and date instead of whole collections.
 - **Database rules** that enforce the areas as well as the backend does; one area per customer company; a directory from Google Workspace or the HR system.
 - **Operations:** a least-privilege service account, limits shared across several instances and an overall cost cap on AI calls, monitoring and alerts, Google app verification.
-- **Meeting summaries picked up automatically** from the earlier occurrences of each meeting: Google Meet transcripts first (built, hidden), then other meeting platforms, one adapter each. Each summary keeps the platform's own permissions, so the AI still reads only what each person may open.
+- **Meeting summaries picked up automatically** from the earlier occurrences of each meeting: through one adapter per meeting platform. Each summary keeps the platform's own permissions, so the AI still reads only what each person may open.
 - **Changing or canceling an absence** after it is reported: open cards close as "no longer affected", open proxy requests are withdrawn and the proxy told, and meetings already moved or canceled stay as they are, with a history line.
 - **Tidier edge cases:** the same absence reported twice is merged into one; a proxy who declined is not suggested again for that meeting.
 
@@ -187,7 +188,10 @@ cd backend
 ```
 backend/   FastAPI app, AI agents, settings, demo seed data, tests   (see backend/README.md)
 web/       React app: Attendee Mode, Organizer Mode, Proxy Requests, Past
+docs/      Knowledge base in Open Knowledge Format, for people and AI agents (start at docs/index.md)
 ```
+
+**Knowledge base:** [docs/index.md](docs/index.md) explains the product, architecture, AI pipeline, configuration, API, demo data and operations, one concept per file.
 
 ## Built with
 
