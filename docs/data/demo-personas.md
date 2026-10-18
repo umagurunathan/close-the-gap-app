@@ -18,6 +18,8 @@ timestamp: 2026-10-18T00:00:00Z
 
 The demo opens at <https://close-the-gap-2026.web.app>, or locally at `http://localhost:5173`, as **Priya**, with no sign-in. **Demo controls** let you "View as" any of eight people (`PERSONAS` in `App.jsx`). **More…** lists everyone else who has something to do right now. **Demo guide** explains what to try.
 
+**The sample data is just there to get a reader started, not the only way through.** The **Report an absence** feature lets a judge add their own leave, and the **Schedule a meeting** feature lets them add their own meeting, as any person they view as. Either one runs the full flow, from the recommendation to the proxy request to the decision. The Demo guide says so at the top ("Want to try your own scenario?").
+
 You can also open a persona and tab directly with a link: `?as=p_sam&tab=organizer`.
 
 ## The eight personas

@@ -38,7 +38,7 @@ The type changes three things:
 | | Planned | Sudden |
 |---|---|---|
 | Card `ownerRole` | `leaver`: the absent person owns it | `organizer`: the organizer side owns it |
-| Who is emailed at creation | The absent person, with a summary | The absent person, **and** each organizer-side decider at once ("X is out suddenly…") |
+| Who is emailed at creation | The absent person, with a summary | The absent person, **and** the organizer of each affected meeting at once ("X is out suddenly…"), except where the absent person is the organizer |
 | "I'll attend" offered | Yes, to the absent person | No |
 | Later organizer alert | Under-24-hour alert if still unresolved | Already alerted (`organizerAlerted = True`) |
 
@@ -49,6 +49,7 @@ The seed forces Kiran's absence to `"type": "sudden"`. The demo runs on the real
 ## Rules
 
 - **Own absence only.** `POST /absences` returns 403 unless `body.personId` is the caller. This applies in both areas.
+- **No absences in the past.** An absence that has already ended is refused: "That absence is already over. Please choose dates from today onward." The form's "To" date cannot be before the "From" date or today.
 - **Day matching is in UTC.** A meeting is affected when its `start` date (UTC) falls within `start..end` (`SimCalendar.events_in_window`).
 - **Overlapping absences do not create duplicate cards.** There is at most one card per *(meeting, absent person)*. The confirmation still counts the cards on those days (`cards_on_days`).
 - **Optional invitees are skipped.** A meeting where the person is only optional creates no card.

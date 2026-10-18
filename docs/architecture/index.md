@@ -17,7 +17,7 @@
 - [Reschedule search](reschedule-search.md): deterministic slot search; Google first
 - [Storage](storage.md): Store and calendar adapters, Firestore layout, per-request read cache
 - [Authentication, identity and rate limits](auth-and-access.md): Firebase, demo guests, OIDC, limits
-- [Google Calendar and Meet integrations](google-integrations.md): OAuth, sync, write-back, transcripts
+- [Google Calendar integration](google-integrations.md): OAuth, sync, write-back
 - [Notifications, history and reminders](notifications-and-reminders.md): every email, the outbox, the reminder job
 - [Impact metrics and projection](metrics.md): the impact band's formulas
 

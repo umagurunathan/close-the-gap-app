@@ -51,13 +51,13 @@ flowchart LR
 
 - Background AI analysis runs in a thread pool **inside the process**, so it must keep running between requests (`--no-cpu-throttling`).
 - The AI answer cache, the email outbox and the rate-limit counters live **in memory**. Several instances would each have their own copy.
-- Each request reads each Firestore collection at most once (the [request read cache](storage.md#per-request-read-cache)). This keeps a page at about 1 s, and about 3 s with four visitors at once.
+- Each request reads each Firestore collection at most once (the [request read cache](storage.md#per-request-read-cache)). A page loads in about 1 s, and in about 2 s with four visitors at once (1.9 s measured on the live site).
 
 A shared cache (for example Memorystore) and multiple instances are listed as [future scope](../overview/limits-and-future-scope.md).
 
 ## The AI never blocks or breaks the app
 
-- Pages answer at once with the rule-based suggestion, labelled "AI analysing…".
+- Pages answer at once with the rule-based suggestion, labelled "AI analyzing…".
 - The AI fills in the answer in the background ([Analysis cache](analysis-cache.md)).
 - If the agent fails, a single Gemini call answers. If that fails too, the rules answer and say so ([Recommendation pipeline](recommendation-pipeline.md)).
 

@@ -6,8 +6,9 @@ okf_version: "0.1"
 
 **Close the Gap** finds the meetings affected when someone is out of office, early, and recommends one action per meeting:
 - go on without them,
-- go on with a briefed proxy, or
-- reschedule.
+- go on with a briefed proxy,
+- reschedule, or
+- cancel.
 
 **The AI proposes; a person decides.** It was built for the Google Cloud AI Builder Cup 2026, with a FastAPI backend (`backend/`) and a React + Vite web app (`web/`).
 
@@ -16,7 +17,7 @@ This directory is an **[Open Knowledge Format](https://cloud.google.com/blog/pro
 - linked with ordinary relative markdown links;
 - an `index.md` in every directory, and the change history in [log.md](log.md).
 
-It is written for both humans and AI agents. It was generated from the code at commit `0a944b6` and has not yet been human-verified.
+It is written for both humans and AI agents. It was generated from a full read of the code, then reviewed against the code on 18 Oct 2026, after the reminder, input-limit and one-to-one changes (see [log.md](log.md)).
 
 ## Where to start
 
@@ -34,7 +35,7 @@ It is written for both humans and AI agents. It was generated from the code at c
 4. [Meeting card](concepts/meeting-card.md): statuses and lifecycle
 5. [Decide on a card](flows/decide-on-a-card.md)
 6. [Testing and CI](operations/testing-and-ci.md)
-7. [Known quirks](operations/known-quirks.md)
+7. [Known behaviours](operations/known-behaviours.md)
 
 ## Sections
 

@@ -30,7 +30,7 @@ timestamp: 2026-10-18T00:00:00Z
 |---|---|
 | `attend` | Absent person on a `leaver` card only (otherwise 400). Status becomes `attending`, and the organizer gets an FYI |
 | `proceed_without` | Status becomes `proceeding_without` |
-| `proxy` | Validate the proxy: a directory individual, not the absent person, not out that day. If `noteFromAi`, the proxy must be able to open the draft's summaries. For a Google event and an outside proxy, add them in Google first. Withdraw earlier requests (an accepted proxy is told). Create the `ProxyRequest` and email the proxy. Add an outside proxy as optional and FYI the organizer. Status becomes `proxy_requested`. See [Proxy](../concepts/proxy.md) |
+| `proxy` | Validate the proxy: a directory individual, not the absent person, not out that day, and not the other person in a one-to-one; the note is at most 2,000 characters. If `noteFromAi`, the proxy must be able to open the draft's summaries. For a Google event and an outside proxy, add them in Google first. Withdraw earlier requests (an accepted proxy is told). Create the `ProxyRequest` and email the proxy. Add an outside proxy as optional and FYI the organizer. Status becomes `proxy_requested`. See [Proxy](../concepts/proxy.md) |
 | `reschedule` / `cancel` by a non-organizer | Status becomes `awaiting_organizer`, and the organizer gets "X suggests you {action}…" |
 | `cancel` by the organizer | `_cancel_meeting` (Google delete first, only once), then status `cancelled` |
 | `reschedule` by the organizer | Use the picked `start` (validated by `_check_picked_time`) or else `proposed_time`. With no time, status becomes `no_slot_found`. Otherwise `_move_meeting` (Google PATCH first; if Google refuses, nothing changes), and status becomes `rescheduled` with `originalStart` and `rescheduledTo` set |
@@ -57,6 +57,8 @@ timestamp: 2026-10-18T00:00:00Z
 Plain-language messages, mapped by `guard()` in `main.py`:
 - 400 "Please choose who should cover the meeting.";
 - 400 "{Name} is out of office that day. Please choose someone else.";
+- 400 "This is a one-to-one with {first name}, so {first name} can't stand in for the person who is out. Please choose someone else, or reschedule or cancel the meeting.";
+- 400 "The note is N characters long. Please keep it to 2,000.";
 - 400 "Please pick a time in the future." / "{names} is out that day. Please pick another day.";
 - 400 "The organizer must sync their Google Calendar before changing this meeting";
 - 403 "Only the person who is out or the organizer can do this.";

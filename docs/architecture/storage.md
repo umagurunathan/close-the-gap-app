@@ -24,8 +24,8 @@ Two adapters hide where data lives:
 
 | `STORE` | Store | Calendar | Use |
 |---|---|---|---|
-| `memory` (default) | `InMemoryStore` | `SimCalendar` | Local runs and tests. The demo is loaded from the seed at start |
-| `firestore` | `FirestoreStore(client, workspace_id)` | `FirestoreCalendar(client, workspace_id)` | **Required on Cloud Run** (startup fails otherwise) |
+| `firestore` (default) | `FirestoreStore(client, workspace_id)` | `FirestoreCalendar(client, workspace_id)` | The app, locally and on Cloud Run (**required on Cloud Run**: startup fails otherwise) |
+| `memory` | `InMemoryStore` | `SimCalendar` | Only the tests and CI, which set it themselves so they can never write to the real database |
 
 ## `Store` interface
 

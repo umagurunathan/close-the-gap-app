@@ -17,7 +17,9 @@ timestamp: 2026-10-18T00:00:00Z
 
 `POST /jobs/run-reminders` sends:
 - the proxy reminders;
-- the under-24-hour organizer alert.
+- the milestone digests (7 days, 3 days, 24, 4 and 2 hours before an undecided key meeting);
+- the under-24-hour organizer alert;
+- the invitee alert, 1–2 hours before a meeting whose organizer and another key person are both out.
 
 See [Notifications and reminders](../architecture/notifications-and-reminders.md) for what it sends. It runs **for the company area only**.
 
@@ -82,7 +84,9 @@ gcloud run services logs read close-the-gap-api --region asia-south1 --limit 50
 
 - The job is idempotent enough to run more often than hourly:
   - each run sends at most one reminder per pending request, up to 3 in total;
-  - the organizer alert is sent once per meeting (`organizerAlerted`).
+  - the organizer alert is sent once per meeting (`organizerAlerted`);
+  - each milestone once per card (`milestonesSent`), never backfilled;
+  - the invitee alert once per meeting (`inviteesAlerted`).
 - If the Cloud Run URL changes, update both `RUN_REMINDERS_AUDIENCE` and the job's `--oidc-token-audience` and `--uri`.
 - The automated tests are `tests/test_run_reminders_auth.py` (12 tests). They cover missing, invalid and wrong-account tokens, an unverified email, case-insensitive email matching, an unreachable Google returning 401 rather than 500, company area only, and the Firebase middleware letting the call through.
 

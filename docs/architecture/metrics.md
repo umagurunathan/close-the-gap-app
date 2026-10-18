@@ -48,10 +48,12 @@ The seed's **replayed past week** (meetings on 5–8 Oct 2026) gives the tiles r
 
 ## Company-scale projection (`Service.projection`)
 
-Per company size in `company_sizes` (500, 5 000, 50 000):
+The panel is titled "At company scale, per year (illustrative)" and ends with a disclaimer: it is an illustrative model, not a forecast, and counts only the minutes lost waiting, not the cost of breaking off focused work or another meeting to join.
+
+Per company size in `company_sizes` (1,000, 10,000, 50,000):
 
 ```
-affected key meetings / year = employees × leave_days_per_year (25) × key_meetings_per_leave_day (2)
+affected key meetings / year = employees × leave_days_per_year (25) × key_meetings_per_leave_day (1; senior roles have more)
 hours saved                  = affected × share_closed_early × people_per_meeting × minutes (5) / 60
 value                        = hours × hourly_cost (50, currency "$")
 decisions on schedule        = affected × share_went_ahead

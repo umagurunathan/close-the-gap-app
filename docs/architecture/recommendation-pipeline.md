@@ -82,7 +82,7 @@ If the guard made any correction, the card adds "Adjusted by rules" and lists ea
 
 ## Caching and background analysis
 
-The orchestrator is pure. Caching, background threads, the "AI analysing…" label, and raising an auto-handled card are handled by `Service`. See [Analysis cache](analysis-cache.md).
+The orchestrator is pure. Caching, background threads, the "AI analyzing…" label, and raising an auto-handled card are handled by `Service`. See [Analysis cache](analysis-cache.md).
 
 ## Related
 - [ADK advisor](adk-advisor.md)

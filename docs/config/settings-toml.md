@@ -17,7 +17,7 @@ timestamp: 2026-10-18T00:00:00Z
 **Edit a number or a word list, restart the backend, and the app follows. No code change is needed.**
 - `app/settings.py` loads the file (or `SETTINGS_PATH`) into `settings.<section>.<key>`. A UTF-8 byte-order mark is accepted.
 - A **missing key fails when it is accessed**, rather than being silently defaulted.
-- Each section is marked **WIRED** (read by the app) or **RESERVED** (agreed in the design, but the feature that reads it is not built).
+- Each section is marked **WIRED** (read by the app). Every section is wired today; the word **RESERVED** would mark a setting agreed in the design whose feature is not built yet.
 
 Product rules are **deliberately not here**. See [Product rules](../concepts/product-rules.md). The `[ai]` section has its own page: [AI settings](ai-settings.md).
 
@@ -32,15 +32,19 @@ Product rules are **deliberately not here**. See [Product rules](../concepts/pro
 
 ## Sections
 
-### `[reminders]`
-| Key | Value | Status | Meaning |
-|---|---|---|---|
-| `milestones_hours_before_meeting` | `[168, 72, 24, 4, 2]` | RESERVED | Digest milestones; no backfill |
-| `recipients` | `["leaver", "organizer"]` | RESERVED | Who gets each digest |
-| `send_as_digest` | `true` | RESERVED | One email per person per milestone |
-| `job_interval_minutes` | `60` | RESERVED | Matches Cloud Scheduler `0 * * * *` |
-| `proxy_max_reminders` | `3` | WIRED | Reminders to a silent proxy before the organizer simply decides |
-| `organizer_alert_hours` | `24` | WIRED | Under-24-hour alert for meetings still needing action |
+### `[reminders]` (WIRED; the hourly job, company area only)
+| Key | Value | Meaning |
+|---|---|---|
+| `milestones_hours_before_meeting` | `[168, 72, 24, 4, 2]` | Milestones for an undecided key meeting; each sent once per card, no backfill |
+| `recipients` | `["leaver", "organizer"]` | Who gets each milestone digest |
+| `send_as_digest` | `true` | One email per person per run, listing all their meetings |
+| `job_interval_minutes` | `60` | Documents the Cloud Scheduler interval (`0 * * * *`); the job itself does not read it |
+| `proxy_max_reminders` | `3` | Reminders to a silent proxy before the organizer simply decides |
+| `organizer_alert_hours` | `24` | Under-24-hour alert for meetings still needing action; the organizer's 24-hour milestone is skipped, so there is no double email |
+| `invitee_alert_hours` | `2` | The organizer and another key person are out: invitees who are not out are told once, 1–2 hours before |
+
+### `[input]` (WIRED; checked by the server, and `maxLength` in the web forms via `web/src/limits.js`)
+`title_max_chars = 150`, `agenda_max_chars = 3000`, `proxy_note_max_chars = 2000` (room for the longest Draft with AI brief), `summary_max_chars = 5000`. A longer text is refused with "The title is N characters long. Please keep it to 150." The server also refuses a meeting that starts in the past and an absence that is already over.
 
 ### `[urgency]` (WIRED)
 `soon_hours = 48` (amber chip) and `urgent_hours = 24` (red "act now").
@@ -68,7 +72,7 @@ Product rules are **deliberately not here**. See [Product rules](../concepts/pro
 - `plan_statuses = ["auto_handled", "proceeding_without", "attending", "proxy_accepted", "rescheduled", "cancelled"]`
 - `at_risk_minutes_per_invitee = 5`
 - `[metrics.minutes_saved_per_invitee]`: `proxy_accepted 5`, `rescheduled 5`, `cancelled 5`, `proceeding_without 0`, `attending 0`, `auto_handled 0`. Only a wasted start is counted.
-- `[metrics.projection]`: `company_sizes [500, 5000, 50000]`, `leave_days_per_year 25`, `key_meetings_per_leave_day 2`, `hourly_cost 50`, `currency "$"`, `min_meetings_measured 5`, and the fallbacks used until enough meetings are measured: `fallback_share_closed_early 0.6`, `fallback_share_went_ahead 0.4`, `fallback_people_per_meeting 6`, `fallback_days_waiting_avoided 2`.
+- `[metrics.projection]`: `company_sizes [1000, 10000, 50000]`, `leave_days_per_year 25`, `key_meetings_per_leave_day 1` (senior roles have more), `hourly_cost 50`, `currency "$"`, `min_meetings_measured 5`, and the fallbacks used until enough meetings are measured: `fallback_share_closed_early 0.6`, `fallback_share_went_ahead 0.4`, `fallback_people_per_meeting 6`, `fallback_days_waiting_avoided 2`.
 
 See [Metrics](../architecture/metrics.md).
 
@@ -79,7 +83,7 @@ See [Metrics](../architecture/metrics.md).
 | `decision_words` | `decid`, `decision`, `approve`, `owns`, `owner`, `action item`, `to confirm`, `sign off`, `sign-off` |
 | `hosting_words` | `host`, `emcee`, `speaker`, `presenter`, `moderator`, `organis`, `organiz`, `committee`, `co-ordinat`, `coordinat`, `keynote`, `guest`, `panel` |
 | `large_meeting_required_threshold` | `35` (was 15). More required invitees than this makes a large event |
-| `small_meeting_max_people` | `3`. At or below this the organizer is the counterpart, never the proxy |
+| `small_meeting_max_people` | `3`. At or below this the organizer is the counterpart, never the proxy. In a one-to-one (two people) the other person is never the proxy, whoever organized it |
 | `min_proxy_score_for_high_confidence` | `10` |
 
 ### `[proxy_ranking]` (WIRED)

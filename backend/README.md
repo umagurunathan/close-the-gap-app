@@ -63,9 +63,6 @@ WEB_APP_URL=https://your-web-app
 
 An older optional proxy ranker inside the rule-based fallback (`LLM_PROVIDER=vertex`, `VERTEX_AI_LOCATION`, `GEMINI_MODEL`) is off by default and not used by the live app.
 
-## Google Meet transcripts (hidden in the app)
-The organizer can link a Meet URL to a meeting, connect their Google account (scope `meetings.space.readonly`) and import the transcript as a meeting summary, choosing who may read it. The endpoints work; the web app hides the button for now (`SHOW_MEET_IMPORT` in `web/src/components/Summaries.jsx`). It needs the Google Meet REST API, `GOOGLE_OAUTH_REDIRECT_URI` for its callback, and the same OAuth client and encryption key.
-
 ## Test it
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
@@ -87,7 +84,6 @@ The organizer can link a Meet URL to a meeting, connect their Google account (sc
 | `app/firestore.py` | Firestore helpers and the per-request read cache |
 | `app/firebase_auth.py` | Firebase ID-token check and the match to one directory person |
 | `app/google_calendar.py` | Google Calendar OAuth, encrypted token storage, event import and updates |
-| `app/google_meet.py` | Google Meet OAuth and transcript import |
 | `app/seed.py` | Builds the two areas; **Reset demo data** |
 | `app/notify.py` | Email outbox (stand-in for real email) |
 | `agents/orchestrator.py` | How each card is analysed: rules when the AI is off or for a large event; otherwise the ADK agent, then (if it fails) one Gemini call with retries, then the rules; the checks run on any AI answer |

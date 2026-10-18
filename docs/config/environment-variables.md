@@ -9,7 +9,6 @@ sources:
   - resource: ../../backend/app/settings.py
   - resource: ../../backend/app/firebase_auth.py
   - resource: ../../backend/app/google_calendar.py
-  - resource: ../../backend/app/google_meet.py
   - resource: ../../backend/.env.example
   - resource: ../../web/.env.example
   - resource: ../../web/src/firebase.js
@@ -29,16 +28,15 @@ Tunable numbers are not env vars; they live in [settings.toml](settings-toml.md)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `STORE` | `memory` | `memory` or `firestore`. **On Cloud Run (`K_SERVICE` set) anything but `firestore` fails startup** |
+| `STORE` | `firestore` | `firestore` (the app always runs on it), or `memory`, which only the tests and CI set. **On Cloud Run (`K_SERVICE` set) anything but `firestore` fails startup** |
 | `SEED_PATH` | `seed/seed.json` | The demo seed, relative to `backend/` |
-| `NOW` | real clock | Fixed "now" (ISO) for **tests and local runs only**. Ignored on Cloud Run. `.env.example` sets `2026-10-11T09:00:00Z`; the tests use `2026-11-08T09:00:00Z`. The company area always uses the real clock |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
 | `GOOGLE_CLOUD_PROJECT` (or `GCLOUD_PROJECT`) | none | The GCP project for Vertex AI (billing) and Firestore. The AI clients read `GOOGLE_CLOUD_PROJECT` |
 | `AI_ENABLED` | from settings (`true`) | Overrides `[ai] enabled` |
 | `AI_MODEL` | from settings | Overrides `[ai] model` |
 | `STORE_REQUEST_CACHE` | from settings (`true`) | Overrides `[store] request_cache` |
 | `SETTINGS_PATH` | `config/settings.toml` | Load a different settings file |
-| `K_SERVICE` | set by Cloud Run | Detects Cloud Run: forces Firestore and ignores `NOW` |
+| `K_SERVICE` | set by Cloud Run | Detects Cloud Run: forces Firestore |
 
 ## Backend: Firestore and areas
 
@@ -57,17 +55,16 @@ Tunable numbers are not env vars; they live in [settings.toml](settings-toml.md)
 | `FIREBASE_PROJECT_ID` | no | Required when auth is on; the token audience |
 | `COMPANY_DIRECTORY` | **yes** (real names and emails) | JSON list `[{id, name, email, title, department, managerId}]`. Each entry needs `id` and `email` |
 
-## Backend: Google Calendar and Meet
+## Backend: Google Calendar
 
 | Variable | Secret? | Meaning |
 |---|---|---|
 | `GOOGLE_CALENDAR_ENABLED` | no | `true` enables hosted Calendar (also needs Firebase auth and Firestore) |
 | `GOOGLE_CALENDAR_REDIRECT_URI` | no | `https://<cloud-run-url>/integrations/google-calendar/callback` |
 | `GOOGLE_CALENDAR_LOCAL_DEMO_ONLY` | no | Loopback-only local mode (memory store). **Never on Cloud Run** |
-| `GOOGLE_OAUTH_CLIENT_ID` | **yes** | OAuth web client (Calendar and Meet) |
+| `GOOGLE_OAUTH_CLIENT_ID` | **yes** | OAuth web client |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | **yes** | OAuth client secret; also signs the OAuth state |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | **yes** | Fernet key used to encrypt refresh tokens at rest |
-| `GOOGLE_OAUTH_REDIRECT_URI` | no | Meet OAuth callback |
 | `WEB_APP_URL` | no | Where OAuth callbacks redirect back to (default `http://localhost:5173`) |
 
 Generate a Fernet key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
@@ -92,7 +89,6 @@ If either is empty, **the job refuses every call** (it fails closed).
 | `VITE_API_URL` | Backend base URL (default `http://localhost:8000`; on Cloud Run, the service URL) |
 | `VITE_FIREBASE_AUTH_ENABLED` | `"true"` turns on Sign in with Google |
 | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Firebase web config. **Public browser configuration, not secrets**; all four are required when auth is on |
-| `VITE_DEMO_API_URL` | Listed in `.env.example` but **not read by any code** (see [Known quirks](../operations/known-quirks.md)) |
 
 ## Related
 - [Deployment](../operations/deployment.md)

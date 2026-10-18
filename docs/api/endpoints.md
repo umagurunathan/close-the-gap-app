@@ -100,17 +100,6 @@ The live, try-it-in-the-browser reference is **`/docs`** on a running backend (`
 | `GET /integrations/google-calendar/callback` | public, hidden | 303 to `WEB_APP_URL?calendar=connected\|error` |
 | `POST /integrations/google-calendar/sync` | signed in + Calendar check | `{added, updated, skipped, affectedItems}` |
 
-## Google Meet (company area; hidden in the UI)
-
-| Method & path | Identity | Returns |
-|---|---|---|
-| `GET /integrations/google-meet/status` | me (guests get false) | `{configured, connected}` |
-| `GET /integrations/google-meet/authorize` | signed in | `{authorizationUrl}` |
-| `GET /integrations/google-meet/callback` | public, hidden | 303 to `?meet=connected\|error` |
-| `GET /items/{item_id}/meet` | me | `MeetStatus {meetUrl, configured, connected}` |
-| `PUT /items/{item_id}/meet` | signed in (organizer) | `MeetLinkUpdate {meetUrl}` → `MeetStatus` |
-| `POST /items/{item_id}/meet/import` | signed in (organizer) | `TranscriptImportRequest {sharedWith}` → `Note` |
-
 ## Demo and dev
 
 | Method & path | Identity | Returns | Notes |

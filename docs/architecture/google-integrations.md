@@ -1,12 +1,11 @@
 ---
 type: Architecture Component
-title: Google Calendar and Google Meet integrations
-description: Per-person Calendar OAuth, encrypted tokens, event import and write-back (create, move, cancel, add attendee) for the company area, and the hidden Meet transcript import.
+title: Google Calendar integration
+description: Per-person Calendar OAuth, encrypted tokens, event import and write-back (create, move, cancel, add attendee) for the company area.
 resource: ../../backend/app/google_calendar.py
-tags: [google-calendar, google-meet, oauth, integration, company-area]
+tags: [google-calendar, oauth, integration, company-area]
 sources:
   - resource: ../../backend/app/google_calendar.py
-  - resource: ../../backend/app/google_meet.py
   - resource: ../../backend/app/service.py
   - resource: ../../backend/app/main.py
   - resource: ../../backend/README.md
@@ -14,9 +13,9 @@ generated: {by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z}
 timestamp: 2026-10-18T00:00:00Z
 ---
 
-# Google Calendar and Google Meet integrations
+# Google Calendar integration
 
-Both integrations belong to the **company area only**. `create_app` binds them to `company_svc`. Each person authorises **their own** account: there is no domain-wide or admin access.
+The integration belongs to the **company area only**. `create_app` binds it to `company_svc`. Each person authorises **their own** account: there is no domain-wide or admin access.
 
 ## Google Calendar (`app/google_calendar.py`)
 
@@ -44,7 +43,7 @@ The web app also runs it once automatically after connecting.
 |---|---|
 | `eventType` in `NOT_MEETINGS` (`outOfOffice`, `focusTime`, `workingLocation`, `birthday`) | Not a meeting. Skipped, and an earlier import is removed with its cards. **An out-of-office entry is not read as an absence** |
 | `status = cancelled` | The matching event is cancelled. Open cards become `cancelled` (`decidedBy = "system"`) and requests are withdrawn |
-| An event already in the app (same local id or `googleEventId`) | Updated, not imported twice. It keeps its notes and Meet URL. Each card's snapshot follows. A rescheduled card's `rescheduledTo` follows Google's time |
+| An event already in the app (same local id or `googleEventId`) | Updated, not imported twice. It keeps its notes. Each card's snapshot follows. A rescheduled card's `rescheduledTo` follows Google's time |
 | A new event | Imported (`calendar_event`). The organizer must be the owner or a directory person; attendees are matched by email; unknown people are dropped; all-day dates become midnight UTC. Local id is `gcal:` + sha256 of iCalUID (+ original start) |
 
 - Each imported or updated event is then checked with `_scan_event` (someone already out → cards and an organizer email).
@@ -66,17 +65,6 @@ Integration errors become **HTTP 503** (`CalendarIntegrationError`).
 **Limits:**
 - Sync is on demand; there are no push notifications.
 - Reschedule suggestions use the app's stored meetings, not a free/busy query.
-
-## Google Meet transcripts (`app/google_meet.py`): built, hidden
-
-- The organizer links a Meet URL to a meeting (`PUT /items/{id}/meet`). It must be `https://meet.google.com/<code>`.
-- The organizer connects with scope `meetings.space.readonly`. The callback is `GOOGLE_OAUTH_REDIRECT_URI`, and the same OAuth client and Fernet key are used.
-- `POST /items/{id}/meet/import` picks a transcript:
-  - the conference record closest to the meeting time, within ±2 h;
-  - its latest `FILE_GENERATED` transcript.
-
-  The transcript is stored as a meeting summary with readers chosen by the organizer (invitees only). Importing again replaces it.
-- The web app hides the button (`SHOW_MEET_IMPORT = false` in `web/src/components/Summaries.jsx`), because transcripts exist only on paid Workspace accounts. The endpoints work.
 
 ## Related
 - [Schedule a meeting flow](../flows/schedule-a-meeting.md)

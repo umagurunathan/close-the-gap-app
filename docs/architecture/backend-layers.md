@@ -23,7 +23,7 @@ HTTP ──> app/main.py ──> app/service.py (Service) ──┬─> agents/ 
 ```
 
 - **`app/main.py` is thin.** It handles routing, picks the area, resolves identity (`me`), applies rate limits, checks the Calendar request, and maps errors. It also orchestrates the Google Calendar write that must happen *before* a local change, as in `POST /events`.
-- **`app/service.py` holds every rule** (`Service`). It can be tested without a web server; most of the 142 tests call it directly.
+- **`app/service.py` holds every rule** (`Service`). It can be tested without a web server; most of the 150 tests call it directly.
 - **Adapters** (`SimCalendar` / `FirestoreCalendar`, `InMemoryStore` / `FirestoreStore`) share one interface each, so the storage backend is a config switch (`STORE`).
 - **`agents/`** is the only place that talks to Gemini. Its one entry point is `agents/orchestrator.analyze`.
 
@@ -52,7 +52,6 @@ Messages are written in plain language for the end user. The web app shows `deta
 | `app/firestore.py` | Firestore client, model encoding, per-request read cache |
 | `app/firebase_auth.py` | ID-token middleware and the match to one directory person |
 | `app/google_calendar.py` | Calendar OAuth, encrypted tokens, import and write-back |
-| `app/google_meet.py` | Meet OAuth and transcript import (hidden in the UI) |
 | `app/limits.py` | `RateLimiter`, `visitor_key` |
 | `app/notify.py` | `OUTBOX`, `send_email` (in memory, not sent) |
 | `app/seed.py` | `build_service`, `build_company_service`, `reset_demo`, past-week replay |
@@ -72,10 +71,10 @@ Messages are written in plain language for the end user. The web app shows `deta
 1. Refuse to start if the demo and company workspace ids are equal.
 2. Build `demo_svc` (`build_service`) and `company_svc` (`build_company_service`). Tests pass one service, used for both.
 3. If the AI is on and `[ai] warm_up_on_start` is set, start a daemon thread that makes one tiny Gemini call.
-4. Bind the Meet and Calendar integrations to the company area only.
+4. Bind the Calendar integration to the company area only.
 5. Install the Firebase middleware and CORS (`CORS_ORIGINS`).
 
-On Cloud Run, `config.store_kind()` raises unless `STORE=firestore`. A lost setting therefore fails the new revision while the last good one keeps serving.
+`config.store_kind()` defaults to Firestore, and on Cloud Run it raises for any other value, so the last good revision keeps serving instead of one that would lose data.
 
 ## Related
 - [Endpoints](../api/endpoints.md)

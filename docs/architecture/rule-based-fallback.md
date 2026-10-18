@@ -42,7 +42,7 @@ It reads only the viewer's visible notes. It runs in this order:
 | 9 | No summaries; the top candidate has a reporting-line link | `proxy` / low |
 | 10 | Nothing | `reschedule` / low, `needsHumanChoice` |
 
-In every step the small-meeting counterpart organizer is removed from the ranking. The second choice is the next-ranked person, if their score is above 0. **Recurrence is deliberately not used.**
+In every step the other side of the meeting (`roles.counterparts`: the organizer of a small meeting, or the other person in a one-to-one) is removed from the ranking. A **one-to-one** with nobody left to rank goes straight to `key_meeting` / `reschedule` / high: "A one-to-one with {name}: nobody else is in it to stand in for {first name}, so it needs a new time, or to be canceled." The second choice is the next-ranked person, if their score is above 0. **Recurrence is deliberately not used.**
 
 What the rules **cannot** read, and the reason the AI exists:
 - "no decisions" vs "decision";
@@ -72,7 +72,7 @@ The handover note without AI. It uses the summary sentences that mention the abs
 - rejects any person who is not a candidate;
 - rejects any evidence quote that is not an exact substring of a supplied note.
 
-The live app does not use it. Its model and region defaults differ from `[ai]`. See [Known quirks](../operations/known-quirks.md).
+The live app does not use it. Its model and region defaults differ from `[ai]`. See [Known behaviours](../operations/known-behaviours.md).
 
 ## Related
 - [Recommendation pipeline](recommendation-pipeline.md)

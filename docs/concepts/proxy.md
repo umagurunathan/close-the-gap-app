@@ -24,10 +24,12 @@ A **proxy** attends a meeting in the absent person's place, briefed with a hando
 
 | Source | Allowed |
 |---|---|
-| A person choosing in the panel | **Anyone in the directory**, invited or not, except groups, the absent person, and anyone out that day (`apply_action` checks all three) |
-| The AI suggesting | Only from `candidates_for`: invitees and the organizer, excluding the absent person, groups, the small-meeting counterpart organizer, and people out that day. At most `[ai] max_candidates` (20) are shown to the AI, ranked: named in summaries, then reporting line, then organizer, then the rest |
+| A person choosing in the panel | **Anyone in the directory**, invited or not, except groups, the absent person, anyone out that day, and, in a one-to-one, the other person (`apply_action` checks all four: "This is a one-to-one with Dev, so Dev can't stand in…") |
+| The AI suggesting | Only from `candidates_for`: invitees and the organizer, excluding the absent person, groups, the other side of the meeting (the other person in a one-to-one; the organizer of a small meeting), and people out that day. At most `[ai] max_candidates` (20) are shown to the AI, ranked: named in summaries, then reporting line, then organizer, then the rest |
 
 The AI also names a **second choice** (`backupProxyId`), which is ready if the first declines. Guard rule 1 drops any suggestion that is not a valid, available candidate, and promotes the backup when it is valid.
+
+**A one-to-one has nobody to stand in** (Priya's 1:1 with Dev: Dev can't cover a meeting with himself). The card recommends **reschedule** ("A one-to-one with Dev Nair: nobody else is in it to stand in for Priya…"), the panel's suggestions leave Dev out, the directory search shows him disabled with the reason ("it's a one-to-one with them, so they can't stand in"), and the person can still search the directory for someone else, such as their manager.
 
 ## The proxy panel's order (`rank_proxies`)
 
@@ -47,7 +49,7 @@ Each candidate also gets a plain-words reason, for example "Mentioned in an earl
 1. **Send** (`apply_action(..., proxy, proxyId, note, noteFromAi)`):
    - The card becomes `proxy_requested`.
    - Any earlier pending or accepted request for this card is **withdrawn**. An already-accepted proxy is emailed "You no longer need to cover…".
-   - A `ProxyRequest` (`pr_…`) is created, and the proxy is emailed "Can you cover '…' for X?" with the note and a line about whether they can open the summaries.
+   - A `ProxyRequest` (`pr_…`) is created, and the proxy is emailed "Can you cover '…' for X?" with the note (at most `[input] proxy_note_max_chars`, 2,000 characters) and a line about whether they can open the summaries.
    - If `noteFromAi` is true, the AI draft's source summaries must be readable by this proxy, or the request is refused.
 2. **An outside proxy** (not invited) is added to *this one meeting* as an **optional** attendee, so they never become a key person (`_add_proxy_to_meeting`):
    - For a Google event, the Google invite is updated first.

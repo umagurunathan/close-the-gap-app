@@ -41,6 +41,8 @@ A card holds:
 | `declinedProxyIds` | Who declined to cover, in order (filled in when the card is viewed) |
 | `decidedBy` | Person id, or `"system"` (for example cancelled in Google Calendar) |
 | `organizerAlerted` | The organizer was already emailed, so the under-24-hour alert is not repeated |
+| `milestonesSent` | The reminder milestones (hours before the start, for example `[168, 72]`) already passed for this card, so none is sent twice |
+| `inviteesAlerted` | The invitees were already told that the organizer and another key person are out |
 | `createdAt`, `updatedAt` | Timestamps |
 
 These fields are **computed per viewer** at list time and never stored (`Service._view`):

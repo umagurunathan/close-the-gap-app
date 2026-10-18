@@ -23,7 +23,8 @@ Code identifiers are in `code`. The UI, the code and the comments sometimes use 
 | **Area**, **workspace** | One of two isolated data partitions: **demo** (guests acting as sample people) and **company** (signed-in directory members). Comments say "area"; the config and Firestore say "workspace" (`FIRESTORE_DEMO_WORKSPACE_ID`, `FIRESTORE_WORKSPACE_ID`, `workspaceId`). See [Areas](../concepts/areas.md). |
 | **Card**, **item** | One `MeetingItem` per *(affected meeting, absent person)*. The UI says "card"; the API and code say "item" (`/items`). See [Meeting card](../concepts/meeting-card.md). |
 | **Meeting**, **event** | A calendar event (`CalEvent`). A card holds a snapshot of it in `EventRef`. |
-| **Organizer side** | The meeting's organizer, plus that organizer's manager when the organizer is the absent person on a sudden absence (`_organizer_side`, `organizer_decider`). |
+| **Organizer side** | The meeting's organizer, also when the organizer is the one who is out (`_organizer_side`, `organizer_decider`). Only the organizer can move or cancel a meeting. |
+| **One-to-one** | A meeting of exactly two people. The other person can never stand in for the one who is out, so the card recommends reschedule unless someone else is chosen (`roles.is_one_to_one`, `roles.counterparts`). |
 | **Decider** | The person emailed and expected to decide. For a `leaver` card it is the absent person; otherwise it is the organizer side (`_decider`). Both sides may still act. See [Permissions](../concepts/permissions.md). |
 | **Key person** | Someone whose absence needs a decision. Normally the organizer and every required invitee. In a **large event**, only the organizer and people with a **hosting role**. See [Key people](../concepts/key-people.md). |
 | **Large event** | A meeting sent to a distribution list (`inviteGroup`), or one with more than 35 required invitees. |

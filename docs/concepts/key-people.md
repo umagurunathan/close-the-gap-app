@@ -33,13 +33,15 @@ These are **meeting roles**, not user roles. There is no admin or manager role s
 | `is_named_in(event, person, notes)` | Whole-word first name, or full name, in the title, description or visible summaries |
 | `people_count(event)` | The organizer plus every invitee, required or optional |
 | `organizer_is_counterpart(event, absent_id)` | The organizer is not the absent person and the meeting has ≤ `small_meeting_max_people` (3) people. The organizer is then **the other side** of the meeting (a KT *from* Priya *to* Arjun, organized by Arjun) and is never suggested as the absent person's proxy |
+| `is_one_to_one(event)` | Exactly two people, the organizer included |
+| `counterparts(event, absent_id)` | Who is on the other side and so can't stand in: in a one-to-one, the other person, whoever organized it; in another small meeting, the organizer (unless the organizer is the one who is out) |
 | `key_people(event, people)` | Normal meeting: the organizer plus all required invitees. Large event: the organizer plus required invitees with a hosting role |
 
 ## Consequences
 
 - **Who gets a card.** An absence scan creates a card for every meeting where the person is the organizer or a required invitee. In a large event, an ordinary attendee still gets a card, but it is a quiet one (`org_event`, auto-handled). Only the organizer and hosts need a decision.
 - **Who must be free for a reschedule.** `find_slot` uses `key_people`. See [Reschedule search](../architecture/reschedule-search.md).
-- **Who may be a proxy candidate for the AI.** The candidates are invitees and the organizer, minus the absent person, groups, the small-meeting counterpart, and anyone out that day (`candidates_for` in `agents/recommender_ai.py`).
+- **Who may be a proxy candidate for the AI.** The candidates are invitees and the organizer, minus the absent person, groups, the `counterparts`, and anyone out that day (`candidates_for` in `agents/recommender_ai.py`). A one-to-one therefore has no candidates, and its card recommends reschedule.
 - **Distribution lists are never expanded.** A group (`isGroup: true`, for example `p_events`) is never offered as a proxy.
 
 ## Related

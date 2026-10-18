@@ -25,8 +25,7 @@ This rule is **load-bearing** and deliberately **not configurable** (see [Produc
 - the **organizer** sees all of the meeting's notes;
 - anyone else sees only notes whose `sharedWith` contains their id.
 
-The organizer chooses `sharedWith` when adding a summary. It must be a subset of the invitees (`Service.add_meeting_note`). Imported Meet transcripts follow the same rule.
-
+The organizer chooses `sharedWith` when adding a summary. It must be a subset of the invitees (`Service.add_meeting_note`).
 ## Where it is applied
 
 | Place | How |

@@ -25,10 +25,10 @@ timestamp: 2026-10-18T00:00:00Z
 ## Page layout (top to bottom)
 
 1. **Top strip**:
-   - Guests see **Demo controls**: the eight personas to "View as", **More…** (people with work right now, from `/people/active`), **Demo guide**, **Reset demo data** (with a confirm step, `POST /dev/reset-demo`), "Last reset: …", and **Emails (n)**.
+   - Guests see **Demo controls**: the eight personas to "View as", **More…** (people with work right now, from `/people/active`), **Demo guide** (with a note at the top, "Want to try your own scenario?", saying the sample data is only there to get started and pointing to the Report an absence and Schedule a meeting features), **Reset demo data** (with a confirm step, `POST /dev/reset-demo`), "Last reset: …", and **Emails (n)**.
    - Signed-in people see "Signed in as …", Emails and Sign out.
 2. **Header**: logo and tagline, **Sign in with Google**, and, when signed in, **Connect / Sync Google Calendar**.
-3. **Absence banner**: "Priya, you're out 17 – 19 Nov. N affected meetings need you." With several absences there is a pager (‹ 1 of 2 ›, or a swipe on touch devices).
+3. **Absence banner**: "Priya, you're out 17 – 19 Nov. N affected meetings need you." With several absences there is a pager (‹ 1 of 2 ›).
 4. **Impact band**: see [Metrics](metrics.md). It can be folded to one line.
 5. **Tabs**: **Attendee Mode**, **Organizer Mode**, **Proxy Requests**, **Past**. Each tab has a badge "N need action", red if any card is urgent. On the right are **＋ Schedule a meeting** and **Report an absence**.
 
@@ -65,11 +65,11 @@ The **recommended action leads** only while the card is still undecided: it is p
 |---|---|---|
 | `ProxyPanel` | Choose a proxy: invitees ranked with reasons and AI first/second choice, or **search the directory** (people out that day are disabled; not-invited people are marked and added as optional). **Draft with AI**, then edit and **Send** | `GET /items/{id}/proxy-candidates`, `GET /directory?q=&day=`, `GET /items/{id}/note-draft/available`, `POST /items/{id}/note-draft`, `POST /items/{id}/action` |
 | `ReschedulePanel` | "Proposed: {when}… Everyone who is out will be back, and every key person is free", or pick a date and time in IST. With no slot it opens in pick mode | `POST /items/{id}/action` or `POST /meetings/{id}/action` with `start` |
-| `Summaries` | "Summaries & agenda" for invitees. The organizer adds a summary and picks its readers. The Meet import button is hidden (`SHOW_MEET_IMPORT = false`) | `GET /items/{id}/agenda`, `GET /items/{id}/notes`, `POST /items/{id}/notes` |
-| `ScheduleMeeting` | Title, agenda (the AI reads it), date, start in IST, duration, invitees (Required/Optional). If someone is out, the app jumps to Organizer Mode on the new card | `POST /events` |
-| Report an absence (in `App.jsx`) | Your own absence only; dates default to today+14 and +15 | `POST /absences` |
+| `Summaries` | "Summaries & agenda" for invitees. The organizer adds a summary and picks its readers. | `GET /items/{id}/agenda`, `GET /items/{id}/notes`, `POST /items/{id}/notes` |
+| `ScheduleMeeting` | Title (up to 150 characters), agenda (the AI reads it; up to 3,000), date (today or later), start in IST, duration, invitees (Required/Optional). If someone is out, the app jumps to Organizer Mode on the new card | `POST /events` |
+| Report an absence (in `App.jsx`) | Your own absence only; dates default to today+14 and +15; "To" cannot be before "From" or today | `POST /absences` |
 | `DemoGuide` | The three-minute story and "Also try" personas | — |
-| `CompanyScale` | The company-scale table with formulas | `GET /metrics/projection` |
+| `CompanyScale` | "At company scale, per year (illustrative)": one meeting first (6 people × 5 minutes), then the table for 1,000 / 10,000 / 50,000 people with each row's formula, and a disclaimer listing every assumption | `GET /metrics/projection` |
 
 ## AI display pieces (`aiBits.jsx`)
 

@@ -33,7 +33,7 @@ All shapes are pydantic models. **Field names are camelCase on purpose**: they a
 
 **`CalEvent`** (calendar): `id`, `seriesId?`, `title`, `description` (the agenda), `start`, `end`, `organizerId`, `attendees: [EventAttendee {personId, optional}]`, `inviteGroup?`, `meetUrl?`, `googleEventId?`, `googleCalendarOwnerId?`, `notes: [Note]`, `cancelled`.
 
-**`Note`** (meeting summary): `docId`, `modifiedAt`, `text`, `sharedWith: [personId]`, `source?` (for example `google_meet_transcript`), `sourceId?`.
+**`Note`** (meeting summary): `docId`, `modifiedAt`, `text`, `sharedWith: [personId]`, `source?`, `sourceId?`.
 
 **`Absence`**: `id`, `personId`, `start`, `end`, `type`, `source`, `enteredBy`, `createdAt`.
 
@@ -41,7 +41,8 @@ All shapes are pydantic models. **Field names are camelCase on purpose**: they a
 - `absenceId`, `absentPersonId`, `ownerRole`
 - `event: EventRef`, `kind`, `ai: AiResult`, `status`
 - `chosenAction`, `chosenProxyId`, `rescheduledTo`, `originalStart`
-- `recommendedWhenDecided`, `aiWhenDecided`, `declinedProxyIds`, `decidedBy`, `organizerAlerted`
+- `recommendedWhenDecided`, `aiWhenDecided`, `declinedProxyIds`, `decidedBy`
+- reminder bookkeeping: `organizerAlerted`, `milestonesSent`, `inviteesAlerted`
 - timestamps
 - computed: `needsAttention`, `urgency`, `hoursToStart`
 
@@ -75,7 +76,7 @@ All shapes are pydantic models. **Field names are camelCase on purpose**: they a
 | Model | Fields |
 |---|---|
 | `AbsenceCreate` | `personId`, `start`, `end` (the type is derived by the server) |
-| `EventCreate` | `title`, `description`, `start`, `end`, `attendees` (UTC) |
+| `EventCreate` | `title`, `description`, `start`, `end`, `attendees` (UTC). The server refuses a start in the past and text over the `[input]` limits |
 | `AttendeeAdd` | `personId`, `optional` |
 | `ActionRequest` | `action`, `proxyId?`, `note?`, `noteFromAi`, `start?` (an organizer's picked time) |
 | `MeetingActionRequest` | `action`, `start?` |

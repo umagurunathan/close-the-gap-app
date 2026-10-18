@@ -20,7 +20,7 @@ timestamp: 2026-10-18T00:00:00Z
 
 - **Python 3.13**. On Windows, use the `py` launcher.
 - **Node.js 20** (the version CI uses) with npm.
-- For live Gemini: a Google Cloud project with the **Vertex AI API** enabled, and the **gcloud CLI**.
+- A Google Cloud project with the **Vertex AI API** (for Gemini) and a **Firestore** database (for the data), and the **gcloud CLI**. The app always runs on Firestore.
 
 ## 1. Backend (terminal 1, from `backend/`)
 
@@ -31,22 +31,18 @@ Copy-Item .env.example .env                                     # once
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-- API docs: <http://localhost:8000/docs>. Health: <http://localhost:8000/health>, which returns `{"ok": true, "store": "InMemoryStore"}`.
-- With the defaults from `.env.example`:
-  - `STORE=memory` loads the demo from the seed at start;
-  - `NOW=2026-10-11T09:00:00Z` fixes the clock.
-
-  Remove `NOW` to run on the real clock, as Cloud Run does.
+- API docs: <http://localhost:8000/docs>. Health: <http://localhost:8000/health>, which returns `{"ok": true, "store": "FirestoreStore"}`.
+- With the defaults from `.env.example`, `STORE=firestore`: the data lives in Firestore, and starting the backend writes nothing. Press **Reset demo data** once to load the sample data into the demo area. The clock is always the real clock, as on Cloud Run: there is no setting to fix it.
 - **Simulated sign-in** for API calls: send `X-Person-Id: p_priya`, or any demo id from [Seed world](../data/seed-world.md).
 - Emails are not sent. Read them at `GET /dev/outbox`.
 
 ### Live Gemini
 
-Gemini is **on by default** (`[ai] enabled = true`). For it to work:
-1. Put your project id in `.env` as `GOOGLE_CLOUD_PROJECT`.
-2. Sign in once with `gcloud auth application-default login`. There is no API key.
+Gemini is **always on** (`[ai] enabled = true`). Both Gemini and Firestore need:
+1. Your project id in `.env` as `GOOGLE_CLOUD_PROJECT`. If the Firestore database is in another project, also `FIRESTORE_PROJECT_ID`.
+2. One sign-in with `gcloud auth application-default login`, as an account that can use Vertex AI and Firestore (`roles/datastore.user`). There is no API key.
 
-Without these the app still starts. Cards keep the rules' answer and show "AI analyzing…", then "AI unavailable". To run fully offline and deterministically, set `AI_ENABLED=false` in `.env`.
+Without these the app cannot store data or reach Gemini. Only the automated tests run without Google Cloud: they use an in-memory store and the rules or fakes, and set that up themselves.
 
 ## 2. Web app (terminal 2, from `web/`)
 
@@ -63,9 +59,8 @@ npm run dev      # http://localhost:5173
 
 | Feature | How |
 |---|---|
-| Firestore | `STORE=firestore`, `GOOGLE_CLOUD_PROJECT`, `FIRESTORE_DATABASE` (and `FIRESTORE_PROJECT_ID` if the database is in another project), plus ADC credentials. Use **Reset demo data** to load the demo, because startup writes nothing |
 | Sign in with Google | `FIREBASE_AUTH_ENABLED=true`, `FIREBASE_PROJECT_ID`, `COMPANY_DIRECTORY` in `.env`, and the `VITE_FIREBASE_*` values in `web/.env.local` |
-| Google Calendar | Loopback-only mode: `GOOGLE_CALENDAR_LOCAL_DEMO_ONLY=true`, `STORE=memory`, a `http://localhost:8000/...` redirect URI, and the OAuth client and Fernet key |
+| Google Calendar | `GOOGLE_CALENDAR_ENABLED=true` with Firebase sign-in, a redirect URI, and the OAuth client and Fernet key (an in-memory loopback mode, `GOOGLE_CALENDAR_LOCAL_DEMO_ONLY`, exists for isolated tests only) |
 | Reminder job | `RUN_REMINDERS_AUDIENCE=http://localhost:8000/jobs/run-reminders` and `REMINDERS_SCHEDULER_SA`. See [Reminder job](reminder-job.md) |
 
 All variables are listed in [Environment variables](../config/environment-variables.md).
@@ -75,7 +70,7 @@ All variables are listed in [Environment variables](../config/environment-variab
 1. Open the web app. You are Priya, and the banner says she is out 17–19 Nov.
 2. Attendee Mode lists her affected meetings. Stand-ups are under **No action needed**.
 3. Open **Q4 Budget Review**. With Gemini working, the source pill says "Gemini · ADK agent" after a few seconds.
-4. Run the tests (see [Testing and CI](testing-and-ci.md)). All 142 should pass.
+4. Run the tests (see [Testing and CI](testing-and-ci.md)). All 150 should pass.
 
 ## Troubleshooting
 

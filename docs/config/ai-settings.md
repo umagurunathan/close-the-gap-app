@@ -47,7 +47,7 @@ Gemini goes through **Vertex AI**, with no API key. On Cloud Run the service acc
 |---|---|---|
 | `analyse_on_creation` | `false` | Cards start with the rules' answer, so creating an absence never waits |
 | `analyse_in_background_on_creation` | `true` | Queue the AI as soon as a card is created (from the absent person's view) |
-| `background` | `true` | Answer at once with the rules ("AI analysing…") and fill in the AI later. `false` = wait for the AI (the tests) |
+| `background` | `true` | Answer at once with the rules ("AI analyzing…") and fill in the AI later. `false` = wait for the AI (the tests) |
 | `background_workers` | `3` | Cards analysed in parallel. More gives faster pages but more risk of 429 |
 | `refresh_while_analysing_seconds` | `4` | How often the web app re-polls while a card is analysing |
 | `analysing_label_max_seconds` | `60` | After this a card shows "AI unavailable · rule-based suggestion" instead (was 20) |

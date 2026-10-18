@@ -91,7 +91,7 @@ On first load, `GET /settings/public` provides `pastDays`, `suddenNoticeHours`, 
 | `?as=p_sam` | Open the demo as that person |
 | `?tab=attendee\|organizer\|proxy\|past` | Open that tab. Otherwise the first tab with open work is chosen |
 | `?theme=purple\|blue\|clear\|google` | Override the theme from `[ui] theme` |
-| `?calendar=…`, `?meet=…` | OAuth return flags. Shown as a notice, then removed from the URL |
+| `?calendar=…` | OAuth return flag. Shown as a notice, then removed from the URL |
 
 Open the app at `http://localhost:5173`, not `127.0.0.1`: CORS and the OAuth redirect both name localhost.
 

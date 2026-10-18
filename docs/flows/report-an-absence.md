@@ -33,17 +33,17 @@ sequenceDiagram
     S-->>A: queue background analysis (absent person's view)
   end
   S->>S: email the absent person (if any card)
-  S->>S: sudden: email each organizer-side decider
+  S->>S: sudden: email each affected meeting's organizer (not the absent person)
   M->>S: cards_on_days(person, start, end)
   M-->>W: AbsenceReport {absence, affected, needDecision}
 ```
 
 ## Steps
 
-1. **The form** (`AddAbsence` in `App.jsx`) shows "Who is out" read-only as yourself, and dates default to today+14 and today+15. It notes that an absence starting within `suddenNoticeHours` counts as sudden.
+1. **The form** (`AddAbsence` in `App.jsx`) shows "Who is out" read-only as yourself, and dates default to today+14 and today+15. The "To" date cannot be before the "From" date or today. It notes that an absence starting within `suddenNoticeHours` counts as sudden.
 2. **`POST /absences`** with body `{personId, start, end}`. The backend refuses anyone but the caller (403), in both areas.
 3. **`Service.report_absence`**:
-   - checks the person exists and that `end >= start`;
+   - checks the person exists, that `end >= start`, and that the absence is not already over ("That absence is already over. Please choose dates from today onward.");
    - derives `type` ([planned or sudden](../concepts/absence.md));
    - saves an `Absence` (`a_…`).
 4. **`_scan(absence)`**, for each meeting from `calendar.events_in_window`: the person is the organizer or an attendee, the meeting is not cancelled, and its start date (UTC) is within the range.
@@ -56,7 +56,7 @@ sequenceDiagram
      - The AI analysis is **queued in the background**. It never delays the response, and it may later [raise](../concepts/meeting-kinds.md) the card.
 5. **Emails** (see [Notifications](../architecture/notifications-and-reminders.md)):
    - If any card was created, the absent person gets "You're out {when}: N meetings need a decision". If nothing is affected, no email is sent.
-   - **Sudden absence**: each organizer-side decider of the cards that need a decision gets "{name} is out suddenly…", and those cards are marked `organizerAlerted`.
+   - **Sudden absence**: the organizer of each meeting that needs a decision gets "{name} is out suddenly…", and those cards are marked `organizerAlerted`. The absent person is not emailed this about meetings they organize themselves.
    - **Planned leave**: organizers get no email now. They see the cards in Organizer Mode, and get the under-24-hour alert if nobody acts.
 6. **Response** (`AbsenceReport`):
    - `affected` is the number of the person's upcoming cards on those days, including cards created by earlier overlapping absences;

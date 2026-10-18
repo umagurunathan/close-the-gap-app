@@ -1,7 +1,7 @@
 ---
 type: Runbook
 title: Testing and CI
-description: How to run the 142 offline backend tests, how they isolate themselves (memory store, AI off or faked, fixed clock), what each test file covers, and the GitHub Actions workflow.
+description: How to run the 150 offline backend tests, how they isolate themselves (memory store, AI off or faked, a fixed test clock), what each test file covers, and the GitHub Actions workflow.
 resource: ../../backend/tests/test_flow.py
 tags: [testing, pytest, ci, github-actions]
 sources:
@@ -22,19 +22,19 @@ timestamp: 2026-10-18T00:00:00Z
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # once: adds pytest
-.\.venv\Scripts\python.exe -m pytest -q                             # all 142 tests
+.\.venv\Scripts\python.exe -m pytest -q                             # all 150 tests
 .\.venv\Scripts\python.exe -m pytest -q tests/test_flow.py::test_reschedule_keeps_time_of_day_and_avoids_leave   # one test
 ```
 
-There are no frontend tests or lint scripts. CI only builds the web app.
+There are no frontend unit tests or lint scripts. CI builds the web app and runs one browser smoke test (`web/e2e/smoke.py`, Playwright) against the running app.
 
 ## How the tests isolate themselves
 
 - `tests/conftest.py` runs before every test file and sets:
   - `STORE=memory`, even if your `.env` points at Firestore, so a test can never write to a real database;
   - `AI_ENABLED=false`;
-  - `NOW=2026-11-08T09:00:00Z` (Sunday 8 Nov 2026);
   - and it removes `FIRESTORE_PROJECT_ID` and `FIRESTORE_DATABASE`.
+- An autouse fixture in `conftest.py` gives every test a fixed clock, Sunday 8 Nov 2026, 9:00 UTC, by replacing `config.now`. The product itself has no setting that fixes the clock.
 - An autouse fixture in `test_flow.py` sets `[ai] engine = "genai"` and `background = False`, so every test waits for its (fake) AI answer.
 - **AI tests use fakes, never Google:**
   - `_FakeGemini` returns a ready answer for the single call;
@@ -46,7 +46,7 @@ There are no frontend tests or lint scripts. CI only builds the web app.
 
 | File | Tests | Themes |
 |---|---|---|
-| `test_flow.py` | 111 | Cards and grouping; proxy flow (accept, decline, replace, outside proxy, reminders); permissions; sudden and planned absences and alerts; scheduling while someone is out; privacy per viewer; reschedule and cancel (Google first, picked times, no slot); Calendar and Meet OAuth and sync; demo reset and areas; Cloud Run safety (Firestore required, real clock); rate limits; the legacy Vertex ranker; single-call prompt contents; every guard rule; retries, caching and background analysis; large events and optional invitees; the AI raising a card; ADK tools and checks; the handover brief; **prompt injection** (attacks flagged, normal agendas not flagged, no seed text flagged); metrics and projection |
+| `test_flow.py` | 119 | Cards and grouping; reminders (proxy reminders, milestone digests with no backfill, the organizer and invitee alerts); typed-input limits and no past dates; the one-to-one and small-meeting proxy rules; proxy flow (accept, decline, replace, outside proxy, reminders); permissions; sudden and planned absences and alerts; scheduling while someone is out; privacy per viewer; reschedule and cancel (Google first, picked times, no slot); Calendar OAuth and sync; demo reset and areas; Cloud Run safety (Firestore required, real clock); rate limits; the legacy Vertex ranker; single-call prompt contents; every guard rule; retries, caching and background analysis; large events and optional invitees; the AI raising a card; ADK tools and checks; the handover brief; **prompt injection** (attacks flagged, normal agendas not flagged, no seed text flagged); metrics and projection |
 | `test_run_reminders_auth.py` | 12 | OIDC on `/jobs/run-reminders`: missing, invalid or wrong tokens, an unverified email, Google unreachable, fails closed when unconfigured, company area only, passes the Firebase middleware |
 | `test_request_cache.py` | 7 | Each collection read once per request; a request sees its own writes; new requests see others' changes; copies, not shared objects; deletes; the two areas never share reads; switching the cache off |
 | `test_firebase_auth.py` | 7 | Verified email maps to exactly one directory person; cannot select another person; unmapped or unverified accounts are rejected; no token means a demo guest; CORS on auth errors; signed-in people cannot reset the demo and see only their own emails; the areas never mix |
@@ -64,6 +64,7 @@ It runs on every pull request and on pushes to `main`, with permissions `content
 |---|---|
 | `backend` | Python 3.13 (pip cache) → `pip install -r requirements-dev.txt` → `python -m pytest -q` with `AI_ENABLED=false` |
 | `web` | Node 20 (npm cache) → `npm ci` → `npm run build` |
+| `smoke` | Python 3.13 and Node 20 → install Playwright with Chromium → start the backend (memory store, AI off) and `vite preview` → wait for `/health` → `python web/e2e/smoke.py`: the demo loads, Q4 Budget Review recommends Meena, the company-scale panel opens labelled illustrative, the absence's "Who is out" is read-only, and there are no console errors |
 
 ## Adding a test
 

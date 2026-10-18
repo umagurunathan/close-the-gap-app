@@ -37,11 +37,11 @@ Each request is routed to exactly one area, and the two never mix. Comments call
 | Who | Guests sending `X-Person-Id: p_…`, which must be a demo person | Signed-in people whose verified email matches exactly one directory entry |
 | People | The 26 seed people | `COMPANY_DIRECTORY` (a JSON list from Secret Manager or the git-ignored `.env`) |
 | Meetings | Seed meetings, plus any scheduled in the app | Imported from each person's own Google Calendar, plus any scheduled in the app |
-| Clock | `config.now()`: the real clock; `NOW` is honoured only off Cloud Run | `config.real_now()`, always real |
+| Clock | `config.now()`: the real clock (the tests replace it with a fixed one) | `config.real_now()`, always real |
 | Firestore name | `FIRESTORE_DEMO_WORKSPACE_ID` (default `guest`) | `FIRESTORE_WORKSPACE_ID` (default `company`) |
 | Written by | Only **Reset demo data** | Only real people's own actions, including Calendar sync |
 | Demo-only endpoints | `POST /dev/reset-demo`, `POST /dev/simulate-leave-system` | — |
-| Company-only features | — | Google Calendar and Meet, `POST /jobs/run-reminders` |
+| Company-only features | — | Google Calendar, `POST /jobs/run-reminders` |
 
 ## Safety rails that keep the areas apart
 

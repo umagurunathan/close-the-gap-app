@@ -1,7 +1,7 @@
 ---
 type: Flow
 title: "Flow: build and reset the demo world"
-description: How the demo area is built from seed.json at start (memory) or by Reset demo data (Firestore), including the replayed past week and the forced sudden absence, and the safety checks around it.
+description: How the demo area is built from seed.json by Reset demo data (Firestore; in the tests and CI, at start in the in-memory store), including the replayed past week and the forced sudden absence, and the safety checks around it.
 resource: ../../backend/app/seed.py
 tags: [flow, demo, seed, reset]
 sources:
@@ -39,7 +39,7 @@ The web app asks for confirmation first.
 2. Everything linked to a demo person is deleted:
    - events from the seed, organized by demo people, or imported from a demo person's calendar;
    - their cards, absences, proxy requests and history;
-   - calendar and Meet connections.
+   - calendar connections.
 
    Real (company) people's data is untouched.
 3. The seed people (with their demo emails) and events are written again.

@@ -72,7 +72,7 @@ Times in the file are UTC. The UI shows IST (+5:30), so `04:00Z` displays as 9:3
 | Daily Stand-up ×5 (`evt_su_12/13/20/21/22`, series `series_standup`) | 9, 10, 17, 18, 19 Nov 04:00 | Dev | Summary: "status updates only… No decisions." Becomes a **team check-in, auto-handled** |
 | Release Readiness (`evt_release`) | 9 Nov 09:30 | Sam | Kiran's sudden absence. Notes are shared only with Kiran and Dev: "Kiran owns the go/no-go checklist. Dev backs up Kiran" |
 | Sprint Planning (`evt_sprint`) | 17 Nov 05:30 | **Priya** | Priya organizes and is out. Notes are shared with Meena, Dev and Kiran: "Priya approves the sprint scope." Dev **declines** in the demo story |
-| Q4 Budget Review (`evt_budget`) | 18 Nov 09:30 | Sam | "Priya owns the final vendor decision and sign-off. Meena to prepare the cost comparison." Becomes a **proxy: Meena** |
+| Q4 Budget Review (`evt_budget`) | 18 Nov 09:30 | Sam | "Priya owns the final vendor decision and sign-off; Meena is her named backup and signs off in her place when Priya is away." Becomes a **proxy: Meena** (5 of 5 real Gemini runs, high confidence) |
 | Site-wide Tech Talk (`evt_techtalk`) | 18 Nov 11:30 | Site Events Team (group, `inviteGroup: site-all`) | **Large event**: an org event, auto-handled, no AI (`rules_policy`) |
 | Vendor Contract Decision (`evt_vendor`) | 19 Nov 08:30 | Sam | **No summaries**: a proxy from the reporting line (Arjun), at low confidence |
 | Design Review (`evt_design`) | 19 Nov 11:00 | Meena | The summary is shared **only with Dev**, so Priya cannot open it (the privacy rule) |
@@ -110,7 +110,7 @@ These fill the impact band and the Past tab from the first load. See [Reset demo
 
 ## Why these dates, and how to move them
 
-- The demo runs on the **real clock** (Cloud Run ignores `NOW`).
+- The demo runs on the **real clock**, always.
 - The upcoming meetings are placed after the evaluation weeks (19 Oct – 6 Nov 2026), so they stay upcoming for the whole evaluation.
 - The test `seed_meetings_stay_upcoming_through_the_evaluation_and_kiran_stays_sudden` guards this.
 - **To move the sample data later**, add the same whole number of weeks to every date from 11 Oct 2026 onward, in `seed/seed.json` and in the tests, so weekdays stay the same. The past week and older summaries stay in the past.

@@ -23,7 +23,7 @@ Close the Gap keeps meetings productive when someone is out of office. When an a
 
 **A person always decides; the AI only proposes.**
 
-It was built for the **Google Cloud AI Builder Cup 2026**, in the category **Future of Work & Enterprise Productivity**. The live app is at <https://close-the-gap-2026.web.app>, and you can try it without signing in.
+It was built for the **Google Cloud AI Builder Cup 2026**, in the category **Future of Work & Enterprise Productivity**. The live app is at <https://close-the-gap-2026.web.app>, and you can try it without signing in. The sample data is just there to get you started: the **Report an absence** and **Schedule a meeting** features let you add your own leave and meetings and follow them through the full flow.
 
 ## The problem
 
@@ -65,7 +65,6 @@ Each card shows when **"AI changed the answer"** compared with simple keyword ru
 | "Weekly Ops Sync"; notes: *"Arjun signed off the two analyst roles; they cannot be posted without him"* | Routine sync, so go on without him | A sign-off depends on him, so it needs a decision |
 | *"status updates only, no decisions"* | Sees the word "decisions" | Reads the negation, so routine |
 | *"Acme's CFO will only commit to the renewal with Arjun on the call"* | Suggests a proxy | Someone outside insists on him, so reschedule |
-| *"KT on existing process from Priya to Arjun"* (organized by Arjun) | Suggests Arjun, her manager | Priya gives it and Arjun receives it, so reschedule |
 | *"Rohan usually stands in for Arjun on audit items"*, while Rohan is out | Cannot connect the facts | Checks that Rohan is out and suggests someone else |
 | All-hands where *"Arjun walks us through the H2 numbers"* | No hosting keyword, so ignored | He presents, so it needs a decision |
 

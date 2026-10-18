@@ -32,8 +32,8 @@ gcloud run deploy close-the-gap-api --source . --region asia-south1 --allow-unau
   - the AI answer cache, the demo email outbox and the rate-limit counters live in that instance's memory.
 - **Concurrency 20** works because of the per-request Firestore read cache.
 - **Use `--set-env-vars` only on the first deploy.** It replaces the whole list, so any setting it does not name disappears, and the site becomes unreachable. Afterwards use **`--update-env-vars`**, which changes only the named ones. A later redeploy keeps every setting it does not name.
-- **Safety net:** on Cloud Run the backend refuses to start unless `STORE=firestore`. A wiped variable list therefore fails the new revision while the last good one keeps serving.
-- `NOW` is ignored on Cloud Run. The live demo always runs on the real clock.
+- **Safety net:** Firestore is the default store, and on Cloud Run any other `STORE` value is refused at startup, so the last good revision keeps serving instead of one that would lose data.
+- The live demo always runs on the real clock. There is no setting that fixes it.
 
 ### Service account roles
 
@@ -48,7 +48,7 @@ Keep secret values in **Secret Manager** versions, never in deployment arguments
 ### Firebase and Google setup
 
 - Firebase Authentication: enable the **Google** sign-in method, and add the Hosting domain to the authorised domains.
-- A Google OAuth **web** client with the Calendar callback (and the Meet callback, if used) as redirect URIs.
+- A Google OAuth **web** client with the Calendar callback as redirect URIs.
 - The Google sign-in app is not yet verified by Google, so first-time users see an "unverified app" notice.
 
 ## Web app → Firebase Hosting (from `web/`)

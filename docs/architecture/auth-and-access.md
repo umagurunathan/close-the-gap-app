@@ -26,7 +26,7 @@ There are two kinds of caller:
 
 The middleware is installed only when `FIREBASE_AUTH_ENABLED=true`, and then `FIREBASE_PROJECT_ID` is required. For each request:
 
-1. `OPTIONS` requests and `PUBLIC_PATHS` pass straight through. `PUBLIC_PATHS` are `/`, `/health`, the Calendar and Meet OAuth callbacks, and `/jobs/run-reminders`.
+1. `OPTIONS` requests and `PUBLIC_PATHS` pass straight through. `PUBLIC_PATHS` are `/`, `/health`, the Calendar OAuth callback, and `/jobs/run-reminders`.
 2. **No `Authorization` header**: the request continues as a guest.
 3. A header that is not `Bearer`: 401.
 4. `verify_firebase_token(token, audience=FIREBASE_PROJECT_ID)` fails: 401 "Your sign-in expired".
@@ -62,7 +62,7 @@ It runs `company_svc.run_reminders()` only. No shared secret is stored anywhere.
 
 | Helper | Rule |
 |---|---|
-| `real_people_only` | 403 for guests on Calendar and Meet connect, sync and import |
+| `real_people_only` | 403 for guests on Calendar connect and sync |
 | `require_calendar_request` | Passes when hosted Calendar is enabled; otherwise only loopback clients (the local demo mode) |
 | CORS | `CORS_ORIGINS` (default `http://localhost:5173`), all methods and headers |
 

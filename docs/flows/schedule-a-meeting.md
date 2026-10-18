@@ -20,14 +20,14 @@ Close the Gap works in both directions. When a meeting is **scheduled, gains an 
 ## Schedule a meeting (`POST /events`)
 
 1. **The form** (`ScheduleMeeting.jsx`):
-   - title (required), agenda ("the AI reads it"), date, start time (IST), duration;
+   - title (required, up to 150 characters), agenda ("the AI reads it", up to 3,000), date (today or later), start time (IST), duration;
    - invitees, searched client-side by name, email or title, each marked Required or Optional.
    - The body is `{title, description, start, end, attendees: [{personId, optional}]}`, with times in UTC.
 2. **`main.post_event`** checks that `end > start` and that the attendees exist.
    - **If the organizer's Google Calendar is connected**, it creates the Google event first (`calendar.create_event`, `sendUpdates=all`), so Google sends the invitations.
    - If the app then fails with a lookup, value or permission error, the Google event is **deleted again** (rollback).
 3. **`Service.schedule_meeting`**:
-   - validates;
+   - validates: the start must be in the future ("Please choose a start time in the future.") and the title and agenda within the `[input]` limits;
    - creates a `CalEvent` (`evt_…`; the title defaults to "Untitled meeting"). With a Google id, it sets `googleCalendarOwnerId = organizer`;
    - logs `meeting_scheduled`;
    - calls `_scan_event`.
