@@ -48,7 +48,7 @@ def build_service(into: Optional[Service] = None, mode: Optional[str] = None) ->
 
 def build_company_service(mode: Optional[str] = None) -> Service:
     """The company area: the real people in the private company directory, and the meetings they
-    import from their own Google Calendar. Never seeded from seed.json and never reset. Real time, not NOW."""
+    import from their own Google Calendar. Never seeded from seed.json and never reset. Real time."""
     people = [Person(**p) for p in config.company_directory()]
     kind = (mode or config.store_kind()).strip().lower()
     if kind == "firestore":

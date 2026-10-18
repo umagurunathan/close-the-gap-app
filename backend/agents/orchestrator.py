@@ -82,7 +82,7 @@ def analyze(
         return kind, ai
 
     from . import guard
-    from . import recommender_ai   # imported here so the app runs without the Google library when AI is off
+    from . import recommender_ai
 
     def check(k: ItemKind, a: AiResult) -> tuple[ItemKind, AiResult]:
         """The plain-code checks, then: record what simple rules alone would have said for the same meeting, so the

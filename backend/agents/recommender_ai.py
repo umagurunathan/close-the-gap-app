@@ -1,6 +1,6 @@
 """Recommender agent, powered by Gemini through Vertex AI.
 
-Same job and same signature as the rule-based `recommend` in recommender.py: one meeting in, the card's AI block out.
+Same job and same signature as the rule-based `recommend` in fallback/rules_recommender.py: one meeting in, the card's AI block out.
 The orchestrator uses this one when `[ai] enabled = true` in config/settings.toml.
 
 How it is built (and why):
